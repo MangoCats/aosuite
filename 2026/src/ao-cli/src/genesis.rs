@@ -183,21 +183,21 @@ pub fn run(args: GenesisArgs) {
 
 fn load_seed(seed_arg: &str) -> SigningKey {
     // Try as file first
-    if let Ok(bytes) = std::fs::read(seed_arg) {
-        if bytes.len() == 32 {
-            let mut seed = [0u8; 32];
-            seed.copy_from_slice(&bytes);
-            return SigningKey::from_seed(&seed);
-        }
+    if let Ok(bytes) = std::fs::read(seed_arg)
+        && bytes.len() == 32
+    {
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&bytes);
+        return SigningKey::from_seed(&seed);
     }
     // Try as hex string
     let hex_str = seed_arg.trim();
-    if hex_str.len() == 64 {
-        if let Ok(bytes) = hex::decode(hex_str) {
-            let mut seed = [0u8; 32];
-            seed.copy_from_slice(&bytes);
-            return SigningKey::from_seed(&seed);
-        }
+    if hex_str.len() == 64
+        && let Ok(bytes) = hex::decode(hex_str)
+    {
+        let mut seed = [0u8; 32];
+        seed.copy_from_slice(&bytes);
+        return SigningKey::from_seed(&seed);
     }
     eprintln!("Invalid seed: must be a 32-byte file or 64-char hex string");
     std::process::exit(1);

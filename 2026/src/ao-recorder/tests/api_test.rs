@@ -20,6 +20,10 @@ use ao_recorder::{AppState, build_router};
 
 /// Build a test genesis block.
 fn build_genesis(issuer_key: &SigningKey) -> DataItem {
+    build_genesis_with_symbol(issuer_key, "TST")
+}
+
+fn build_genesis_with_symbol(issuer_key: &SigningKey, symbol: &str) -> DataItem {
     let pubkey = issuer_key.public_key_bytes().to_vec();
 
     let shares_out = BigInt::from(1u64 << 40);
@@ -39,7 +43,7 @@ fn build_genesis(issuer_key: &SigningKey) -> DataItem {
 
     let signable_children = vec![
         DataItem::vbc_value(PROTOCOL_VER, 1),
-        DataItem::bytes(CHAIN_SYMBOL, b"TST".to_vec()),
+        DataItem::bytes(CHAIN_SYMBOL, symbol.as_bytes().to_vec()),
         DataItem::bytes(DESCRIPTION, b"API test chain".to_vec()),
         DataItem::bytes(COIN_COUNT, coin_bytes),
         DataItem::bytes(SHARES_OUT, shares_bytes.clone()),
@@ -92,6 +96,25 @@ async fn start_test_server(
     });
 
     (base_url, chain_id)
+}
+
+/// Start a test server with no pre-loaded chains (multi-chain mode).
+async fn start_empty_server(blockmaker_key: &SigningKey) -> String {
+    let state = Arc::new(AppState::new_multi(
+        None,
+        SigningKey::from_seed(blockmaker_key.seed()),
+    ));
+
+    let app = build_router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base_url = format!("http://{}", addr);
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    base_url
 }
 
 /// Build a signed AUTHORIZATION with iterative fee calculation.
@@ -592,4 +615,186 @@ async fn test_websocket_block_notification() {
     let block_info: serde_json::Value = serde_json::from_str(&text).unwrap();
     assert_eq!(block_info["height"], 1);
     assert!(block_info["hash"].as_str().unwrap().len() == 64);
+}
+
+// ============ Multi-chain tests ============
+
+#[tokio::test]
+async fn test_list_chains() {
+    let issuer = SigningKey::from_seed(&[0x30; 32]);
+    let blockmaker = SigningKey::from_seed(&[0x31; 32]);
+    let (base, chain_id) = start_test_server(&issuer, &blockmaker).await;
+
+    let client = reqwest::Client::new();
+    let resp: Vec<serde_json::Value> = client
+        .get(format!("{}/chains", base))
+        .send().await.unwrap()
+        .json().await.unwrap();
+
+    assert_eq!(resp.len(), 1);
+    assert_eq!(resp[0]["chain_id"], chain_id);
+    assert_eq!(resp[0]["symbol"], "TST");
+    assert_eq!(resp[0]["block_height"], 0);
+}
+
+#[tokio::test]
+async fn test_create_chain_via_api() {
+    let blockmaker = SigningKey::from_seed(&[0x32; 32]);
+    let base = start_empty_server(&blockmaker).await;
+
+    let client = reqwest::Client::new();
+
+    // List should be empty
+    let chains: Vec<serde_json::Value> = client
+        .get(format!("{}/chains", base))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert!(chains.is_empty());
+
+    // Create a chain via POST /chains
+    let issuer = SigningKey::from_seed(&[0x33; 32]);
+    let genesis = build_genesis(&issuer);
+    let genesis_json = ao_json::to_json(&genesis);
+
+    let resp = client
+        .post(format!("{}/chains", base))
+        .json(&serde_json::json!({ "genesis": genesis_json }))
+        .send().await.unwrap();
+
+    assert_eq!(resp.status(), 201);
+    let info: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(info["symbol"], "TST");
+    assert_eq!(info["block_height"], 0);
+    let chain_id = info["chain_id"].as_str().unwrap().to_string();
+
+    // List should now have one chain
+    let chains: Vec<serde_json::Value> = client
+        .get(format!("{}/chains", base))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert_eq!(chains.len(), 1);
+    assert_eq!(chains[0]["chain_id"], chain_id);
+
+    // Chain info endpoint should work
+    let chain_info: serde_json::Value = client
+        .get(format!("{}/chain/{}/info", base, chain_id))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert_eq!(chain_info["symbol"], "TST");
+}
+
+#[tokio::test]
+async fn test_create_duplicate_chain_rejected() {
+    let blockmaker = SigningKey::from_seed(&[0x34; 32]);
+    let base = start_empty_server(&blockmaker).await;
+
+    let client = reqwest::Client::new();
+    let issuer = SigningKey::from_seed(&[0x35; 32]);
+    let genesis = build_genesis(&issuer);
+    let genesis_json = ao_json::to_json(&genesis);
+
+    // First create should succeed
+    let resp = client
+        .post(format!("{}/chains", base))
+        .json(&serde_json::json!({ "genesis": genesis_json }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 201);
+
+    // Second create with same genesis should fail
+    let resp2 = client
+        .post(format!("{}/chains", base))
+        .json(&serde_json::json!({ "genesis": genesis_json }))
+        .send().await.unwrap();
+    assert_eq!(resp2.status(), 409);
+
+    let body: serde_json::Value = resp2.json().await.unwrap();
+    assert!(body["error"].as_str().unwrap().contains("already hosted"));
+}
+
+#[tokio::test]
+async fn test_multi_chain_independent_operations() {
+    let blockmaker = SigningKey::from_seed(&[0x36; 32]);
+    let base = start_empty_server(&blockmaker).await;
+    let client = reqwest::Client::new();
+
+    // Create two chains with different issuers
+    let issuer_a = SigningKey::from_seed(&[0x37; 32]);
+    let issuer_b = SigningKey::from_seed(&[0x38; 32]);
+    let genesis_a = build_genesis_with_symbol(&issuer_a, "AAA");
+    let genesis_b = build_genesis_with_symbol(&issuer_b, "BBB");
+
+    let resp_a = client
+        .post(format!("{}/chains", base))
+        .json(&serde_json::json!({ "genesis": ao_json::to_json(&genesis_a) }))
+        .send().await.unwrap();
+    assert_eq!(resp_a.status(), 201);
+    let info_a: serde_json::Value = resp_a.json().await.unwrap();
+    let chain_a = info_a["chain_id"].as_str().unwrap().to_string();
+
+    let resp_b = client
+        .post(format!("{}/chains", base))
+        .json(&serde_json::json!({ "genesis": ao_json::to_json(&genesis_b) }))
+        .send().await.unwrap();
+    assert_eq!(resp_b.status(), 201);
+    let info_b: serde_json::Value = resp_b.json().await.unwrap();
+    let chain_b = info_b["chain_id"].as_str().unwrap().to_string();
+
+    // Both chains should be listed
+    let chains: Vec<serde_json::Value> = client
+        .get(format!("{}/chains", base))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert_eq!(chains.len(), 2);
+
+    // Each chain should have independent state
+    let info_a2: serde_json::Value = client
+        .get(format!("{}/chain/{}/info", base, chain_a))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert_eq!(info_a2["symbol"], "AAA");
+
+    let info_b2: serde_json::Value = client
+        .get(format!("{}/chain/{}/info", base, chain_b))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert_eq!(info_b2["symbol"], "BBB");
+
+    // Submit an assignment on chain A
+    let shares_out: BigInt = info_a2["shares_out"].as_str().unwrap().parse().unwrap();
+    let fee_num: BigInt = info_a2["fee_rate_num"].as_str().unwrap().parse().unwrap();
+    let fee_den: BigInt = info_a2["fee_rate_den"].as_str().unwrap().parse().unwrap();
+
+    let utxo_a: serde_json::Value = client
+        .get(format!("{}/chain/{}/utxo/1", base, chain_a))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let giver_amount: BigInt = utxo_a["amount"].as_str().unwrap().parse().unwrap();
+
+    let receiver = SigningKey::generate();
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    let auth = build_authorization(
+        &issuer_a, 1, &giver_amount, &receiver,
+        &fee_num, &fee_den, &shares_out,
+        Timestamp::from_raw(genesis_ts.raw() + 1_000_000),
+        Timestamp::from_raw(genesis_ts.raw() + 2_000_000),
+    );
+
+    let resp = client
+        .post(format!("{}/chain/{}/submit", base, chain_a))
+        .json(&ao_json::to_json(&auth))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // Chain A should be at height 1, chain B still at 0
+    let info_a3: serde_json::Value = client
+        .get(format!("{}/chain/{}/info", base, chain_a))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert_eq!(info_a3["block_height"], 1);
+
+    let info_b3: serde_json::Value = client
+        .get(format!("{}/chain/{}/info", base, chain_b))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert_eq!(info_b3["block_height"], 0);
 }

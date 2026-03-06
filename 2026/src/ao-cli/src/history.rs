@@ -50,7 +50,7 @@ async fn run_async(args: HistoryArgs) {
         return;
     }
 
-    println!("{:<8} {:<16} {:<8} {}", "Height", "Hash", "Pages", "Type");
+    println!("{:<8} {:<16} {:<8} Type", "Height", "Hash", "Pages");
     println!("{}", "-".repeat(60));
 
     for (i, block) in blocks.iter().enumerate() {
@@ -70,7 +70,7 @@ async fn run_async(args: HistoryArgs) {
     println!("\n{} block(s) displayed.", blocks.len());
 }
 
-fn extract_field<'a>(item: &'a serde_json::Value, type_name: &str) -> String {
+fn extract_field(item: &serde_json::Value, type_name: &str) -> String {
     if let Some(items) = item.get("items").and_then(|v| v.as_array()) {
         for child in items {
             if child.get("type").and_then(|t| t.as_str()) == Some(type_name) {
@@ -88,16 +88,16 @@ fn extract_field<'a>(item: &'a serde_json::Value, type_name: &str) -> String {
 fn count_pages(block: &serde_json::Value) -> usize {
     if let Some(items) = block.get("items").and_then(|v| v.as_array()) {
         for child in items {
-            if child.get("type").and_then(|t| t.as_str()) == Some("BLOCK_SIGNED") {
-                if let Some(signed_items) = child.get("items").and_then(|v| v.as_array()) {
-                    for sc in signed_items {
-                        if sc.get("type").and_then(|t| t.as_str()) == Some("BLOCK_CONTENTS") {
-                            if let Some(bc_items) = sc.get("items").and_then(|v| v.as_array()) {
-                                return bc_items.iter()
-                                    .filter(|c| c.get("type").and_then(|t| t.as_str()) == Some("PAGE"))
-                                    .count();
-                            }
-                        }
+            if child.get("type").and_then(|t| t.as_str()) == Some("BLOCK_SIGNED")
+                && let Some(signed_items) = child.get("items").and_then(|v| v.as_array())
+            {
+                for sc in signed_items {
+                    if sc.get("type").and_then(|t| t.as_str()) == Some("BLOCK_CONTENTS")
+                        && let Some(bc_items) = sc.get("items").and_then(|v| v.as_array())
+                    {
+                        return bc_items.iter()
+                            .filter(|c| c.get("type").and_then(|t| t.as_str()) == Some("PAGE"))
+                            .count();
                     }
                 }
             }

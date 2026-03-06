@@ -395,7 +395,7 @@ impl ChainStore {
     pub fn store_block(&self, height: u64, timestamp: i64, hash: &[u8; 32], data: &[u8]) -> Result<()> {
         self.conn.execute(
             "INSERT INTO blocks (height, timestamp, hash, data) VALUES (?1, ?2, ?3, ?4)",
-            params![height as i64, timestamp as i64, &hash[..], data],
+            params![height as i64, timestamp, &hash[..], data],
         )?;
         Ok(())
     }

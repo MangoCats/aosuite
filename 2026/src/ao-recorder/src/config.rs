@@ -1,12 +1,28 @@
 use serde::Deserialize;
 
 #[derive(Deserialize)]
+pub struct ChainConfig {
+    pub db_path: String,
+    pub genesis_path: String,
+    #[serde(default)]
+    pub blockmaker_seed: Option<String>,
+}
+
+#[derive(Deserialize)]
 pub struct Config {
     pub host: String,
     pub port: u16,
-    pub db_path: String,
-    pub genesis_path: String,
     pub blockmaker_seed: String,
+    #[serde(default)]
+    pub data_dir: Option<String>,
+    /// Single-chain backward-compatible fields.
+    #[serde(default)]
+    pub db_path: Option<String>,
+    #[serde(default)]
+    pub genesis_path: Option<String>,
+    /// Multiple chain configs.
+    #[serde(default)]
+    pub chains: Vec<ChainConfig>,
 }
 
 impl Default for Config {
@@ -14,9 +30,11 @@ impl Default for Config {
         Config {
             host: "127.0.0.1".to_string(),
             port: 3000,
-            db_path: "chain.db".to_string(),
-            genesis_path: "genesis.bin".to_string(),
             blockmaker_seed: String::new(),
+            data_dir: None,
+            db_path: Some("chain.db".to_string()),
+            genesis_path: Some("genesis.bin".to_string()),
+            chains: Vec::new(),
         }
     }
 }

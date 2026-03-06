@@ -28,6 +28,8 @@ Byte layout:  [cont:7] [d6:6] [d5:5] [d4:4] [d3:3] [d2:2] [d1:1] [d0:0]
 
 Maximum: 10 bytes → 70 data bits. Values up to 2⁶³−1 are valid (we reject values ≥ 2⁶³ to keep within i64 range).
 
+**Why 10 bytes:** VBC targets 64-bit signed integers — sufficient for type codes, byte-count sizes, sequence IDs, and list counts. 10 bytes is the minimum that covers the full i64 magnitude (6 + 9×7 = 69 bits ≥ 63 needed). Values exceeding 64 bits (share amounts, coin counts) use BigInt encoding (§4) instead, which is unbounded. The 10-byte cap also guarantees bounded reads — a decoder never consumes more than 10 bytes per VBC field.
+
 ### 1.2 Signed VBC
 
 Signed VBC encodes a sign+magnitude pair. The mapping from signed integer to unsigned wire value is:

@@ -299,3 +299,60 @@ mod tests {
         assert_eq!(decode_signed(&[], 0), Err(VbcError::UnexpectedEnd));
     }
 }
+
+#[cfg(test)]
+mod proptests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn unsigned_round_trip(value: u64) {
+            let mut buf = Vec::new();
+            encode_unsigned(value, &mut buf);
+            let (decoded, consumed) = decode_unsigned(&buf, 0).unwrap();
+            prop_assert_eq!(decoded, value);
+            prop_assert_eq!(consumed, buf.len());
+        }
+
+        #[test]
+        fn signed_round_trip(value: i64) {
+            let mut buf = Vec::new();
+            encode_signed(value, &mut buf);
+            let (decoded, consumed) = decode_signed(&buf, 0).unwrap();
+            prop_assert_eq!(decoded, value);
+            prop_assert_eq!(consumed, buf.len());
+        }
+
+        #[test]
+        fn signed_encoding_length_bounded(value: i64) {
+            let mut buf = Vec::new();
+            encode_signed(value, &mut buf);
+            prop_assert!(buf.len() <= 10, "signed VBC for {} was {} bytes", value, buf.len());
+        }
+
+        #[test]
+        fn unsigned_encoding_length_bounded(value: u64) {
+            let mut buf = Vec::new();
+            encode_unsigned(value, &mut buf);
+            prop_assert!(buf.len() <= 10, "unsigned VBC for {} was {} bytes", value, buf.len());
+        }
+
+        #[test]
+        fn signed_multiple_values_at_offsets(v1: i64, v2: i64, v3: i64) {
+            let mut buf = Vec::new();
+            encode_signed(v1, &mut buf);
+            encode_signed(v2, &mut buf);
+            encode_signed(v3, &mut buf);
+
+            let (d1, c1) = decode_signed(&buf, 0).unwrap();
+            let (d2, c2) = decode_signed(&buf, c1).unwrap();
+            let (d3, c3) = decode_signed(&buf, c1 + c2).unwrap();
+
+            prop_assert_eq!(d1, v1);
+            prop_assert_eq!(d2, v2);
+            prop_assert_eq!(d3, v3);
+            prop_assert_eq!(c1 + c2 + c3, buf.len());
+        }
+    }
+}

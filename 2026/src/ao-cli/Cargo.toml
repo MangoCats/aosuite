@@ -1,0 +1,18 @@
+[package]
+name = "ao-cli"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "ao"
+path = "src/main.rs"
+
+[dependencies]
+ao-types = { path = "../ao-types" }
+ao-crypto = { path = "../ao-crypto" }
+clap = { version = "4", features = ["derive"] }
+num-bigint = "0.4"
+num-rational = "0.4"
+num-traits = "0.2"
+serde_json = "1"
+hex = "0.4"

@@ -3,6 +3,10 @@ name = "ao-recorder"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "ao_recorder"
+path = "src/lib.rs"
+
 [[bin]]
 name = "ao-recorder"
 path = "src/main.rs"
@@ -27,3 +31,4 @@ tracing-subscriber = "0.3"
 reqwest = { version = "0.12", features = ["json"] }
 tokio = { version = "1", features = ["full", "test-util"] }
 tempfile = "3"
+num-rational = "0.4"

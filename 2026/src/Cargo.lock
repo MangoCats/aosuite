@@ -112,6 +112,7 @@ dependencies = [
  "axum",
  "hex",
  "num-bigint",
+ "num-rational",
  "num-traits",
  "reqwest",
  "serde",

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::collections::hash_map::Entry;
 use std::convert::Infallible;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
@@ -7,7 +8,7 @@ use axum::{
     Router,
     extract::{Path, State, WebSocketUpgrade, ws},
     http::StatusCode,
-    response::{Json, Sse, sse},
+    response::{IntoResponse, Json, Sse, sse},
     routing::get,
 };
 use serde::{Deserialize, Serialize};
@@ -23,6 +24,45 @@ use ao_chain::store::ChainStore;
 use ao_chain::{genesis, validate, block};
 
 pub mod config;
+
+// ── Error type ──────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+struct ErrorResponse {
+    error: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum RecorderError {
+    #[error("lock poisoned: {0}")]
+    LockPoisoned(String),
+    #[error("chain not found")]
+    ChainNotFound,
+    #[error("{0}")]
+    NotFound(String),
+    #[error("chain already hosted")]
+    ChainConflict,
+    #[error("chain not loaded")]
+    ChainNotLoaded,
+    #[error("{0}")]
+    BadRequest(String),
+    #[error("{0}")]
+    Internal(String),
+}
+
+impl IntoResponse for RecorderError {
+    fn into_response(self) -> axum::response::Response {
+        let status = match &self {
+            RecorderError::LockPoisoned(_) | RecorderError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+            RecorderError::ChainNotFound | RecorderError::ChainNotLoaded | RecorderError::NotFound(_) => StatusCode::NOT_FOUND,
+            RecorderError::ChainConflict => StatusCode::CONFLICT,
+            RecorderError::BadRequest(_) => StatusCode::BAD_REQUEST,
+        };
+        (status, Json(ErrorResponse { error: self.to_string() })).into_response()
+    }
+}
+
+// ── Per-chain and shared state ──────────────────────────────────────
 
 /// Per-chain state.
 pub struct ChainState {
@@ -73,16 +113,27 @@ impl AppState {
         }
     }
 
-    /// Register a chain. Returns the chain ID hex string.
+    /// Register a chain.
     pub fn add_chain(&self, chain_id: String, chain_state: Arc<ChainState>) {
-        self.chains.write().unwrap().insert(chain_id, chain_state);
+        self.chains.write().expect("chains write lock").insert(chain_id, chain_state);
     }
 
-    /// Get a chain by ID, or None.
-    pub fn get_chain(&self, chain_id: &str) -> Option<Arc<ChainState>> {
-        self.chains.read().unwrap().get(chain_id).cloned()
+    /// Get a chain by ID, or RecorderError::ChainNotFound.
+    fn get_chain_or_err(&self, chain_id: &str) -> Result<Arc<ChainState>, RecorderError> {
+        self.chains.read()
+            .map_err(|e| RecorderError::LockPoisoned(format!("chains read: {}", e)))?
+            .get(chain_id)
+            .cloned()
+            .ok_or(RecorderError::ChainNotFound)
     }
 }
+
+fn lock_store(chain: &ChainState) -> Result<std::sync::MutexGuard<'_, ChainStore>, RecorderError> {
+    chain.store.lock()
+        .map_err(|e| RecorderError::LockPoisoned(format!("store lock: {}", e)))
+}
+
+// ── Data types ──────────────────────────────────────────────────────
 
 #[derive(Serialize, Clone, Debug)]
 pub struct BlockInfo {
@@ -125,11 +176,6 @@ struct UtxoInfo {
     status: String,
 }
 
-#[derive(Serialize)]
-struct ErrorResponse {
-    error: String,
-}
-
 #[derive(Deserialize)]
 struct CreateChainRequest {
     genesis: serde_json::Value,
@@ -137,15 +183,7 @@ struct CreateChainRequest {
     blockmaker_seed: Option<String>,
 }
 
-fn error_response(status: StatusCode, msg: &str) -> (StatusCode, Json<ErrorResponse>) {
-    (status, Json(ErrorResponse { error: msg.to_string() }))
-}
-
-/// Look up a chain by hex ID from AppState, returning 404 if not found.
-fn lookup_chain(state: &AppState, chain_id_hex: &str) -> Result<Arc<ChainState>, (StatusCode, Json<ErrorResponse>)> {
-    state.get_chain(chain_id_hex)
-        .ok_or_else(|| error_response(StatusCode::NOT_FOUND, "chain not found"))
-}
+// ── Router ──────────────────────────────────────────────────────────
 
 /// Build the Axum router for a recorder with the given state.
 pub fn build_router(state: Arc<AppState>) -> Router {
@@ -173,38 +211,49 @@ pub fn init_chain(store: &ChainStore, genesis_item: &DataItem) -> String {
     hex::encode(meta.chain_id)
 }
 
+// ── Handlers ────────────────────────────────────────────────────────
+
 /// GET /chains — list all hosted chains.
 async fn list_chains(
     State(state): State<Arc<AppState>>,
-) -> Json<Vec<ChainListEntry>> {
-    let chains = state.chains.read().unwrap();
-    let mut entries: Vec<ChainListEntry> = chains.iter().map(|(id, cs)| {
-        let store = cs.store.lock().unwrap();
-        let meta = store.load_chain_meta().unwrap().unwrap();
-        ChainListEntry {
-            chain_id: id.clone(),
-            symbol: meta.symbol.clone(),
+) -> Result<Json<Vec<ChainListEntry>>, RecorderError> {
+    // Phase 1: collect chain refs under read lock, then drop it
+    let chain_refs: Vec<(String, Arc<ChainState>)> = {
+        let chains = state.chains.read()
+            .map_err(|e| RecorderError::LockPoisoned(format!("chains read: {}", e)))?;
+        chains.iter().map(|(id, cs)| (id.clone(), Arc::clone(cs))).collect()
+    };
+
+    // Phase 2: query each store individually (no nested locks)
+    let mut entries = Vec::new();
+    for (id, cs) in chain_refs {
+        let store = lock_store(&cs)?;
+        let meta = store.load_chain_meta()
+            .map_err(|e| RecorderError::Internal(e.to_string()))?
+            .ok_or(RecorderError::ChainNotLoaded)?;
+        entries.push(ChainListEntry {
+            chain_id: id,
+            symbol: meta.symbol,
             block_height: meta.block_height,
-        }
-    }).collect();
+        });
+    }
     entries.sort_by(|a, b| a.chain_id.cmp(&b.chain_id));
-    Json(entries)
+    Ok(Json(entries))
 }
 
 /// POST /chains — create a new chain from a genesis block.
 async fn create_chain(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateChainRequest>,
-) -> Result<(StatusCode, Json<ChainInfo>), (StatusCode, Json<ErrorResponse>)> {
+) -> Result<(StatusCode, Json<ChainInfo>), RecorderError> {
     let genesis_item = ao_json::from_json(&req.genesis)
-        .map_err(|e| error_response(StatusCode::BAD_REQUEST, &format!("invalid genesis: {}", e)))?;
+        .map_err(|e| RecorderError::BadRequest(format!("invalid genesis: {}", e)))?;
 
-    // Determine blockmaker key
     let blockmaker_key = if let Some(seed_hex) = &req.blockmaker_seed {
         let seed_bytes = hex::decode(seed_hex.trim())
-            .map_err(|e| error_response(StatusCode::BAD_REQUEST, &format!("invalid seed hex: {}", e)))?;
+            .map_err(|e| RecorderError::BadRequest(format!("invalid seed hex: {}", e)))?;
         let seed: [u8; 32] = seed_bytes.try_into()
-            .map_err(|_| error_response(StatusCode::BAD_REQUEST, "seed must be 32 bytes"))?;
+            .map_err(|_| RecorderError::BadRequest("seed must be 32 bytes".into()))?;
         SigningKey::from_seed(&seed)
     } else {
         SigningKey::from_seed(state.default_blockmaker_key.seed())
@@ -212,50 +261,45 @@ async fn create_chain(
 
     // Open store (file-backed if data_dir is set, otherwise in-memory)
     let store = if let Some(dir) = &state.data_dir {
-        // We'll use chain hash as filename once we know it
         let tmp_store = ChainStore::open_memory()
-            .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+            .map_err(|e| RecorderError::Internal(e.to_string()))?;
         tmp_store.init_schema()
-            .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
-        let meta = genesis::load_genesis(&tmp_store, &genesis_item)
-            .map_err(|e| error_response(StatusCode::BAD_REQUEST, &format!("genesis error: {}", e)))?;
-        let chain_id_hex = hex::encode(meta.chain_id);
+            .map_err(|e| RecorderError::Internal(e.to_string()))?;
+        genesis::load_genesis(&tmp_store, &genesis_item)
+            .map_err(|e| RecorderError::BadRequest(format!("genesis error: {}", e)))?;
+        let tmp_meta = tmp_store.load_chain_meta()
+            .map_err(|e| RecorderError::Internal(e.to_string()))?
+            .ok_or(RecorderError::ChainNotLoaded)?;
+        let chain_id_hex = hex::encode(tmp_meta.chain_id);
 
-        // Check if already hosted
-        if state.chains.read().unwrap().contains_key(&chain_id_hex) {
-            return Err(error_response(StatusCode::CONFLICT, "chain already hosted"));
-        }
-
-        // Create file-backed store
         let db_path = dir.join(format!("{}.db", chain_id_hex));
-        let file_store = ChainStore::open(db_path.to_str().unwrap())
-            .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+        let db_str = db_path.to_str()
+            .ok_or_else(|| RecorderError::Internal("non-UTF-8 database path".into()))?;
+        let file_store = ChainStore::open(db_str)
+            .map_err(|e| RecorderError::Internal(e.to_string()))?;
         file_store.init_schema()
-            .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+            .map_err(|e| RecorderError::Internal(e.to_string()))?;
         genesis::load_genesis(&file_store, &genesis_item)
-            .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+            .map_err(|e| RecorderError::Internal(e.to_string()))?;
         file_store
     } else {
         let store = ChainStore::open_memory()
-            .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+            .map_err(|e| RecorderError::Internal(e.to_string()))?;
         store.init_schema()
-            .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+            .map_err(|e| RecorderError::Internal(e.to_string()))?;
         genesis::load_genesis(&store, &genesis_item)
-            .map_err(|e| error_response(StatusCode::BAD_REQUEST, &format!("genesis error: {}", e)))?;
+            .map_err(|e| RecorderError::BadRequest(format!("genesis error: {}", e)))?;
         store
     };
 
-    let meta = store.load_chain_meta().unwrap().unwrap();
+    let meta = store.load_chain_meta()
+        .map_err(|e| RecorderError::Internal(e.to_string()))?
+        .ok_or(RecorderError::ChainNotLoaded)?;
     let chain_id_hex = hex::encode(meta.chain_id);
-
-    // Check again (race condition guard)
-    if state.chains.read().unwrap().contains_key(&chain_id_hex) {
-        return Err(error_response(StatusCode::CONFLICT, "chain already hosted"));
-    }
 
     let info = ChainInfo {
         chain_id: chain_id_hex.clone(),
-        symbol: meta.symbol.clone(),
+        symbol: meta.symbol,
         block_height: meta.block_height,
         shares_out: meta.shares_out.to_string(),
         coin_count: meta.coin_count.to_string(),
@@ -266,25 +310,33 @@ async fn create_chain(
         next_seq_id: meta.next_seq_id,
     };
 
+    // Atomic check-and-insert under a single write lock
     let chain_state = Arc::new(ChainState::new(store, blockmaker_key));
-    state.add_chain(chain_id_hex, chain_state);
-
-    Ok((StatusCode::CREATED, Json(info)))
+    let mut chains = state.chains.write()
+        .map_err(|e| RecorderError::LockPoisoned(format!("chains write: {}", e)))?;
+    match chains.entry(chain_id_hex) {
+        Entry::Occupied(_) => Err(RecorderError::ChainConflict),
+        Entry::Vacant(e) => {
+            e.insert(chain_state);
+            Ok((StatusCode::CREATED, Json(info)))
+        }
+    }
 }
 
 /// GET /chain/{id}/info
 async fn chain_info(
     State(state): State<Arc<AppState>>,
     Path(chain_id_hex): Path<String>,
-) -> Result<Json<ChainInfo>, (StatusCode, Json<ErrorResponse>)> {
-    let chain = lookup_chain(&state, &chain_id_hex)?;
-    let store = chain.store.lock().unwrap();
-    let meta = store.load_chain_meta().unwrap()
-        .ok_or_else(|| error_response(StatusCode::NOT_FOUND, "chain not loaded"))?;
+) -> Result<Json<ChainInfo>, RecorderError> {
+    let chain = state.get_chain_or_err(&chain_id_hex)?;
+    let store = lock_store(&chain)?;
+    let meta = store.load_chain_meta()
+        .map_err(|e| RecorderError::Internal(e.to_string()))?
+        .ok_or(RecorderError::ChainNotLoaded)?;
 
     Ok(Json(ChainInfo {
         chain_id: hex::encode(meta.chain_id),
-        symbol: meta.symbol.clone(),
+        symbol: meta.symbol,
         block_height: meta.block_height,
         shares_out: meta.shares_out.to_string(),
         coin_count: meta.coin_count.to_string(),
@@ -300,12 +352,12 @@ async fn chain_info(
 async fn get_utxo(
     State(state): State<Arc<AppState>>,
     Path((chain_id_hex, seq_id)): Path<(String, u64)>,
-) -> Result<Json<UtxoInfo>, (StatusCode, Json<ErrorResponse>)> {
-    let chain = lookup_chain(&state, &chain_id_hex)?;
-    let store = chain.store.lock().unwrap();
+) -> Result<Json<UtxoInfo>, RecorderError> {
+    let chain = state.get_chain_or_err(&chain_id_hex)?;
+    let store = lock_store(&chain)?;
     let utxo = store.get_utxo(seq_id)
-        .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?
-        .ok_or_else(|| error_response(StatusCode::NOT_FOUND, "UTXO not found"))?;
+        .map_err(|e| RecorderError::Internal(e.to_string()))?
+        .ok_or_else(|| RecorderError::NotFound("UTXO not found".into()))?;
 
     Ok(Json(UtxoInfo {
         seq_id: utxo.seq_id,
@@ -322,11 +374,12 @@ async fn get_blocks(
     State(state): State<Arc<AppState>>,
     Path(chain_id_hex): Path<String>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
-) -> Result<Json<Vec<serde_json::Value>>, (StatusCode, Json<ErrorResponse>)> {
-    let chain = lookup_chain(&state, &chain_id_hex)?;
-    let store = chain.store.lock().unwrap();
-    let meta = store.load_chain_meta().unwrap()
-        .ok_or_else(|| error_response(StatusCode::NOT_FOUND, "chain not loaded"))?;
+) -> Result<Json<Vec<serde_json::Value>>, RecorderError> {
+    let chain = state.get_chain_or_err(&chain_id_hex)?;
+    let store = lock_store(&chain)?;
+    let meta = store.load_chain_meta()
+        .map_err(|e| RecorderError::Internal(e.to_string()))?
+        .ok_or(RecorderError::ChainNotLoaded)?;
 
     let from: u64 = params.get("from").and_then(|s| s.parse().ok()).unwrap_or(0);
     let to: u64 = params.get("to").and_then(|s| s.parse().ok()).unwrap_or(meta.block_height);
@@ -334,13 +387,12 @@ async fn get_blocks(
     let mut blocks = Vec::new();
     for h in from..=to {
         if let Some(data) = store.get_block(h)
-            .map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?
+            .map_err(|e| RecorderError::Internal(e.to_string()))?
         {
             match DataItem::from_bytes(&data) {
                 Ok(item) => blocks.push(ao_json::to_json(&item)),
-                Err(e) => return Err(error_response(
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    &format!("decode error at height {}: {}", h, e),
+                Err(e) => return Err(RecorderError::Internal(
+                    format!("decode error at height {}: {}", h, e),
                 )),
             }
         }
@@ -354,32 +406,33 @@ async fn submit_assignment(
     State(state): State<Arc<AppState>>,
     Path(chain_id_hex): Path<String>,
     body: String,
-) -> Result<Json<BlockInfo>, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<Json<BlockInfo>, RecorderError> {
     let json_value: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| error_response(StatusCode::BAD_REQUEST, &format!("invalid JSON: {}", e)))?;
+        .map_err(|e| RecorderError::BadRequest(format!("invalid JSON: {}", e)))?;
 
     let authorization = ao_json::from_json(&json_value)
-        .map_err(|e| error_response(StatusCode::BAD_REQUEST, &format!("invalid DataItem: {}", e)))?;
+        .map_err(|e| RecorderError::BadRequest(format!("invalid DataItem: {}", e)))?;
 
-    let chain = lookup_chain(&state, &chain_id_hex)?;
-    let store = chain.store.lock().unwrap();
-    let meta = store.load_chain_meta().unwrap()
-        .ok_or_else(|| error_response(StatusCode::NOT_FOUND, "chain not loaded"))?;
+    let chain = state.get_chain_or_err(&chain_id_hex)?;
+    let store = lock_store(&chain)?;
+    let meta = store.load_chain_meta()
+        .map_err(|e| RecorderError::Internal(e.to_string()))?
+        .ok_or(RecorderError::ChainNotLoaded)?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .expect("system clock before epoch")
         .as_secs() as i64;
     let current_ts = Timestamp::from_unix_seconds(now).raw();
 
     let validated = validate::validate_assignment(&store, &meta, &authorization, current_ts)
-        .map_err(|e| error_response(StatusCode::BAD_REQUEST, &e.to_string()))?;
+        .map_err(|e| RecorderError::BadRequest(e.to_string()))?;
 
     let constructed = block::construct_block(
         &store, &meta, &chain.blockmaker_key,
         vec![validated],
         current_ts,
-    ).map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    ).map_err(|e| RecorderError::Internal(e.to_string()))?;
 
     let info = BlockInfo {
         height: constructed.height,
@@ -390,7 +443,6 @@ async fn submit_assignment(
         seq_count: constructed.seq_count,
     };
 
-    // Broadcast to SSE/WebSocket subscribers (ignore send errors — no receivers is fine)
     let _ = chain.block_tx.send(info.clone());
 
     Ok(Json(info))
@@ -400,13 +452,13 @@ async fn submit_assignment(
 async fn sse_events(
     State(state): State<Arc<AppState>>,
     Path(chain_id_hex): Path<String>,
-) -> Result<Sse<impl tokio_stream::Stream<Item = Result<sse::Event, Infallible>>>, (StatusCode, Json<ErrorResponse>)> {
-    let chain = lookup_chain(&state, &chain_id_hex)?;
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<sse::Event, Infallible>>>, RecorderError> {
+    let chain = state.get_chain_or_err(&chain_id_hex)?;
     let rx = chain.block_tx.subscribe();
     let stream = BroadcastStream::new(rx).filter_map(|result| {
         match result {
             Ok(info) => {
-                let json = serde_json::to_string(&info).unwrap();
+                let json = serde_json::to_string(&info).expect("BlockInfo always serializable");
                 Some(Ok(sse::Event::default().event("block").data(json)))
             }
             Err(_) => None, // lagged — skip
@@ -420,8 +472,8 @@ async fn ws_handler(
     State(state): State<Arc<AppState>>,
     Path(chain_id_hex): Path<String>,
     ws: WebSocketUpgrade,
-) -> Result<axum::response::Response, (StatusCode, Json<ErrorResponse>)> {
-    let chain = lookup_chain(&state, &chain_id_hex)?;
+) -> Result<axum::response::Response, RecorderError> {
+    let chain = state.get_chain_or_err(&chain_id_hex)?;
     Ok(ws.on_upgrade(move |socket| ws_connection(socket, chain)))
 }
 
@@ -432,7 +484,7 @@ async fn ws_connection(mut socket: ws::WebSocket, chain: Arc<ChainState>) {
             result = rx.recv() => {
                 match result {
                     Ok(info) => {
-                        let json = serde_json::to_string(&info).unwrap();
+                        let json = serde_json::to_string(&info).expect("BlockInfo always serializable");
                         if socket.send(ws::Message::Text(json.into())).await.is_err() {
                             break;
                         }

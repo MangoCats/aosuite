@@ -1,0 +1,344 @@
+{
+  "_comment": "Assign Onward conformance test vectors — Phase 0E. All hex strings are lowercase, no 0x prefix.",
+  "_spec_refs": {
+    "vbc": "WireFormat.md §1",
+    "bigint": "WireFormat.md §4",
+    "rational": "WireFormat.md §4.3",
+    "timestamp": "WireFormat.md §5",
+    "fee": "EconomicRules.md §3",
+    "expiration": "EconomicRules.md §4"
+  },
+
+  "vbc_signed": {
+    "_description": "Signed VBC: n >= 0 → wire = n<<1; n < 0 → wire = ((-n)<<1)|1. Then encode wire as unsigned VBC (LSB-first, 7 bits/byte, bit 7 = continuation).",
+    "vectors": [
+      { "value": 0,        "wire": 0,      "hex": "00", "note": "zero" },
+      { "value": 1,        "wire": 2,      "hex": "02", "note": "smallest positive" },
+      { "value": -1,       "wire": 3,      "hex": "03", "note": "smallest negative" },
+      { "value": 2,        "wire": 4,      "hex": "04" },
+      { "value": -2,       "wire": 5,      "hex": "05" },
+      { "value": 3,        "wire": 6,      "hex": "06" },
+      { "value": -3,       "wire": 7,      "hex": "07" },
+      { "value": 10,       "wire": 20,     "hex": "14" },
+      { "value": -10,      "wire": 21,     "hex": "15" },
+      { "value": 31,       "wire": 62,     "hex": "3e" },
+      { "value": -31,      "wire": 63,     "hex": "3f" },
+      { "value": 32,       "wire": 64,     "hex": "40" },
+      { "value": -32,      "wire": 65,     "hex": "41" },
+      { "value": 63,       "wire": 126,    "hex": "7e", "note": "max single-byte positive" },
+      { "value": -63,      "wire": 127,    "hex": "7f", "note": "max single-byte negative" },
+      { "value": 64,       "wire": 128,    "hex": "8001", "note": "first 2-byte positive" },
+      { "value": -64,      "wire": 129,    "hex": "8101", "note": "first 2-byte negative" },
+      { "value": -65,      "wire": 131,    "hex": "8301" },
+      { "value": 100,      "wire": 200,    "hex": "c801" },
+      { "value": -100,     "wire": 201,    "hex": "c901" },
+      { "value": 127,      "wire": 254,    "hex": "fe01" },
+      { "value": 128,      "wire": 256,    "hex": "8002" },
+      { "value": -128,     "wire": 257,    "hex": "8102" },
+      { "value": 255,      "wire": 510,    "hex": "fe03" },
+      { "value": -255,     "wire": 511,    "hex": "ff03" },
+      { "value": 256,      "wire": 512,    "hex": "8004" },
+      { "value": 1000,     "wire": 2000,   "hex": "d00f" },
+      { "value": -1000,    "wire": 2001,   "hex": "d10f" },
+      { "value": 8191,     "wire": 16382,  "hex": "fe7f", "note": "max 2-byte positive" },
+      { "value": -8191,    "wire": 16383,  "hex": "ff7f", "note": "max 2-byte negative" },
+      { "value": 8192,     "wire": 16384,  "hex": "808001", "note": "first 3-byte positive" },
+      { "value": -8192,    "wire": 16385,  "hex": "818001", "note": "first 3-byte negative" },
+      { "value": 1000000,  "wire": 2000000, "hex": "80a17a", "note": "3 bytes" },
+      { "value": -1000000, "wire": 2000001, "hex": "81a17a", "note": "3 bytes" }
+    ],
+    "invalid": [
+      { "hex": "01", "reason": "negative zero (wire value 1) is not permitted" }
+    ]
+  },
+
+  "vbc_unsigned": {
+    "_description": "Unsigned VBC: 7 data bits per byte (bits 0-6), bit 7 = continuation, LSB-first.",
+    "vectors": [
+      { "value": 0,     "hex": "00" },
+      { "value": 1,     "hex": "01" },
+      { "value": 2,     "hex": "02" },
+      { "value": 63,    "hex": "3f" },
+      { "value": 64,    "hex": "40" },
+      { "value": 127,   "hex": "7f", "note": "max single-byte" },
+      { "value": 128,   "hex": "8001", "note": "first 2-byte" },
+      { "value": 255,   "hex": "ff01" },
+      { "value": 256,   "hex": "8002" },
+      { "value": 1000,  "hex": "e807" },
+      { "value": 16383, "hex": "ff7f", "note": "max 2-byte" },
+      { "value": 16384, "hex": "808001", "note": "first 3-byte" }
+    ]
+  },
+
+  "bigint": {
+    "_description": "Big integer encoding: unsigned VBC byte count + two's-complement big-endian magnitude. Zero = 0 bytes. MSB of first magnitude byte >= 0x80 means negative.",
+    "vectors": [
+      { "value": "0",     "byte_count": 0, "magnitude_hex": "",       "full_hex": "00" },
+      { "value": "1",     "byte_count": 1, "magnitude_hex": "01",     "full_hex": "0101" },
+      { "value": "-1",    "byte_count": 1, "magnitude_hex": "ff",     "full_hex": "01ff" },
+      { "value": "127",   "byte_count": 1, "magnitude_hex": "7f",     "full_hex": "017f" },
+      { "value": "-127",  "byte_count": 1, "magnitude_hex": "81",     "full_hex": "0181" },
+      { "value": "128",   "byte_count": 2, "magnitude_hex": "0080",   "full_hex": "020080" },
+      { "value": "-128",  "byte_count": 1, "magnitude_hex": "80",     "full_hex": "0180" },
+      { "value": "-129",  "byte_count": 2, "magnitude_hex": "ff7f",   "full_hex": "02ff7f" },
+      { "value": "255",   "byte_count": 2, "magnitude_hex": "00ff",   "full_hex": "0200ff" },
+      { "value": "-255",  "byte_count": 2, "magnitude_hex": "ff01",   "full_hex": "02ff01" },
+      { "value": "256",   "byte_count": 2, "magnitude_hex": "0100",   "full_hex": "020100" },
+      { "value": "-256",  "byte_count": 2, "magnitude_hex": "ff00",   "full_hex": "02ff00" },
+      { "value": "32767", "byte_count": 2, "magnitude_hex": "7fff",   "full_hex": "027fff" },
+      { "value": "-32768","byte_count": 2, "magnitude_hex": "8000",   "full_hex": "028000" },
+      { "value": "65535", "byte_count": 3, "magnitude_hex": "00ffff", "full_hex": "0300ffff" },
+      { "value": "18446744073709551616",
+        "byte_count": 9,
+        "magnitude_hex": "010000000000000000",
+        "full_hex": "09010000000000000000",
+        "note": "2^64"
+      },
+      { "value": "77371252455336267181195264",
+        "byte_count": 11,
+        "magnitude_hex": "40000000000000000000000",
+        "full_hex": "0b40000000000000000000000",
+        "note": "~2^86 typical genesis share pool (exact: 2^86 = 4 * 2^84)"
+      }
+    ]
+  },
+
+  "rational": {
+    "_description": "Rational fraction: TotalSize(unsigned VBC) + NumSize(unsigned VBC) + Numerator(two's complement BE) + Denominator(two's complement BE, must be positive). DenomSize = TotalSize - len(NumSize_vbc) - NumSize.",
+    "vectors": [
+      {
+        "value": "1/2",
+        "numerator": "1", "denominator": "2",
+        "num_hex": "01", "denom_hex": "02",
+        "full_hex": "03010102",
+        "note": "TotalSize=3, NumSize=1, num=[01], denom=[02]"
+      },
+      {
+        "value": "-3/7",
+        "numerator": "-3", "denominator": "7",
+        "num_hex": "fd", "denom_hex": "07",
+        "full_hex": "030101fd07",
+        "note": "WRONG - need to recheck. TotalSize=3, NumSize=1, num=[fd], denom=[07]"
+      },
+      {
+        "value": "1/1000000",
+        "numerator": "1", "denominator": "1000000",
+        "num_hex": "01", "denom_hex": "0f4240",
+        "full_hex": "050101 0f4240",
+        "note": "TotalSize=5, NumSize=1, num=[01], denom=[0f4240]"
+      },
+      {
+        "value": "3/10000000000",
+        "numerator": "3", "denominator": "10000000000",
+        "num_hex": "03", "denom_hex": "02540be400",
+        "full_hex": "07010302540be400",
+        "note": "typical fee rate: TotalSize=7, NumSize=1"
+      }
+    ]
+  },
+
+  "timestamp": {
+    "_description": "AO timestamp = Unix_seconds * 189000000. Stored as 8-byte big-endian signed integer.",
+    "multiplier": 189000000,
+    "vectors": [
+      {
+        "description": "Unix epoch",
+        "utc": "1970-01-01T00:00:00Z",
+        "unix_seconds": 0,
+        "ao_timestamp": 0,
+        "hex": "0000000000000000"
+      },
+      {
+        "description": "2024-01-01",
+        "utc": "2024-01-01T00:00:00Z",
+        "unix_seconds": 1704067200,
+        "ao_timestamp_formula": "1704067200 * 189000000",
+        "ao_timestamp": "322068700800000000",
+        "note": "verify with big integer multiplication"
+      },
+      {
+        "description": "2026-01-01",
+        "utc": "2026-01-01T00:00:00Z",
+        "unix_seconds": 1767225600,
+        "ao_timestamp_formula": "1767225600 * 189000000",
+        "ao_timestamp": "334005638400000000",
+        "note": "verify with big integer multiplication"
+      },
+      {
+        "description": "2026-03-06",
+        "utc": "2026-03-06T00:00:00Z",
+        "unix_seconds": 1772611200,
+        "ao_timestamp_formula": "1772611200 * 189000000",
+        "ao_timestamp": "335023516800000000",
+        "note": "verify with big integer multiplication"
+      },
+      {
+        "description": "1-second resolution check",
+        "utc": "1970-01-01T00:00:01Z",
+        "unix_seconds": 1,
+        "ao_timestamp": 189000000,
+        "hex": "000000000b454600"
+      }
+    ]
+  },
+
+  "sha256": {
+    "_description": "SHA2-256 test vectors. Standard NIST vectors plus AO-specific empty/small inputs.",
+    "vectors": [
+      {
+        "input_hex": "",
+        "output_hex": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "note": "empty input"
+      },
+      {
+        "input_utf8": "abc",
+        "input_hex": "616263",
+        "output_hex": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        "note": "NIST FIPS 180-4 short message"
+      },
+      {
+        "input_utf8": "Assign Onward",
+        "input_hex": "41737369676e204f6e77617264",
+        "output_hex": "COMPUTE_AT_IMPLEMENTATION",
+        "note": "project name hash - compute during Phase 1"
+      }
+    ]
+  },
+
+  "ed25519": {
+    "_description": "Ed25519 test vectors from RFC 8032 §7.1. AO-specific: signed_data = SHA256(assignment_bytes) || timestamp_8bytes.",
+    "rfc8032_test1": {
+      "private_seed_hex": "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
+      "public_key_hex": "d75a980182b10ab7d54bfed3c964073a0ee172f3daa3f4a18446b0b8d558cd8d",
+      "message_hex": "",
+      "signature_hex": "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901555fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b",
+      "note": "RFC 8032 TEST 1 - empty message"
+    },
+    "ao_format_note": "In AO, the message signed is always 40 bytes: SHA256(substituted_assignment) || timestamp. Implementations should test Ed25519 with RFC 8032 vectors first, then test the AO signing pipeline end-to-end."
+  },
+
+  "fee_calculation": {
+    "_description": "Recording fee: fee_shares = ceil(data_bytes * FEE_RATE_num * SHARES_OUT / FEE_RATE_den). ceil(a/b) = (a + b - 1) / b for positive integers.",
+    "vectors": [
+      {
+        "description": "500 bytes, fresh genesis",
+        "data_bytes": 500,
+        "fee_rate_num": 1,
+        "fee_rate_den": 1000000,
+        "shares_out": "77371252455336267181195264",
+        "numerator": "38685626227668133590597632000",
+        "expected_fee": "38685626227668133590598",
+        "note": "ceil(500 * 1 * 77371252455336267181195264 / 1000000)"
+      },
+      {
+        "description": "2000 bytes, fresh genesis",
+        "data_bytes": 2000,
+        "fee_rate_num": 1,
+        "fee_rate_den": 1000000,
+        "shares_out": "77371252455336267181195264",
+        "numerator": "154742504910672534362390528000",
+        "expected_fee": "154742504910672534362391",
+        "note": "ceil(2000 * 77371252455336267181195264 / 1000000)"
+      },
+      {
+        "description": "500 bytes, after 50% shares retired",
+        "data_bytes": 500,
+        "fee_rate_num": 1,
+        "fee_rate_den": 1000000,
+        "shares_out": "38685626227668133590597632",
+        "numerator": "19342813113834066795298816000",
+        "expected_fee": "19342813113834066795299",
+        "note": "half the absolute fee, same coin-denominated fee"
+      },
+      {
+        "description": "214 bytes (minimal assignment), fresh genesis",
+        "data_bytes": 214,
+        "fee_rate_num": 1,
+        "fee_rate_den": 1000000,
+        "shares_out": "77371252455336267181195264",
+        "numerator": "16557448025441961017175746496",
+        "expected_fee": "16557448025441961017176",
+        "note": "minimal assignment estimate from Architecture.md"
+      },
+      {
+        "description": "500 bytes, different fee rate",
+        "data_bytes": 500,
+        "fee_rate_num": 3,
+        "fee_rate_den": 10000000000,
+        "shares_out": "77371252455336267181195264",
+        "numerator": "116056878683004400771792896000",
+        "expected_fee": "11605687868300440078",
+        "note": "fee_rate = 3/10^10 (very small rate)"
+      }
+    ]
+  },
+
+  "expiration_hard_cutoff": {
+    "_description": "Mode 1: shares fully valid until expiry, then retired. expiry_time = receipt_timestamp + EXPIRY_PERIOD.",
+    "vectors": [
+      {
+        "description": "1-year expiration",
+        "receipt_unix_seconds": 1767225600,
+        "expiry_period_seconds": 31557600,
+        "expiry_unix_seconds": 1798783200,
+        "expiry_period_ao": "5964285600000000",
+        "note": "31557600 = 365.25 * 86400 (Julian year). Shares valid at 1798783199, expired at 1798783201."
+      }
+    ]
+  },
+
+  "expiration_age_tax": {
+    "_description": "Mode 2: tax_fraction = 1 - 2^(-(age - start_age) / doubling_period). taxed = floor(shares * tax_fraction). effective = shares - taxed.",
+    "vectors": [
+      {
+        "description": "4-month doubling, 1000000 shares, age = 4 months",
+        "original_shares": "1000000",
+        "tax_start_age_seconds": 0,
+        "tax_doubling_period_seconds": 10512000,
+        "age_seconds": 10512000,
+        "doublings": 1.0,
+        "tax_fraction": "0.5",
+        "taxed_shares": "500000",
+        "effective_shares": "500000",
+        "note": "10512000 = 4 * 30.4375 * 86400 (4 months avg)"
+      },
+      {
+        "description": "4-month doubling, 1000000 shares, age = 8 months",
+        "original_shares": "1000000",
+        "age_seconds": 21024000,
+        "doublings": 2.0,
+        "tax_fraction": "0.75",
+        "taxed_shares": "750000",
+        "effective_shares": "250000"
+      },
+      {
+        "description": "4-month doubling, 1000000 shares, age = 1 year",
+        "original_shares": "1000000",
+        "age_seconds": 31536000,
+        "doublings": 3.0,
+        "tax_fraction": "0.875",
+        "taxed_shares": "875000",
+        "effective_shares": "125000"
+      },
+      {
+        "description": "4-month doubling, 1000000 shares, age = 2 years",
+        "original_shares": "1000000",
+        "age_seconds": 63072000,
+        "doublings": 6.0,
+        "tax_fraction": "0.984375",
+        "taxed_shares": "984375",
+        "effective_shares": "15625"
+      },
+      {
+        "description": "4-month doubling, 1000000 shares, age = 5 years",
+        "original_shares": "1000000",
+        "age_seconds": 157680000,
+        "doublings": 15.0,
+        "tax_fraction": "0.999969482421875",
+        "taxed_shares": "999969",
+        "effective_shares": "31",
+        "note": "floor(1000000 * 0.999969482421875) = 999969"
+      }
+    ]
+  }
+}

@@ -101,7 +101,7 @@ pub fn validate_assignment(
         if deadline_bytes.len() != 8 {
             return Err(ChainError::InvalidAssignment("DEADLINE must be 8 bytes".into()));
         }
-        let deadline = i64::from_be_bytes(deadline_bytes.try_into().unwrap());
+        let deadline = i64::from_be_bytes(deadline_bytes.try_into().expect("length validated above"));
         // Late recording is allowed if UTXOs are unspent, not expired, and not refuted
         // We check refutation later; deadline check is soft for late recording
         if current_timestamp > deadline {
@@ -216,8 +216,8 @@ pub fn validate_assignment(
             return Err(ChainError::SignatureFailure("timestamp must be 8 bytes".into()));
         }
 
-        let sig: [u8; 64] = sig_bytes.try_into().unwrap();
-        let timestamp = Timestamp::from_bytes(ts_bytes.try_into().unwrap());
+        let sig: [u8; 64] = sig_bytes.try_into().expect("length validated above");
+        let timestamp = Timestamp::from_bytes(ts_bytes.try_into().expect("length validated above"));
 
         // Look up the signer's public key by page_index
         let idx = page_index as usize;

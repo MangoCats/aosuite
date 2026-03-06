@@ -139,7 +139,7 @@ impl ChainStore {
     fn get_meta_u64(&self, key: &str) -> Result<Option<u64>> {
         match self.get_meta(key)? {
             Some(v) if v.len() == 8 => {
-                Ok(Some(u64::from_be_bytes(v.try_into().unwrap())))
+                Ok(Some(u64::from_be_bytes(v.try_into().expect("length matched"))))
             }
             _ => Ok(None),
         }
@@ -152,7 +152,7 @@ impl ChainStore {
     fn get_meta_i64(&self, key: &str) -> Result<Option<i64>> {
         match self.get_meta(key)? {
             Some(v) if v.len() == 8 => {
-                Ok(Some(i64::from_be_bytes(v.try_into().unwrap())))
+                Ok(Some(i64::from_be_bytes(v.try_into().expect("length matched"))))
             }
             _ => Ok(None),
         }

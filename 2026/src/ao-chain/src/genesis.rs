@@ -39,7 +39,7 @@ pub fn load_genesis(store: &ChainStore, genesis: &DataItem) -> Result<ChainMeta>
     if expiry_period_bytes.len() != 8 {
         return Err(ChainError::InvalidGenesis("EXPIRY_PERIOD must be 8 bytes".into()));
     }
-    let expiry_period = i64::from_be_bytes(expiry_period_bytes.try_into().unwrap());
+    let expiry_period = i64::from_be_bytes(expiry_period_bytes.try_into().expect("length validated above"));
 
     // Tax params (optional, required for mode 2)
     let (tax_start_age, tax_doubling_period) = if expiry_mode == 2 {
@@ -84,7 +84,7 @@ pub fn load_genesis(store: &ChainStore, genesis: &DataItem) -> Result<ChainMeta>
         return Err(ChainError::InvalidGenesis("signature timestamp must be 8 bytes".into()));
     }
 
-    let sig_timestamp = Timestamp::from_bytes(sig_ts_bytes.try_into().unwrap());
+    let sig_timestamp = Timestamp::from_bytes(sig_ts_bytes.try_into().expect("length validated above"));
 
     // The signed content is everything in the genesis except AUTH_SIG and SHA256
     // Per WireFormat.md §6.1, the issuer signs the genesis content
@@ -98,8 +98,8 @@ pub fn load_genesis(store: &ChainStore, genesis: &DataItem) -> Result<ChainMeta>
         .collect();
     let signable = DataItem::container(GENESIS, signable_children);
 
-    let sig_array: [u8; 64] = sig_bytes.try_into().unwrap();
-    let pubkey_array: [u8; 32] = issuer_pub.clone().try_into().unwrap();
+    let sig_array: [u8; 64] = sig_bytes.try_into().expect("length validated above");
+    let pubkey_array: [u8; 32] = issuer_pub.clone().try_into().expect("length validated above");
     if !sign::verify_dataitem(&pubkey_array, &signable, sig_timestamp, &sig_array) {
         return Err(ChainError::InvalidGenesis("genesis signature verification failed".into()));
     }
@@ -214,7 +214,7 @@ fn parse_timestamp_bytes(item: &DataItem) -> Result<i64> {
     if bytes.len() != 8 {
         return Err(ChainError::InvalidGenesis("TIMESTAMP must be 8 bytes".into()));
     }
-    Ok(i64::from_be_bytes(bytes.try_into().unwrap()))
+    Ok(i64::from_be_bytes(bytes.try_into().expect("length validated above")))
 }
 
 #[cfg(test)]

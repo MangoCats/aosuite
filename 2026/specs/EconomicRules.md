@@ -149,7 +149,7 @@ At each block, the Recorder sweeps all UTXOs. For any UTXO where `current_block_
 **Worked Example:**
 - Alice receives 1,000,000 shares in block at timestamp T₀.
 - `EXPIRY_PERIOD` = 1 year = `31,557,600 × 189,000,000 = 5,964,386,400,000,000` AO timestamp units.
-- At T₀ + 5,960,878,200,000,001: Alice's shares are expired and retired.
+- At T₀ + 5,964,386,400,000,001: Alice's shares are expired and retired.
 - To prevent expiration, Alice self-assigns before the deadline (costs a recording fee).
 
 ### 4.2 Mode 2: Age Tax

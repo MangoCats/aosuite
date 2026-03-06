@@ -1,0 +1,192 @@
+/// Type code constants from WireFormat.md §3.
+///
+/// Core inseparable types (|code| 1–31)
+pub const ED25519_PUB: i64 = 1;
+pub const ED25519_SIG: i64 = 2;
+pub const SHA256: i64 = 3;
+pub const BLAKE3: i64 = 4;
+pub const TIMESTAMP: i64 = 5;
+pub const AMOUNT: i64 = 6;
+pub const SEQ_ID: i64 = 7;
+pub const ASSIGNMENT: i64 = 8;
+pub const AUTHORIZATION: i64 = 9;
+pub const PARTICIPANT: i64 = 10;
+pub const BLOCK: i64 = 11;
+pub const BLOCK_SIGNED: i64 = 12;
+pub const BLOCK_CONTENTS: i64 = 13;
+pub const PAGE: i64 = 14;
+pub const GENESIS: i64 = 15;
+pub const RECORDING_BID: i64 = 16;
+pub const DEADLINE: i64 = 17;
+pub const COIN_COUNT: i64 = 18;
+pub const FEE_RATE: i64 = 19;
+pub const EXPIRY_PERIOD: i64 = 20;
+pub const CHAIN_SYMBOL: i64 = 21;
+pub const PROTOCOL_VER: i64 = 22;
+pub const SHARES_OUT: i64 = 23;
+pub const PREV_HASH: i64 = 24;
+pub const FIRST_SEQ: i64 = 25;
+pub const SEQ_COUNT: i64 = 26;
+pub const LIST_SIZE: i64 = 27;
+pub const REFUTATION: i64 = 28;
+pub const PAGE_INDEX: i64 = 29;
+pub const AUTH_SIG: i64 = 30;
+
+/// Negative type codes
+pub const EXPIRY_MODE: i64 = -1;
+pub const TAX_PARAMS: i64 = -2;
+
+/// Separable types (|code| 32–63)
+pub const NOTE: i64 = 32;
+pub const DATA_BLOB: i64 = 33;
+pub const DESCRIPTION: i64 = 34;
+pub const ICON: i64 = 35;
+pub const VENDOR_PROFILE: i64 = 36;
+
+/// How the data portion of a DataItem is sized.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SizeCategory {
+    /// Fixed N bytes, no size field.
+    Fixed(usize),
+    /// Unsigned VBC size prefix, then that many bytes.
+    Variable,
+    /// Data is itself a single unsigned VBC value, self-delimiting.
+    VbcValue,
+    /// Unsigned VBC size prefix, contents are child DataItems.
+    Container,
+}
+
+/// Look up the size category for a known type code.
+/// Returns `None` for unknown type codes.
+pub fn size_category(code: i64) -> Option<SizeCategory> {
+    match code {
+        ED25519_PUB => Some(SizeCategory::Fixed(32)),
+        ED25519_SIG => Some(SizeCategory::Fixed(64)),
+        SHA256 => Some(SizeCategory::Fixed(32)),
+        BLAKE3 => Some(SizeCategory::Fixed(32)),
+        TIMESTAMP => Some(SizeCategory::Fixed(8)),
+        DEADLINE => Some(SizeCategory::Fixed(8)),
+        EXPIRY_PERIOD => Some(SizeCategory::Fixed(8)),
+        PREV_HASH => Some(SizeCategory::Fixed(32)),
+
+        AMOUNT | RECORDING_BID | COIN_COUNT | FEE_RATE |
+        CHAIN_SYMBOL | SHARES_OUT |
+        NOTE | DATA_BLOB | DESCRIPTION | ICON => Some(SizeCategory::Variable),
+
+        SEQ_ID | PROTOCOL_VER | FIRST_SEQ | SEQ_COUNT |
+        LIST_SIZE | PAGE_INDEX | EXPIRY_MODE => Some(SizeCategory::VbcValue),
+
+        ASSIGNMENT | AUTHORIZATION | PARTICIPANT |
+        BLOCK | BLOCK_SIGNED | BLOCK_CONTENTS |
+        PAGE | GENESIS | REFUTATION | AUTH_SIG |
+        TAX_PARAMS | VENDOR_PROFILE => Some(SizeCategory::Container),
+
+        _ => None,
+    }
+}
+
+/// Check if a type code's item is separable: `|code| & 0x20 != 0`.
+pub fn is_separable(code: i64) -> bool {
+    (code.unsigned_abs() & 0x20) != 0
+}
+
+/// Get the human-readable name for a type code, or `None` if unknown.
+pub fn type_name(code: i64) -> Option<&'static str> {
+    match code {
+        ED25519_PUB => Some("ED25519_PUB"),
+        ED25519_SIG => Some("ED25519_SIG"),
+        SHA256 => Some("SHA256"),
+        BLAKE3 => Some("BLAKE3"),
+        TIMESTAMP => Some("TIMESTAMP"),
+        AMOUNT => Some("AMOUNT"),
+        SEQ_ID => Some("SEQ_ID"),
+        ASSIGNMENT => Some("ASSIGNMENT"),
+        AUTHORIZATION => Some("AUTHORIZATION"),
+        PARTICIPANT => Some("PARTICIPANT"),
+        BLOCK => Some("BLOCK"),
+        BLOCK_SIGNED => Some("BLOCK_SIGNED"),
+        BLOCK_CONTENTS => Some("BLOCK_CONTENTS"),
+        PAGE => Some("PAGE"),
+        GENESIS => Some("GENESIS"),
+        RECORDING_BID => Some("RECORDING_BID"),
+        DEADLINE => Some("DEADLINE"),
+        COIN_COUNT => Some("COIN_COUNT"),
+        FEE_RATE => Some("FEE_RATE"),
+        EXPIRY_PERIOD => Some("EXPIRY_PERIOD"),
+        CHAIN_SYMBOL => Some("CHAIN_SYMBOL"),
+        PROTOCOL_VER => Some("PROTOCOL_VER"),
+        SHARES_OUT => Some("SHARES_OUT"),
+        PREV_HASH => Some("PREV_HASH"),
+        FIRST_SEQ => Some("FIRST_SEQ"),
+        SEQ_COUNT => Some("SEQ_COUNT"),
+        LIST_SIZE => Some("LIST_SIZE"),
+        REFUTATION => Some("REFUTATION"),
+        PAGE_INDEX => Some("PAGE_INDEX"),
+        AUTH_SIG => Some("AUTH_SIG"),
+        EXPIRY_MODE => Some("EXPIRY_MODE"),
+        TAX_PARAMS => Some("TAX_PARAMS"),
+        NOTE => Some("NOTE"),
+        DATA_BLOB => Some("DATA_BLOB"),
+        DESCRIPTION => Some("DESCRIPTION"),
+        ICON => Some("ICON"),
+        VENDOR_PROFILE => Some("VENDOR_PROFILE"),
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_separability() {
+        // Inseparable: |code| 1-31
+        assert!(!is_separable(1));   // ED25519_PUB
+        assert!(!is_separable(8));   // ASSIGNMENT
+        assert!(!is_separable(31));  // last inseparable
+        assert!(!is_separable(-1));  // EXPIRY_MODE
+        assert!(!is_separable(-2));  // TAX_PARAMS
+
+        // Separable: |code| 32-63
+        assert!(is_separable(32));   // NOTE
+        assert!(is_separable(33));   // DATA_BLOB
+        assert!(is_separable(34));   // DESCRIPTION
+        assert!(is_separable(35));   // ICON
+        assert!(is_separable(36));   // VENDOR_PROFILE
+        assert!(is_separable(63));   // end of first separable band
+
+        // Next inseparable band: 64-95
+        assert!(!is_separable(64));
+        assert!(!is_separable(95));
+
+        // Next separable band: 96-127
+        assert!(is_separable(96));
+        assert!(is_separable(127));
+    }
+
+    #[test]
+    fn test_all_codes_have_categories() {
+        let all_codes = [
+            ED25519_PUB, ED25519_SIG, SHA256, BLAKE3, TIMESTAMP,
+            AMOUNT, SEQ_ID, ASSIGNMENT, AUTHORIZATION, PARTICIPANT,
+            BLOCK, BLOCK_SIGNED, BLOCK_CONTENTS, PAGE, GENESIS,
+            RECORDING_BID, DEADLINE, COIN_COUNT, FEE_RATE, EXPIRY_PERIOD,
+            CHAIN_SYMBOL, PROTOCOL_VER, SHARES_OUT, PREV_HASH,
+            FIRST_SEQ, SEQ_COUNT, LIST_SIZE, REFUTATION, PAGE_INDEX,
+            AUTH_SIG, EXPIRY_MODE, TAX_PARAMS,
+            NOTE, DATA_BLOB, DESCRIPTION, ICON, VENDOR_PROFILE,
+        ];
+        for code in all_codes {
+            assert!(
+                size_category(code).is_some(),
+                "missing size category for code {}",
+                code
+            );
+            assert!(
+                type_name(code).is_some(),
+                "missing type name for code {}",
+                code
+            );
+        }
+    }
+}

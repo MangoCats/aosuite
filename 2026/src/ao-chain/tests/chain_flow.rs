@@ -615,3 +615,123 @@ fn build_split_assignment(
         DataItem::bytes(DEADLINE, deadline.to_bytes().to_vec()),
     ])
 }
+
+#[test]
+fn test_late_recording_allowed() {
+    // An assignment past its deadline can still be recorded if no refutation exists
+    // and the UTXO is unspent and not expired.
+    let issuer_key = SigningKey::from_seed(&[0x08; 32]);
+    let receiver_key = SigningKey::generate();
+    let blockmaker = SigningKey::from_seed(&[0xFF; 32]);
+
+    let genesis_item = build_genesis(&issuer_key);
+    let store = ChainStore::open_memory().unwrap();
+    let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+
+    let total = store.get_utxo(1).unwrap().unwrap().amount;
+
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    let sign_ts1 = Timestamp::from_raw(genesis_ts.raw() + 1_000_000);
+    let sign_ts2 = Timestamp::from_raw(genesis_ts.raw() + 2_000_000);
+    // Deadline in the past (1 hour after genesis)
+    let deadline = Timestamp::from_unix_seconds(1_772_611_200 + 3600);
+
+    let (auth, _) = build_authorization(
+        &issuer_key, 1, &total, &receiver_key,
+        &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out,
+        deadline, sign_ts1, sign_ts2,
+    );
+
+    // Validate at a time well past the deadline (1 day later)
+    // but still within the expiry period (1 year)
+    let late_ts = Timestamp::from_unix_seconds(1_772_611_200 + 86400);
+    let result = validate::validate_assignment(&store, &meta, &auth, late_ts.raw());
+    assert!(result.is_ok(), "Late recording should succeed: {:?}", result.err());
+
+    // Actually record it
+    let va = result.unwrap();
+    let constructed = block::construct_block(&store, &meta, &blockmaker, vec![va], late_ts.raw()).unwrap();
+    assert_eq!(constructed.height, 1);
+}
+
+#[test]
+fn test_late_recording_rejected_after_refutation() {
+    // After a refutation is recorded, late recording of that assignment must fail.
+    let issuer_key = SigningKey::from_seed(&[0x09; 32]);
+    let receiver_key = SigningKey::generate();
+
+    let genesis_item = build_genesis(&issuer_key);
+    let store = ChainStore::open_memory().unwrap();
+    let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+
+    let total = store.get_utxo(1).unwrap().unwrap().amount;
+
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    let sign_ts1 = Timestamp::from_raw(genesis_ts.raw() + 1_000_000);
+    let sign_ts2 = Timestamp::from_raw(genesis_ts.raw() + 2_000_000);
+    let deadline = Timestamp::from_unix_seconds(1_772_611_200 + 3600);
+
+    let (auth, _) = build_authorization(
+        &issuer_key, 1, &total, &receiver_key,
+        &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out,
+        deadline, sign_ts1, sign_ts2,
+    );
+
+    // Compute agreement hash (hash of the ASSIGNMENT, which is the first child of AUTHORIZATION)
+    let assignment = auth.find_child(ASSIGNMENT).unwrap();
+    let agreement_hash = hash::sha256(&assignment.to_bytes());
+
+    // Record the refutation
+    let mut hash_arr = [0u8; 32];
+    hash_arr.copy_from_slice(&agreement_hash);
+    store.add_refutation(&hash_arr).unwrap();
+
+    // Try to validate past deadline — should fail with AgreementRefuted
+    let late_ts = Timestamp::from_unix_seconds(1_772_611_200 + 86400);
+    let result = validate::validate_assignment(&store, &meta, &auth, late_ts.raw());
+    assert!(result.is_err());
+    let err_msg = format!("{}", result.unwrap_err());
+    assert!(err_msg.contains("refuted"), "Expected 'refuted', got: {}", err_msg);
+}
+
+#[test]
+fn test_before_deadline_not_affected_by_refutation() {
+    // Before deadline, a refutation should NOT prevent recording.
+    let issuer_key = SigningKey::from_seed(&[0x0A; 32]);
+    let receiver_key = SigningKey::generate();
+    let blockmaker = SigningKey::from_seed(&[0xFE; 32]);
+
+    let genesis_item = build_genesis(&issuer_key);
+    let store = ChainStore::open_memory().unwrap();
+    let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+
+    let total = store.get_utxo(1).unwrap().unwrap().amount;
+
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    let sign_ts1 = Timestamp::from_raw(genesis_ts.raw() + 1_000_000);
+    let sign_ts2 = Timestamp::from_raw(genesis_ts.raw() + 2_000_000);
+    // Deadline far in the future
+    let deadline = Timestamp::from_unix_seconds(1_772_611_200 + 86400 * 365);
+
+    let (auth, _) = build_authorization(
+        &issuer_key, 1, &total, &receiver_key,
+        &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out,
+        deadline, sign_ts1, sign_ts2,
+    );
+
+    // Record a refutation
+    let assignment = auth.find_child(ASSIGNMENT).unwrap();
+    let agreement_hash = hash::sha256(&assignment.to_bytes());
+    let mut hash_arr = [0u8; 32];
+    hash_arr.copy_from_slice(&agreement_hash);
+    store.add_refutation(&hash_arr).unwrap();
+
+    // Validate BEFORE deadline — refutation should not matter
+    let block_ts = Timestamp::from_raw(genesis_ts.raw() + 3_000_000);
+    let result = validate::validate_assignment(&store, &meta, &auth, block_ts.raw());
+    assert!(result.is_ok(), "Before-deadline recording should succeed despite refutation: {:?}", result.err());
+
+    let va = result.unwrap();
+    let constructed = block::construct_block(&store, &meta, &blockmaker, vec![va], block_ts.raw()).unwrap();
+    assert_eq!(constructed.height, 1);
+}

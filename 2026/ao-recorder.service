@@ -1,0 +1,27 @@
+[Unit]
+Description=AO Recorder - Assign Onward chain recording server
+After=network.target
+
+[Service]
+Type=simple
+User=aorecorder
+Group=aorecorder
+WorkingDirectory=/var/lib/ao-recorder
+ExecStart=/usr/local/bin/ao-recorder /etc/ao-recorder/recorder.toml
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ao-recorder
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ao-recorder
+
+[Install]
+WantedBy=multi-user.target

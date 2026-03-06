@@ -11,6 +11,11 @@ impl Timestamp {
         Timestamp(seconds.checked_mul(AO_MULTIPLIER).expect("timestamp overflow"))
     }
 
+    /// Create a timestamp from a raw AO timestamp value.
+    pub fn from_raw(raw: i64) -> Self {
+        Timestamp(raw)
+    }
+
     /// Get the raw AO timestamp value.
     pub fn raw(self) -> i64 {
         self.0

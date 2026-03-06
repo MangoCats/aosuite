@@ -1,0 +1,17 @@
+[package]
+name = "ao-chain"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ao-types = { path = "../ao-types" }
+ao-crypto = { path = "../ao-crypto" }
+num-bigint = "0.4"
+num-rational = "0.4"
+num-traits = "0.2"
+num-integer = "0.1"
+rusqlite = { version = "0.35", features = ["bundled"] }
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"

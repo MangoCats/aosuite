@@ -169,6 +169,40 @@ impl DataItem {
         Ok((item, offset - pos))
     }
 
+    /// Get children if this is a container, or empty slice otherwise.
+    pub fn children(&self) -> &[DataItem] {
+        match &self.value {
+            DataValue::Container(children) => children,
+            _ => &[],
+        }
+    }
+
+    /// Find the first child with the given type code.
+    pub fn find_child(&self, type_code: i64) -> Option<&DataItem> {
+        self.children().iter().find(|c| c.type_code == type_code)
+    }
+
+    /// Find all children with the given type code.
+    pub fn find_children(&self, type_code: i64) -> Vec<&DataItem> {
+        self.children().iter().filter(|c| c.type_code == type_code).collect()
+    }
+
+    /// Get the VBC value if this is a VbcValue item.
+    pub fn as_vbc_value(&self) -> Option<u64> {
+        match &self.value {
+            DataValue::VbcValue(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    /// Get the bytes if this is a Bytes item.
+    pub fn as_bytes(&self) -> Option<&[u8]> {
+        match &self.value {
+            DataValue::Bytes(b) => Some(b),
+            _ => None,
+        }
+    }
+
     /// Decode a DataItem from a byte slice (convenience wrapper).
     pub fn from_bytes(data: &[u8]) -> Result<Self, DataItemError> {
         let (item, consumed) = Self::decode(data, 0)?;

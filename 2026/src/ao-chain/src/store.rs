@@ -1,0 +1,550 @@
+use rusqlite::{Connection, params};
+use num_bigint::BigInt;
+use num_traits::Zero;
+
+use crate::error::{ChainError, Result};
+
+/// Status of a UTXO entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UtxoStatus {
+    Unspent,
+    Spent,
+    Expired,
+}
+
+impl UtxoStatus {
+    fn as_str(&self) -> &'static str {
+        match self {
+            UtxoStatus::Unspent => "unspent",
+            UtxoStatus::Spent => "spent",
+            UtxoStatus::Expired => "expired",
+        }
+    }
+
+    fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "unspent" => Some(UtxoStatus::Unspent),
+            "spent" => Some(UtxoStatus::Spent),
+            "expired" => Some(UtxoStatus::Expired),
+            _ => None,
+        }
+    }
+}
+
+/// A single UTXO record.
+#[derive(Debug, Clone)]
+pub struct Utxo {
+    pub seq_id: u64,
+    pub pubkey: [u8; 32],
+    pub amount: BigInt,
+    pub block_height: u64,
+    pub block_timestamp: i64,
+    pub status: UtxoStatus,
+}
+
+/// Chain metadata stored in the database.
+#[derive(Debug, Clone)]
+pub struct ChainMeta {
+    pub chain_id: [u8; 32],
+    pub symbol: String,
+    pub coin_count: BigInt,
+    pub shares_out: BigInt,
+    pub fee_rate_num: BigInt,
+    pub fee_rate_den: BigInt,
+    pub expiry_period: i64,
+    pub expiry_mode: u64,
+    pub tax_start_age: Option<i64>,
+    pub tax_doubling_period: Option<i64>,
+    pub block_height: u64,
+    pub next_seq_id: u64,
+    pub last_block_timestamp: i64,
+    pub prev_hash: [u8; 32],
+}
+
+/// SQLite-backed chain state store.
+pub struct ChainStore {
+    conn: Connection,
+}
+
+impl ChainStore {
+    /// Open or create a chain store at the given path.
+    pub fn open(path: &str) -> Result<Self> {
+        let conn = Connection::open(path)?;
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
+        Ok(ChainStore { conn })
+    }
+
+    /// Create an in-memory store (for testing).
+    pub fn open_memory() -> Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        Ok(ChainStore { conn })
+    }
+
+    /// Initialize the schema.
+    pub fn init_schema(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS chain_meta (
+                key TEXT PRIMARY KEY,
+                value BLOB NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS utxos (
+                seq_id INTEGER PRIMARY KEY,
+                pubkey BLOB NOT NULL,
+                amount BLOB NOT NULL,
+                block_height INTEGER NOT NULL,
+                block_timestamp INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'unspent'
+            );
+            CREATE INDEX IF NOT EXISTS idx_utxo_status ON utxos(status);
+            CREATE INDEX IF NOT EXISTS idx_utxo_pubkey ON utxos(pubkey);
+            CREATE TABLE IF NOT EXISTS blocks (
+                height INTEGER PRIMARY KEY,
+                timestamp INTEGER NOT NULL,
+                hash BLOB NOT NULL,
+                data BLOB NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS refutations (
+                agreement_hash BLOB PRIMARY KEY
+            );
+            CREATE TABLE IF NOT EXISTS used_keys (
+                pubkey BLOB PRIMARY KEY
+            );"
+        )?;
+        Ok(())
+    }
+
+    // --- Chain metadata ---
+
+    pub fn set_meta(&self, key: &str, value: &[u8]) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO chain_meta (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_meta(&self, key: &str) -> Result<Option<Vec<u8>>> {
+        let mut stmt = self.conn.prepare("SELECT value FROM chain_meta WHERE key = ?1")?;
+        let mut rows = stmt.query(params![key])?;
+        match rows.next()? {
+            Some(row) => Ok(Some(row.get(0)?)),
+            None => Ok(None),
+        }
+    }
+
+    fn set_meta_u64(&self, key: &str, value: u64) -> Result<()> {
+        self.set_meta(key, &value.to_be_bytes())
+    }
+
+    fn get_meta_u64(&self, key: &str) -> Result<Option<u64>> {
+        match self.get_meta(key)? {
+            Some(v) if v.len() == 8 => {
+                Ok(Some(u64::from_be_bytes(v.try_into().unwrap())))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn set_meta_i64(&self, key: &str, value: i64) -> Result<()> {
+        self.set_meta(key, &value.to_be_bytes())
+    }
+
+    fn get_meta_i64(&self, key: &str) -> Result<Option<i64>> {
+        match self.get_meta(key)? {
+            Some(v) if v.len() == 8 => {
+                Ok(Some(i64::from_be_bytes(v.try_into().unwrap())))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    fn set_meta_bigint(&self, key: &str, value: &BigInt) -> Result<()> {
+        self.set_meta(key, &value.to_signed_bytes_be())
+    }
+
+    fn get_meta_bigint(&self, key: &str) -> Result<Option<BigInt>> {
+        match self.get_meta(key)? {
+            Some(v) if v.is_empty() => Ok(Some(BigInt::zero())),
+            Some(v) => Ok(Some(BigInt::from_signed_bytes_be(&v))),
+            None => Ok(None),
+        }
+    }
+
+    /// Store the full chain metadata after genesis loading.
+    pub fn store_chain_meta(&self, meta: &ChainMeta) -> Result<()> {
+        self.set_meta("chain_id", &meta.chain_id)?;
+        self.set_meta("symbol", meta.symbol.as_bytes())?;
+        self.set_meta_bigint("coin_count", &meta.coin_count)?;
+        self.set_meta_bigint("shares_out", &meta.shares_out)?;
+        self.set_meta_bigint("fee_rate_num", &meta.fee_rate_num)?;
+        self.set_meta_bigint("fee_rate_den", &meta.fee_rate_den)?;
+        self.set_meta_i64("expiry_period", meta.expiry_period)?;
+        self.set_meta_u64("expiry_mode", meta.expiry_mode)?;
+        if let Some(v) = meta.tax_start_age {
+            self.set_meta_i64("tax_start_age", v)?;
+        }
+        if let Some(v) = meta.tax_doubling_period {
+            self.set_meta_i64("tax_doubling_period", v)?;
+        }
+        self.set_meta_u64("block_height", meta.block_height)?;
+        self.set_meta_u64("next_seq_id", meta.next_seq_id)?;
+        self.set_meta_i64("last_block_timestamp", meta.last_block_timestamp)?;
+        self.set_meta("prev_hash", &meta.prev_hash)?;
+        Ok(())
+    }
+
+    /// Load chain metadata.
+    pub fn load_chain_meta(&self) -> Result<Option<ChainMeta>> {
+        let chain_id = match self.get_meta("chain_id")? {
+            Some(v) if v.len() == 32 => {
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&v);
+                arr
+            }
+            _ => return Ok(None),
+        };
+        let symbol = match self.get_meta("symbol")? {
+            Some(v) => String::from_utf8(v).unwrap_or_default(),
+            None => return Ok(None),
+        };
+        let coin_count = self.get_meta_bigint("coin_count")?.unwrap_or_else(BigInt::zero);
+        let shares_out = self.get_meta_bigint("shares_out")?.unwrap_or_else(BigInt::zero);
+        let fee_rate_num = self.get_meta_bigint("fee_rate_num")?.unwrap_or_else(BigInt::zero);
+        let fee_rate_den = self.get_meta_bigint("fee_rate_den")?.unwrap_or_else(BigInt::zero);
+        let expiry_period = self.get_meta_i64("expiry_period")?.unwrap_or(0);
+        let expiry_mode = self.get_meta_u64("expiry_mode")?.unwrap_or(1);
+        let tax_start_age = self.get_meta_i64("tax_start_age")?;
+        let tax_doubling_period = self.get_meta_i64("tax_doubling_period")?;
+        let block_height = self.get_meta_u64("block_height")?.unwrap_or(0);
+        let next_seq_id = self.get_meta_u64("next_seq_id")?.unwrap_or(1);
+        let last_block_timestamp = self.get_meta_i64("last_block_timestamp")?.unwrap_or(0);
+        let prev_hash = match self.get_meta("prev_hash")? {
+            Some(v) if v.len() == 32 => {
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&v);
+                arr
+            }
+            _ => [0u8; 32],
+        };
+
+        Ok(Some(ChainMeta {
+            chain_id, symbol, coin_count, shares_out,
+            fee_rate_num, fee_rate_den, expiry_period, expiry_mode,
+            tax_start_age, tax_doubling_period,
+            block_height, next_seq_id, last_block_timestamp, prev_hash,
+        }))
+    }
+
+    /// Update shares_out after fee deduction or expiration.
+    pub fn update_shares_out(&self, new_shares_out: &BigInt) -> Result<()> {
+        self.set_meta_bigint("shares_out", new_shares_out)
+    }
+
+    /// Advance block height, prev_hash, and last_block_timestamp.
+    pub fn advance_block(&self, height: u64, timestamp: i64, hash: &[u8; 32]) -> Result<()> {
+        self.set_meta_u64("block_height", height)?;
+        self.set_meta_i64("last_block_timestamp", timestamp)?;
+        self.set_meta("prev_hash", hash)?;
+        Ok(())
+    }
+
+    /// Update next_seq_id.
+    pub fn set_next_seq_id(&self, next: u64) -> Result<()> {
+        self.set_meta_u64("next_seq_id", next)
+    }
+
+    // --- UTXO operations ---
+
+    /// Insert a new UTXO (receiver in a recorded assignment).
+    pub fn insert_utxo(&self, utxo: &Utxo) -> Result<()> {
+        let amount_bytes = utxo.amount.to_signed_bytes_be();
+        self.conn.execute(
+            "INSERT INTO utxos (seq_id, pubkey, amount, block_height, block_timestamp, status)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                utxo.seq_id as i64,
+                &utxo.pubkey[..],
+                amount_bytes,
+                utxo.block_height as i64,
+                utxo.block_timestamp,
+                utxo.status.as_str(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Get a UTXO by sequence ID.
+    pub fn get_utxo(&self, seq_id: u64) -> Result<Option<Utxo>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT seq_id, pubkey, amount, block_height, block_timestamp, status
+             FROM utxos WHERE seq_id = ?1"
+        )?;
+        let mut rows = stmt.query(params![seq_id as i64])?;
+        match rows.next()? {
+            Some(row) => {
+                let sid: i64 = row.get(0)?;
+                let pk: Vec<u8> = row.get(1)?;
+                let amt: Vec<u8> = row.get(2)?;
+                let bh: i64 = row.get(3)?;
+                let bt: i64 = row.get(4)?;
+                let st: String = row.get(5)?;
+                let mut pubkey = [0u8; 32];
+                if pk.len() == 32 { pubkey.copy_from_slice(&pk); }
+                let amount = if amt.is_empty() { BigInt::zero() } else { BigInt::from_signed_bytes_be(&amt) };
+                Ok(Some(Utxo {
+                    seq_id: sid as u64,
+                    pubkey,
+                    amount,
+                    block_height: bh as u64,
+                    block_timestamp: bt,
+                    status: UtxoStatus::from_str(&st).unwrap_or(UtxoStatus::Unspent),
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Mark a UTXO as spent.
+    pub fn mark_spent(&self, seq_id: u64) -> Result<()> {
+        let updated = self.conn.execute(
+            "UPDATE utxos SET status = 'spent' WHERE seq_id = ?1 AND status = 'unspent'",
+            params![seq_id as i64],
+        )?;
+        if updated == 0 {
+            return Err(ChainError::UtxoAlreadySpent(seq_id));
+        }
+        Ok(())
+    }
+
+    /// Mark a UTXO as expired.
+    pub fn mark_expired(&self, seq_id: u64) -> Result<()> {
+        self.conn.execute(
+            "UPDATE utxos SET status = 'expired' WHERE seq_id = ?1 AND status = 'unspent'",
+            params![seq_id as i64],
+        )?;
+        Ok(())
+    }
+
+    /// Get all unspent UTXOs that have expired (block_timestamp + expiry_period < current_timestamp).
+    pub fn find_expired_utxos(&self, current_timestamp: i64, expiry_period: i64) -> Result<Vec<Utxo>> {
+        let cutoff = current_timestamp.saturating_sub(expiry_period);
+        let mut stmt = self.conn.prepare(
+            "SELECT seq_id, pubkey, amount, block_height, block_timestamp, status
+             FROM utxos WHERE status = 'unspent' AND block_timestamp < ?1"
+        )?;
+        let mut utxos = Vec::new();
+        let mut rows = stmt.query(params![cutoff])?;
+        while let Some(row) = rows.next()? {
+            let sid: i64 = row.get(0)?;
+            let pk: Vec<u8> = row.get(1)?;
+            let amt: Vec<u8> = row.get(2)?;
+            let bh: i64 = row.get(3)?;
+            let bt: i64 = row.get(4)?;
+            let st: String = row.get(5)?;
+            let mut pubkey = [0u8; 32];
+            if pk.len() == 32 { pubkey.copy_from_slice(&pk); }
+            let amount = if amt.is_empty() { BigInt::zero() } else { BigInt::from_signed_bytes_be(&amt) };
+            utxos.push(Utxo {
+                seq_id: sid as u64, pubkey, amount,
+                block_height: bh as u64, block_timestamp: bt,
+                status: UtxoStatus::from_str(&st).unwrap_or(UtxoStatus::Unspent),
+            });
+        }
+        Ok(utxos)
+    }
+
+    // --- Key reuse tracking ---
+
+    /// Check if a public key has been used as a receiver.
+    pub fn is_key_used(&self, pubkey: &[u8; 32]) -> Result<bool> {
+        let mut stmt = self.conn.prepare("SELECT 1 FROM used_keys WHERE pubkey = ?1")?;
+        let mut rows = stmt.query(params![&pubkey[..]])?;
+        Ok(rows.next()?.is_some())
+    }
+
+    /// Record a public key as used.
+    pub fn mark_key_used(&self, pubkey: &[u8; 32]) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO used_keys (pubkey) VALUES (?1)",
+            params![&pubkey[..]],
+        )?;
+        Ok(())
+    }
+
+    // --- Refutation tracking ---
+
+    /// Record a refutation for an agreement hash.
+    pub fn add_refutation(&self, agreement_hash: &[u8; 32]) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO refutations (agreement_hash) VALUES (?1)",
+            params![&agreement_hash[..]],
+        )?;
+        Ok(())
+    }
+
+    /// Check if an agreement has been refuted.
+    pub fn is_refuted(&self, agreement_hash: &[u8; 32]) -> Result<bool> {
+        let mut stmt = self.conn.prepare("SELECT 1 FROM refutations WHERE agreement_hash = ?1")?;
+        let mut rows = stmt.query(params![&agreement_hash[..]])?;
+        Ok(rows.next()?.is_some())
+    }
+
+    // --- Block storage ---
+
+    /// Store a block.
+    pub fn store_block(&self, height: u64, timestamp: i64, hash: &[u8; 32], data: &[u8]) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO blocks (height, timestamp, hash, data) VALUES (?1, ?2, ?3, ?4)",
+            params![height as i64, timestamp as i64, &hash[..], data],
+        )?;
+        Ok(())
+    }
+
+    /// Get a block by height.
+    pub fn get_block(&self, height: u64) -> Result<Option<Vec<u8>>> {
+        let mut stmt = self.conn.prepare("SELECT data FROM blocks WHERE height = ?1")?;
+        let mut rows = stmt.query(params![height as i64])?;
+        match rows.next()? {
+            Some(row) => Ok(Some(row.get(0)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Get current block height.
+    pub fn block_count(&self) -> Result<u64> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM blocks", [], |row| row.get(0)
+        )?;
+        Ok(count as u64)
+    }
+
+    /// Begin a transaction.
+    pub fn begin_transaction(&self) -> Result<()> {
+        self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        Ok(())
+    }
+
+    /// Commit a transaction.
+    pub fn commit(&self) -> Result<()> {
+        self.conn.execute_batch("COMMIT")?;
+        Ok(())
+    }
+
+    /// Rollback a transaction.
+    pub fn rollback(&self) -> Result<()> {
+        self.conn.execute_batch("ROLLBACK")?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_store_and_load_meta() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        let meta = ChainMeta {
+            chain_id: [0xAA; 32],
+            symbol: "BCG".to_string(),
+            coin_count: BigInt::from(10_000_000_000u64),
+            shares_out: BigInt::from(1u64) << 86,
+            fee_rate_num: BigInt::from(1),
+            fee_rate_den: BigInt::from(1_000_000),
+            expiry_period: 5_964_386_400_000_000i64,
+            expiry_mode: 1,
+            tax_start_age: None,
+            tax_doubling_period: None,
+            block_height: 0,
+            next_seq_id: 1,
+            last_block_timestamp: 0,
+            prev_hash: [0; 32],
+        };
+        store.store_chain_meta(&meta).unwrap();
+
+        let loaded = store.load_chain_meta().unwrap().unwrap();
+        assert_eq!(loaded.chain_id, meta.chain_id);
+        assert_eq!(loaded.symbol, "BCG");
+        assert_eq!(loaded.shares_out, meta.shares_out);
+        assert_eq!(loaded.fee_rate_num, BigInt::from(1));
+        assert_eq!(loaded.fee_rate_den, BigInt::from(1_000_000));
+        assert_eq!(loaded.expiry_period, meta.expiry_period);
+        assert_eq!(loaded.expiry_mode, 1);
+    }
+
+    #[test]
+    fn test_utxo_lifecycle() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        let utxo = Utxo {
+            seq_id: 1,
+            pubkey: [0xBB; 32],
+            amount: BigInt::from(1000),
+            block_height: 0,
+            block_timestamp: 100,
+            status: UtxoStatus::Unspent,
+        };
+        store.insert_utxo(&utxo).unwrap();
+
+        let loaded = store.get_utxo(1).unwrap().unwrap();
+        assert_eq!(loaded.seq_id, 1);
+        assert_eq!(loaded.amount, BigInt::from(1000));
+        assert_eq!(loaded.status, UtxoStatus::Unspent);
+
+        store.mark_spent(1).unwrap();
+        let loaded = store.get_utxo(1).unwrap().unwrap();
+        assert_eq!(loaded.status, UtxoStatus::Spent);
+
+        // Can't spend again
+        assert!(store.mark_spent(1).is_err());
+    }
+
+    #[test]
+    fn test_key_reuse_tracking() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        let key = [0xCC; 32];
+        assert!(!store.is_key_used(&key).unwrap());
+        store.mark_key_used(&key).unwrap();
+        assert!(store.is_key_used(&key).unwrap());
+    }
+
+    #[test]
+    fn test_refutation() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        let hash = [0xDD; 32];
+        assert!(!store.is_refuted(&hash).unwrap());
+        store.add_refutation(&hash).unwrap();
+        assert!(store.is_refuted(&hash).unwrap());
+    }
+
+    #[test]
+    fn test_find_expired_utxos() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        // UTXO created at timestamp 100
+        store.insert_utxo(&Utxo {
+            seq_id: 1, pubkey: [0x01; 32], amount: BigInt::from(500),
+            block_height: 0, block_timestamp: 100, status: UtxoStatus::Unspent,
+        }).unwrap();
+
+        // UTXO created at timestamp 200
+        store.insert_utxo(&Utxo {
+            seq_id: 2, pubkey: [0x02; 32], amount: BigInt::from(300),
+            block_height: 0, block_timestamp: 200, status: UtxoStatus::Unspent,
+        }).unwrap();
+
+        // Expiry period = 150, current time = 300
+        // Cutoff = 300 - 150 = 150. UTXOs with block_timestamp < 150 are expired.
+        let expired = store.find_expired_utxos(300, 150).unwrap();
+        assert_eq!(expired.len(), 1);
+        assert_eq!(expired[0].seq_id, 1);
+    }
+}

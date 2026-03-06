@@ -82,7 +82,7 @@ The C++ code is useful as a reference for the binary wire format and the `byteCo
 
 ## The Roadmap
 
-See [RefinedRoadmap2026.md](RefinedRoadmap2026.md) for the full plan. Summary:
+See [ROADMAP.md](ROADMAP.md) for the full plan. Summary:
 
 | Phase | Weeks | Deliverables |
 |-------|-------|-------------|
@@ -94,7 +94,7 @@ See [RefinedRoadmap2026.md](RefinedRoadmap2026.md) for the full plan. Summary:
 | 5: Validation + Trust | 39–44 | AOV validator, anchor proofs to external chains, vendor credentials |
 | 6: Atomic Multi-Chain (TⒶ²) | 45–54 | Full CAA escrow protocol with timeout recovery |
 
-**Phase 0 is the key addition** over the original roadmap. The 2018 documents have numerous ambiguities (VBC negative encoding, GMP zero representation, separability bit position, signature byte format, deterministic fee rounding rules, late-recording semantics) that must be resolved in writing before coding begins.
+Phase 0 resolves the numerous ambiguities in the 2018 documents (VBC negative encoding, GMP zero representation, separability bit position, signature byte format, deterministic fee rounding rules, late-recording semantics) in writing before coding begins.
 
 ## Known Risks and Hard Problems
 
@@ -125,11 +125,8 @@ Things that are easy to get wrong:
 ```
 aosuite/
 ├── 2026/                          # Development folder (new work goes here)
-│   ├── RefinedRoadmap2026.md      # Current roadmap
-│   ├── ProjectSummary.md          # This document
-│   ├── Roadmap2026.html           # Original 2026 roadmap (superseded)
-│   ├── CLAUDE_CODE_CONTEXT.md     # Summary from initial claude.ai conversation
-│   └── aosuite-2026-docs.patch    # Patch for 2026review + original roadmap
+│   ├── ROADMAP.md                 # Development roadmap
+│   └── ProjectSummary.md          # This document
 ├── docs/html/                     # Original 2018 design documents (read-only)
 │   ├── IslandLife.html            # Central narrative / use cases
 │   ├── CorePrinciples.html        # Non-negotiable assertions

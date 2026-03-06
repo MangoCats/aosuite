@@ -7,8 +7,7 @@ This folder contains all new work for the Assign Onward 2026 reboot. Everything 
 | File | Purpose |
 |------|---------|
 | [ProjectSummary.md](ProjectSummary.md) | Full project context: what AO is, how it works, tech stack, risks |
-| [RefinedRoadmap2026.md](RefinedRoadmap2026.md) | Current development roadmap (Phase 0–6, ~54 weeks) |
-| [Roadmap2026.html](Roadmap2026.html) | Original 2026 roadmap (superseded by refined version) |
+| [ROADMAP.md](ROADMAP.md) | Development roadmap (Phase 0–6, ~54 weeks) |
 
 ## Reference Material (read-only)
 
@@ -80,7 +79,7 @@ As Phase 0 deliverables and later code are produced, the folder will grow:
 2026/
 ├── README.md              # This file
 ├── ProjectSummary.md      # Project context
-├── RefinedRoadmap2026.md  # Current roadmap
+├── ROADMAP.md             # Development roadmap
 ├── specs/                 # Phase 0 deliverables
 │   ├── Architecture.md    # 0A: System architecture
 │   ├── WireFormat.md      # 0B: Wire format specification

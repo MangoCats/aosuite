@@ -335,3 +335,283 @@ fn test_key_reuse_rejected() {
     let err_msg = format!("{}", result.unwrap_err());
     assert!(err_msg.contains("key already used"), "Expected 'key already used', got: {}", err_msg);
 }
+
+#[test]
+fn test_expired_utxo_rejected() {
+    let issuer_key = SigningKey::from_seed(&[0x04; 32]);
+    let receiver_key = SigningKey::generate();
+
+    let genesis_item = build_genesis(&issuer_key);
+    let store = ChainStore::open_memory().unwrap();
+    let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+
+    let total = store.get_utxo(1).unwrap().unwrap().amount;
+
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    let sign_ts1 = Timestamp::from_raw(genesis_ts.raw() + 1_000_000);
+    let sign_ts2 = Timestamp::from_raw(genesis_ts.raw() + 2_000_000);
+    let deadline = Timestamp::from_unix_seconds(1_772_611_200 + 86400 * 365 * 2); // 2 years
+
+    // Set block timestamp well past the expiry period (1 year in the genesis)
+    // The UTXO was created at genesis_ts, expiry_period is 31_536_000 Unix seconds
+    // = 31_536_000 * 189_000_000 in AO timestamps
+    let far_future_ts = genesis_ts.raw() + (31_536_000i64 + 1) * 189_000_000;
+
+    let (auth, _) = build_authorization(
+        &issuer_key, 1, &total, &receiver_key,
+        &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out,
+        deadline, sign_ts1, sign_ts2,
+    );
+
+    let result = validate::validate_assignment(&store, &meta, &auth, far_future_ts);
+    assert!(result.is_err());
+    let err_msg = format!("{}", result.unwrap_err());
+    assert!(err_msg.contains("expired"), "Expected 'expired', got: {}", err_msg);
+}
+
+#[test]
+fn test_expiration_sweep_in_block() {
+    // Create a chain, record an assignment, then record a second block
+    // far enough in the future that the first UTXO expires during the sweep.
+    let issuer_key = SigningKey::from_seed(&[0x05; 32]);
+    let receiver1 = SigningKey::generate();
+    let receiver2 = SigningKey::generate();
+    let blockmaker = SigningKey::from_seed(&[0xDD; 32]);
+
+    let genesis_item = build_genesis(&issuer_key);
+    let store = ChainStore::open_memory().unwrap();
+    let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+
+    let total = store.get_utxo(1).unwrap().unwrap().amount;
+
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    let sign_ts1 = Timestamp::from_raw(genesis_ts.raw() + 1_000_000);
+    let sign_ts2 = Timestamp::from_raw(genesis_ts.raw() + 2_000_000);
+    let deadline = Timestamp::from_unix_seconds(1_772_611_200 + 3600);
+    let block1_ts = Timestamp::from_raw(genesis_ts.raw() + 3_000_000);
+
+    // Record first assignment: issuer → receiver1
+    let (auth1, recv1_amount) = build_authorization(
+        &issuer_key, 1, &total, &receiver1,
+        &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out,
+        deadline, sign_ts1, sign_ts2,
+    );
+    let va1 = validate::validate_assignment(&store, &meta, &auth1, block1_ts.raw()).unwrap();
+    block::construct_block(&store, &meta, &blockmaker, vec![va1], block1_ts.raw()).unwrap();
+
+    let meta_after_1 = store.load_chain_meta().unwrap().unwrap();
+
+    // Now build a second assignment: receiver1 → receiver2
+    // Set block2 timestamp far in future so that block 1's UTXO (seq 2) has expired by the sweep
+    // But we need it NOT expired when we validate, just expired during the sweep of other UTXOs.
+    // Actually, the sweep expires old UTXOs. Let's make the block2 timestamp just barely past
+    // the expiry of the genesis UTXO (seq 1, already spent — doesn't matter).
+    // The relevant UTXO is seq 2 from block 1.
+    // Block 1 timestamp = genesis_ts + 3_000_000 (in AO timestamp units).
+    // Expiry period = 31_536_000 * 189_000_000 (in AO timestamp units).
+    // To make seq 2 NOT expired yet, block2_ts must be < block1_ts + expiry.
+    // Let's just use a normal timestamp.
+    let sign_ts3 = Timestamp::from_raw(block1_ts.raw() + 1_000_000);
+    let sign_ts4 = Timestamp::from_raw(block1_ts.raw() + 2_000_000);
+    let deadline2 = Timestamp::from_unix_seconds(1_772_611_200 + 7200);
+    let block2_ts = Timestamp::from_raw(block1_ts.raw() + 4_000_000);
+
+    let (auth2, _) = build_authorization(
+        &receiver1, 2, &recv1_amount, &receiver2,
+        &meta_after_1.fee_rate_num, &meta_after_1.fee_rate_den, &meta_after_1.shares_out,
+        deadline2, sign_ts3, sign_ts4,
+    );
+    let va2 = validate::validate_assignment(&store, &meta_after_1, &auth2, block2_ts.raw()).unwrap();
+    let block2 = block::construct_block(&store, &meta_after_1, &blockmaker, vec![va2], block2_ts.raw()).unwrap();
+
+    // Verify chain progressed
+    assert_eq!(block2.height, 2);
+    let meta_after_2 = store.load_chain_meta().unwrap().unwrap();
+    assert_eq!(meta_after_2.block_height, 2);
+    assert_eq!(meta_after_2.next_seq_id, 4);
+
+    // Verify seq 1 is spent, seq 2 is spent, seq 3 is unspent
+    assert_eq!(store.get_utxo(1).unwrap().unwrap().status, UtxoStatus::Spent);
+    assert_eq!(store.get_utxo(2).unwrap().unwrap().status, UtxoStatus::Spent);
+    assert_eq!(store.get_utxo(3).unwrap().unwrap().status, UtxoStatus::Unspent);
+}
+
+#[test]
+fn test_timestamp_ordering_giver() {
+    // Giver's signature timestamp must be > the UTXO's receipt timestamp.
+    let issuer_key = SigningKey::from_seed(&[0x06; 32]);
+    let receiver_key = SigningKey::generate();
+
+    let genesis_item = build_genesis(&issuer_key);
+    let store = ChainStore::open_memory().unwrap();
+    let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+
+    let total = store.get_utxo(1).unwrap().unwrap().amount;
+
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    // Use a giver sign timestamp BEFORE the genesis timestamp (UTXO receipt time)
+    let bad_giver_ts = Timestamp::from_raw(genesis_ts.raw() - 1_000_000);
+    let recv_ts = Timestamp::from_raw(genesis_ts.raw() + 2_000_000);
+    let deadline = Timestamp::from_unix_seconds(1_772_611_200 + 3600);
+    let block_ts = Timestamp::from_raw(genesis_ts.raw() + 3_000_000);
+
+    let (auth, _) = build_authorization(
+        &issuer_key, 1, &total, &receiver_key,
+        &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out,
+        deadline, bad_giver_ts, recv_ts,
+    );
+
+    let result = validate::validate_assignment(&store, &meta, &auth, block_ts.raw());
+    assert!(result.is_err());
+    let err_msg = format!("{}", result.unwrap_err());
+    assert!(err_msg.contains("timestamp"), "Expected timestamp error, got: {}", err_msg);
+}
+
+#[test]
+fn test_multi_receiver_assignment() {
+    // One giver splitting to two receivers.
+    let issuer_key = SigningKey::from_seed(&[0x07; 32]);
+    let receiver1 = SigningKey::generate();
+    let receiver2 = SigningKey::generate();
+    let blockmaker = SigningKey::from_seed(&[0xEE; 32]);
+
+    let genesis_item = build_genesis(&issuer_key);
+    let store = ChainStore::open_memory().unwrap();
+    let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+
+    let total = store.get_utxo(1).unwrap().unwrap().amount;
+
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+
+    let bid = num_rational::BigRational::new(BigInt::from(1), BigInt::from(1_000_000));
+    let mut bid_bytes = Vec::new();
+    bigint::encode_rational(&bid, &mut bid_bytes);
+
+    let deadline = Timestamp::from_unix_seconds(1_772_611_200 + 3600);
+    let sign_ts = Timestamp::from_raw(genesis_ts.raw() + 1_000_000);
+    let r1_sig_ts = Timestamp::from_raw(sign_ts.raw() + 1_000_000);
+    let r2_sig_ts = Timestamp::from_raw(sign_ts.raw() + 2_000_000);
+
+    // Iterative fee convergence — must include AUTH_SIGs in size estimate
+    let dummy_sig = [0u8; 64];
+    let dummy_ts = [0u8; 8];
+
+    let mut r1_amount = &total / BigInt::from(2);
+    let mut r2_amount = &total - &r1_amount;
+    for _ in 0..3 {
+        let assignment = build_split_assignment(
+            &total, &r1_amount, &r2_amount,
+            &receiver1, &receiver2,
+            &bid_bytes, deadline,
+        );
+
+        // Include 3 placeholder AUTH_SIGs in the size estimate
+        let auth = DataItem::container(AUTHORIZATION, vec![
+            assignment,
+            DataItem::container(AUTH_SIG, vec![
+                DataItem::bytes(ED25519_SIG, dummy_sig.to_vec()),
+                DataItem::bytes(TIMESTAMP, dummy_ts.to_vec()),
+                DataItem::vbc_value(PAGE_INDEX, 0),
+            ]),
+            DataItem::container(AUTH_SIG, vec![
+                DataItem::bytes(ED25519_SIG, dummy_sig.to_vec()),
+                DataItem::bytes(TIMESTAMP, dummy_ts.to_vec()),
+                DataItem::vbc_value(PAGE_INDEX, 1),
+            ]),
+            DataItem::container(AUTH_SIG, vec![
+                DataItem::bytes(ED25519_SIG, dummy_sig.to_vec()),
+                DataItem::bytes(TIMESTAMP, dummy_ts.to_vec()),
+                DataItem::vbc_value(PAGE_INDEX, 2),
+            ]),
+        ]);
+        let page = DataItem::container(PAGE, vec![
+            DataItem::vbc_value(PAGE_INDEX, 0),
+            auth,
+        ]);
+        let page_bytes = page.to_bytes().len() as u64;
+        let fee = fees::recording_fee(page_bytes, &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out);
+        let remainder = &total - &fee;
+        r1_amount = &remainder / BigInt::from(2);
+        r2_amount = &remainder - &r1_amount;
+    }
+
+    // Build final assignment with real signatures
+    let assignment = build_split_assignment(
+        &total, &r1_amount, &r2_amount,
+        &receiver1, &receiver2,
+        &bid_bytes, deadline,
+    );
+
+    let giver_sig = sign::sign_dataitem(&issuer_key, &assignment, sign_ts);
+    let recv1_sig = sign::sign_dataitem(&receiver1, &assignment, r1_sig_ts);
+    let recv2_sig = sign::sign_dataitem(&receiver2, &assignment, r2_sig_ts);
+
+    let auth = DataItem::container(AUTHORIZATION, vec![
+        assignment,
+        DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, giver_sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, sign_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(PAGE_INDEX, 0),
+        ]),
+        DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, recv1_sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, r1_sig_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(PAGE_INDEX, 1),
+        ]),
+        DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, recv2_sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, r2_sig_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(PAGE_INDEX, 2),
+        ]),
+    ]);
+
+    let block_ts = Timestamp::from_raw(genesis_ts.raw() + 5_000_000);
+    let va = validate::validate_assignment(&store, &meta, &auth, block_ts.raw()).unwrap();
+    assert_eq!(va.givers.len(), 1);
+    assert_eq!(va.receivers.len(), 2);
+
+    let constructed = block::construct_block(&store, &meta, &blockmaker, vec![va], block_ts.raw()).unwrap();
+    assert_eq!(constructed.height, 1);
+    assert_eq!(constructed.seq_count, 2);
+
+    let utxo2 = store.get_utxo(2).unwrap().unwrap();
+    let utxo3 = store.get_utxo(3).unwrap().unwrap();
+    assert_eq!(utxo2.status, UtxoStatus::Unspent);
+    assert_eq!(utxo3.status, UtxoStatus::Unspent);
+    assert_eq!(&utxo2.amount + &utxo3.amount, &r1_amount + &r2_amount);
+}
+
+fn build_split_assignment(
+    giver_amount: &BigInt,
+    r1_amount: &BigInt,
+    r2_amount: &BigInt,
+    receiver1: &SigningKey,
+    receiver2: &SigningKey,
+    bid_bytes: &[u8],
+    deadline: Timestamp,
+) -> DataItem {
+    let mut ga = Vec::new();
+    bigint::encode_bigint(giver_amount, &mut ga);
+    let mut r1a = Vec::new();
+    bigint::encode_bigint(r1_amount, &mut r1a);
+    let mut r2a = Vec::new();
+    bigint::encode_bigint(r2_amount, &mut r2a);
+
+    DataItem::container(ASSIGNMENT, vec![
+        DataItem::vbc_value(LIST_SIZE, 3),
+        DataItem::container(PARTICIPANT, vec![
+            DataItem::vbc_value(SEQ_ID, 1),
+            DataItem::bytes(AMOUNT, ga),
+        ]),
+        DataItem::container(PARTICIPANT, vec![
+            DataItem::bytes(ED25519_PUB, receiver1.public_key_bytes().to_vec()),
+            DataItem::bytes(AMOUNT, r1a),
+        ]),
+        DataItem::container(PARTICIPANT, vec![
+            DataItem::bytes(ED25519_PUB, receiver2.public_key_bytes().to_vec()),
+            DataItem::bytes(AMOUNT, r2a),
+        ]),
+        DataItem::bytes(RECORDING_BID, bid_bytes.to_vec()),
+        DataItem::bytes(DEADLINE, deadline.to_bytes().to_vec()),
+    ])
+}

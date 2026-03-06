@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<!--
+ MIT License
+
+ Copyright (c) 2018 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+    /* border-bottom: 1px dotted black; If you want dots under the hoverable text */
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    /* Position the tooltip text */
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    /* Fade in tooltip */
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+
+<meta charset="UTF-8"/>
+<title>2026 Review</title>
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+
+<img src="AO.png" alt="Ⓐ" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">2026 Review</h1>
+
+<span itemprop="articleBody">
+
+The original Assign Onward design documents were written in 2018, with code development continuing through 2021 before the project stalled. The existing codebase is approximately 20,000 lines of C++ targeting Qt 5.10+, with dependencies on OpenPGP and GMP for cryptographic operations. It implements data serialization primitives, variable byte coding, hash wrappers and key structures, but none of the actual protocol logic, peer communication, or user-facing applications. The design documents, however, remain remarkably coherent and the core architecture of many small independent blockchains loosely joined through market makers holds up well. This review considers what a fresh implementation would look like using 2026 technology.<br/><br/>
+
+<h2>Updated Technology Stack</h2>
+
+<h3>Core Protocol: Rust</h3>
+
+The original C++/Qt/OpenPGP/GMP stack was a reasonable choice in 2018, but today Rust is clearly the better fit for this kind of project. Rust provides memory safety guarantees without garbage collection, which matters enormously for cryptographic code that handles private keys and must never leak secrets through use-after-free or buffer overrun bugs. The <tt>no_std</tt> ecosystem also opens the door to running lightweight AOR or AOV nodes on embedded hardware, which aligns well with the vision of recorders running on small, cheap devices in Faythe's hall closet.<br/><br/>
+
+For cryptographic primitives, the <a href="https://github.com/RustCrypto">RustCrypto</a> family of crates provides pure-Rust implementations of SHA-256, SHA-512, and SHA3 that are well-audited and actively maintained. For signatures, <tt>ed25519-dalek</tt> replaces the brainpool-256 ECDSA originally specified in R2a of the Requirements document.<div class="tooltip"><sup>*</sup><span class="tooltiptext">Ed25519 is faster, has simpler implementation, and is widely deployed in SSH, Signal, and many blockchain projects. The 128-bit security level is equivalent to brainpool-256. The original RSA-3072 option is less compelling today, and could be replaced with Ed448 if a higher security margin is desired.</span></div> The <tt>ring</tt> crate is another option, wrapping BoringSSL for performance-critical deployments. For the GMP multi-precision integer arithmetic used in share calculations, the <tt>num-bigint</tt> and <tt>num-rational</tt> crates provide equivalent functionality in pure Rust without the C library dependency.<br/><br/>
+
+Data serialization can stay close to the original binary DataItem/DataContainer format described in ProtocolAO1, using <tt>serde</tt> with a custom serializer. However, the system should also support a JSON representation for debugging and API interchange, which <tt>serde_json</tt> handles trivially. The variable byte coding (VBC) scheme described in VariableByteCoding.html is simple enough to implement directly.<br/><br/>
+
+<h3>Networking and Communication</h3>
+
+The original Architecture document mentioned RabbitMQ for inter-node communication and suggested a friend-to-friend small world network for production deployment. Today, the communication layer can be built from more portable and lighter-weight components:<br/><br/>
+
+For the AOR recording servers (Gene's and Faythe's roles), an <a href="https://github.com/tokio-rs/axum">Axum</a> HTTP server provides the query interface that AOE, AOS, and AOI clients use to check share availability, submit assignment agreements, and download blockchain records. Server-Sent Events (SSE) provide real-time notifications when new blocks are recorded, so that asset organizers can promptly learn about completed transactions without polling.<br/><br/>
+
+For inter-recorder communication and the broadcast requirements described in the Architecture (new block proposals, underwriting requests), <a href="https://mqtt.org/">MQTT</a> is a natural fit.<div class="tooltip"><sup>*</sup><span class="tooltiptext">MQTT is designed for constrained devices and unreliable networks, exactly the conditions of a Caribbean island infrastructure. Mosquitto is a mature, lightweight broker that runs on a Raspberry Pi. The pub/sub model maps directly to the broadcast patterns in the Architecture document: chainmakers publish block proposals to a topic, underwriters subscribe, etc.</span></div> Each blockchain issue gets a small set of topics for block proposals, underwriting contracts, and error notices. The lightweight topic model also supports the pico-payment query throttling concept: a client must authenticate with valid micro-shares before subscribing to an issue's topics.<br/><br/>
+
+For the multi-chain exchange protocol (CAA), the step-by-step escrow process described in MultichainExchange.html requires reliable point-to-point messaging between asset organizers. WebSocket connections between the AOE/AOS/AOI clients and their respective AOR servers handle this, with the AOR servers relaying cross-chain messages to each other over MQTT or direct HTTP.<br/><br/>
+
+<h3>User-Facing Applications: Progressive Web Apps</h3>
+
+The 2018 design envisioned native applications&mdash;AOE (Explorer for consumers), AOS (Seller for vendors), AOI (Investor for market makers)&mdash;which would have meant developing for iOS, Android, and desktop platforms separately. Today, Progressive Web Apps (PWAs) built with React or a similar framework are the right answer for all three.<div class="tooltip"><sup>*</sup><span class="tooltiptext">PWAs install from the browser, work offline with service workers, can access GPS for the location-aware features described in Island Life (finding Bob's grill cart on a map), and avoid app store review processes that might be hostile to cryptocurrency-adjacent applications.</span></div><br/><br/>
+
+A single React codebase with role-based views serves the AOE, AOS, and AOI use cases. The vendor view (AOS) shows incoming redemptions, current share float, and a simple interface to accept assignments. The consumer view (AOE) shows nearby vendors on a map, current credit balances across exchanges, and a streamlined "tap to pay" interface. The investor view (AOI) adds bid/ask management and portfolio tracking. All three connect to AOR servers via HTTPS and WebSocket.<br/><br/>
+
+For the cryptographic operations that must happen on the client side (signing assignments with private keys), the <a href="https://developer.mozilla.org/en-US/docs/Web/API/Web_Crypto_API">Web Crypto API</a> provides Ed25519 support in modern browsers, and libraries like <tt>tweetnacl-js</tt> fill gaps in older ones. Private keys stay in the browser's IndexedDB, encrypted with a user-chosen passphrase.<br/><br/>
+
+<h3>Storage</h3>
+
+Each Ⓐ¹ blockchain is small. Bob's BCG chain after 5 years of operation was estimated at about 100 megabytes. An AOR server hosting 100 issues like Bob's needs only about 10 GB of storage, well within the capacity of a Raspberry Pi with an SD card, or a small cloud VM. SQLite handles the per-chain block storage and UTXO index efficiently as a single-file embedded database, keeping deployment simple and avoiding the operational complexity of a database server.<br/><br/>
+
+<h2>Hosting: Where the Servers Live</h2>
+
+The Island Life narrative describes Gene setting up Faythe's server in her hall closet while running his own on a cloud service. This is actually a sound redundancy model and is quite practical today.<br/><br/>
+
+<h3>The Hall Closet: Single-Board Computers</h3>
+
+A Raspberry Pi 5 (or similar ARM board) running the Rust-based AOR server is entirely adequate for a small community's blockchain recording needs. It costs about US$80 for the board, draws under 10 watts,<div class="tooltip"><sup>*</sup><span class="tooltiptext">Compare this with Bitcoin mining operations consuming megawatts. The entire power consumption of the Assign Onward recording infrastructure for an island community could be less than a single light bulb.</span></div> and runs headless on any home internet connection. A 256 GB SD card provides years of storage for hundreds of small blockchain issues. The Rust toolchain cross-compiles cleanly to ARM targets, so the same codebase runs on the Pi as on cloud servers.<br/><br/>
+
+For islands and communities with unreliable power or internet, a small UPS (under US$50) keeps the Pi running through brief outages, and the Ⓐ¹ protocol's tolerance for temporary unavailability means that a few hours of downtime is an inconvenience rather than a crisis&mdash;no transactions record while the server is down, but nothing is lost or corrupted when it comes back.<br/><br/>
+
+<h3>The Cloud Backup</h3>
+
+Gene's cloud instance provides geographic redundancy and higher availability. The cheapest tier of any major cloud provider (a US$5-10/month VPS from DigitalOcean, Hetzner, or similar) is more than sufficient.<div class="tooltip"><sup>*</sup><span class="tooltiptext">AWS, Azure, and Google Cloud all work but are more expensive and complex than necessary for this application. A simple VPS with SSH access is all that's needed. The original text suggested "just pick one" and that remains good advice, though the smaller providers offer better value for this scale of operation.</span></div> The AOR software runs identically on the cloud VPS and the local Pi, with block replication between them handled by the same MQTT or HTTP sync mechanism used for inter-recorder communication. If Faythe's closet Pi loses power during a hurricane, Gene's cloud instance keeps recording transactions. When the Pi comes back online, it catches up automatically.<br/><br/>
+
+For a community deployment serving a whole island or small region, the total hosting cost is roughly US$20-30/month: one or two cloud VPS instances plus electricity for local single-board computers. This is well within the budget that recording fees from even modest transaction volume would cover.<br/><br/>
+
+<h3>Victor's Validator: The AOV Service</h3>
+
+Victor's AOV (Assign Onward Validator) service, which periodically hashes together all recent block hashes and publishes them to a major public blockchain, can run on any of these same platforms. The main cost is the periodic transaction fee to publish the rolled-up hash on a public chain. Using a low-fee chain for the periodic anchor publications keeps this cost to a few dollars per month at most, providing cryptographic proof that none of the small local chains have been tampered with after the fact.<br/><br/>
+
+<h3>DNS and Discovery</h3>
+
+One practical detail not addressed in the original documents is how AOE clients find AOR servers in the first place. A simple approach: each blockchain issue's genesis block includes the URL(s) of its recording server(s). The AOE app discovers available issues through exchange agents like Charlie and Ted, who maintain curated directories of the issues they deal in. These directories can be static JSON files served from any web host, or returned by the exchange agent's own AOR server. No complex service discovery protocol is needed at Ⓐ¹ scale.<br/><br/>
+
+<h2>Challenges</h2>
+
+<h3>The Cold Start Problem</h3>
+
+The single greatest obstacle to Assign Onward is not technical but social. The system delivers value only when multiple participants&mdash;vendors, consumers, market makers&mdash;are using it simultaneously in the same geographic area. Bob's blockchain is worthless without Eddie fronting the initial investment, Charlie connecting it to cruise ship guests, and guests having the AOE app installed. Each participant's value depends on the others already being present.<br/><br/>
+
+This is the classic two-sided marketplace problem, and no amount of elegant protocol design solves it. Bitcoin overcame it through mining incentives that gave early participants direct financial reward for showing up. Assign Onward's closest equivalent is the market maker margin: Eddie, Charlie, and Ziggy are motivated to participate because they can earn 8-20% margins on plates they hold and resell. Whether that margin is compelling enough to bootstrap a real network remains the central unanswered question.<div class="tooltip"><sup>*</sup><span class="tooltiptext">One possible bootstrapping strategy not explored in the original documents: a single entity (perhaps a tourism board or small business association) could sponsor the initial deployment, subsidizing the technology setup and acting as the first exchange agent, reducing the number of independent parties needed at launch to get the flywheel spinning.</span></div><br/><br/>
+
+<h3>Multi-Chain Atomic Exchange</h3>
+
+The CAA (Conditional Assignment Agreement) protocol described in MultichainExchange.html is the most technically demanding component of the system. It requires coordinated multi-phase escrow across independent blockchains with timeout handling, partial failure recovery, and strict ordering guarantees. The step-by-step walkthrough of Alice buying Bob's curry goat through Charlie's credits involves over 20 discrete message exchanges across two chains, and the protocol must handle any of those steps failing at any point without leaving shares in an inconsistent state.<br/><br/>
+
+This is implementable, but it is where most of the development complexity lives. The Ⓐ¹ single-recorder protocol simplifies things enormously (no forks, no competing block proposals, sequential consistency by default), but the moment two independent Ⓐ¹ chains need to coordinate an atomic exchange, the full complexity of distributed consensus emerges. A practical first deployment could defer multi-chain atomicity by having exchange agents like Charlie hold inventory in both chains and absorb the settlement risk themselves, which is essentially what the Island Life narrative describes Charlie doing anyway.<br/><br/>
+
+<h3>Regulatory Exposure</h3>
+
+The regulatory landscape for anything resembling digital currency has grown significantly more complex since 2018. In the United States, the SEC, CFTC, and FinCEN all have potential jurisdiction over different aspects of a system like Assign Onward. Exchange agents like Charlie, Ziggy, and Ted would likely qualify as money transmitters in most US states, requiring licenses that cost thousands of dollars and impose ongoing compliance obligations.<div class="tooltip"><sup>*</sup><span class="tooltiptext">The Island Life narrative's setting in a British overseas territory is actually somewhat favorable here. Anguilla, for instance, has enacted its own digital asset regulations (the Utility Token Offering Act of 2018, later expanded) that are more accommodating to small-scale token systems than US federal regulations.</span></div><br/><br/>
+
+The commodity-backed nature of Assign Onward tokens (redeemable for actual curry goat, bike rentals, mangoes) may provide some regulatory shelter compared to purely speculative tokens, since they more closely resemble gift cards or loyalty points than securities. But the moment shares are traded speculatively between investors for profit, the securities analysis becomes much harder to avoid. Any real deployment needs legal counsel familiar with the specific jurisdiction, which adds cost and complexity that the original grassroots vision did not fully account for.<br/><br/>
+
+<h3>Identity and Trust at Scale</h3>
+
+The web of trust model works naturally in a small island community where everybody knows Bob, Eddie vouches for Charlie, and Walter keeps Ziggy honest through personal relationships. Scaling this to hundreds of vendors and thousands of users strains the informal trust model. The original documents suggest Victor's AOV validation service and community college courses as trust anchors, but these are weak substitutes for the institutional trust that traditional financial systems provide.<br/><br/>
+
+A practical middle ground might incorporate decentralized identity standards like <a href="https://www.w3.org/TR/did-core/">W3C DIDs</a> (Decentralized Identifiers) for vendor and exchange agent identity, allowing trust assertions to be portable and machine-verifiable without requiring a central authority. This was not available when the original documents were written but fits the Assign Onward philosophy well.<br/><br/>
+
+<h3>Competition from Established Systems</h3>
+
+Since 2018, mobile payment systems have advanced considerably. In many markets, Square, Stripe, Venmo, M-Pesa, and similar services already solve the "pay the street vendor without cash" problem that Assign Onward partly addresses. These systems are centralized and take larger fees, but they are already deployed and understood by consumers. Assign Onward's value proposition must be compelling enough to overcome the switching costs&mdash;and for most casual tourists, the convenience of an existing payment app will outweigh the theoretical benefits of a decentralized commodity-backed blockchain.<br/><br/>
+
+Where Assign Onward retains a genuine advantage is in contexts where traditional payment systems are unavailable, unreliable, or too expensive: small island economies with limited banking infrastructure, informal markets, and communities that want to keep economic value circulating locally rather than flowing through international payment networks that extract fees at every step.<br/><br/>
+
+<h2>Bottom Line</h2>
+
+Assign Onward is a well-thought-out design for a problem that remains real: enabling small businesses and communities to create, manage, and exchange digital promises of value without depending on centralized infrastructure or burning electricity on proof of work. The architecture of many small independent chains, each trivially simple on its own, interoperating through market makers who bridge value between them, is sound and arguably more relevant today than in 2018 as disillusionment with monolithic blockchain projects has grown.<br/><br/>
+
+The technology to build it is better and cheaper than ever. A Rust implementation with Axum, MQTT, SQLite, and a React PWA frontend could deliver a working Ⓐ¹ prototype&mdash;single recorder, single chain, with a functional AOE/AOS web interface&mdash;in a few months of focused development. Adding exchange agents and multi-chain support extends that to six to twelve months. The infrastructure costs are negligible: a Raspberry Pi and a $10/month VPS per community.<br/><br/>
+
+The hard problems are not in the code. They are in finding the first island where Eddie, Bob, Charlie, and Gene all show up at the same time willing to try something new, and in navigating the regulatory environment that has grown up around digital assets since the original design was written. The original documents understood this implicitly&mdash;Island Life is a story about people and relationships, not about hash functions&mdash;and that understanding remains the project's greatest strength and its greatest challenge.<br/><br/>
+
+</span>
+
+</div>
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2026-03-05"><div class="tooltip">5 March 2026<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2018 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+</div>
+
+</body></html>

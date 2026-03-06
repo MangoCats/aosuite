@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<!--
+ MIT License
+
+ Copyright (c) 2018 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+    /* border-bottom: 1px dotted black; If you want dots under the hoverable text */
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    /* Position the tooltip text */
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    /* Fade in tooltip */
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+
+<meta charset="UTF-8"/>
+<title>Roadmap 2026</title>
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+
+<img src="AO.png" alt="Ⓐ" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Roadmap 2026</h1>
+
+<span itemprop="articleBody">
+
+This roadmap replaces the original <a href="Roadmap.html">Roadmap</a> with a concrete development plan targeting today's technology. It preserves the original phasing of TⒶ¹ through TⒶ⁴ and the same application naming (AOG, AOR, AOS, AOE, AOI, AOV), but specifies exact crates, frameworks, hosting targets, and deliverables for each phase. The phases are designed so that each one produces a working, demonstrable system before the next begins.<br/><br/>
+
+<h2>Technology Stack Selection</h2>
+
+<table border="1" cellpadding="6" cellspacing="0" style="zoom:0.85">
+<tr><td><b>Layer</b></td><td><b>Original (2018)</b></td><td><b>2026</b></td><td><b>Rationale</b></td></tr>
+<tr><td>Language</td><td>C++11/14</td><td>Rust (stable)</td><td>Memory safety for crypto code, cross-compile to ARM, strong async ecosystem</td></tr>
+<tr><td>Signatures</td><td>ECDSA brainpool-256, RSA-3072</td><td>Ed25519 (<tt>ed25519-dalek</tt>)</td><td>Faster, simpler, constant-time, widely deployed</td></tr>
+<tr><td>Hashes</td><td>SHA2-256, SHA3-512 via OpenPGP</td><td>SHA2-256, BLAKE3 (<tt>sha2</tt>, <tt>blake3</tt>)</td><td>BLAKE3 is faster than SHA3 with equivalent security; SHA2-256 retained for compatibility</td></tr>
+<tr><td>Big integers</td><td>GMP (<tt>libgmp</tt>)</td><td><tt>num-bigint</tt>, <tt>num-rational</tt></td><td>Pure Rust, no C dependency, cross-compiles cleanly</td></tr>
+<tr><td>Serialization</td><td>Custom binary (VBC + DataItems)</td><td><tt>serde</tt> with custom binary + JSON</td><td>Keep VBC binary format on-chain; add JSON for APIs and debugging</td></tr>
+<tr><td>HTTP server</td><td>N/A (Qt desktop only)</td><td>Axum + Tokio</td><td>Async, lightweight, tower middleware ecosystem</td></tr>
+<tr><td>Pub/sub</td><td>RabbitMQ (planned)</td><td>MQTT via Mosquitto (<tt>rumqttc</tt>)</td><td>Lighter weight, runs on embedded, designed for constrained networks</td></tr>
+<tr><td>Storage</td><td>N/A</td><td>SQLite (<tt>rusqlite</tt>)</td><td>Single-file, zero-config, adequate for small chain volumes</td></tr>
+<tr><td>Client UI</td><td>Qt Widgets</td><td>React PWA (TypeScript)</td><td>Cross-platform mobile/desktop, no app store, offline capable</td></tr>
+<tr><td>Client crypto</td><td>N/A</td><td>Web Crypto API + <tt>tweetnacl-js</tt></td><td>Ed25519 in browser, keys in encrypted IndexedDB</td></tr>
+<tr><td>Testing</td><td>Qt Test</td><td><tt>cargo test</tt>, <tt>proptest</tt></td><td>Property-based testing for serialization round-trips and crypto invariants</td></tr>
+<tr><td>Build / CI</td><td>Travis CI, qmake</td><td>GitHub Actions, Cargo, cross-rs</td><td>ARM cross-compilation for Pi targets, automated test + release</td></tr>
+</table><br/>
+
+<h2>Repository Structure</h2>
+
+A Cargo workspace with the following crate layout:<br/><br/>
+
+<tt>ao-types</tt> &mdash; Core data types: DataItem, DataContainer, VBC, shares/coins arithmetic, timestamps, hash wrappers, key types. No I/O, no async. This is the <tt>no_std</tt>-compatible foundation that everything else depends on.<br/><br/>
+
+<tt>ao-crypto</tt> &mdash; Cryptographic operations: key generation, signing, verification, hashing, separable item handling. Wraps <tt>ed25519-dalek</tt>, <tt>sha2</tt>, <tt>blake3</tt>. Also <tt>no_std</tt>-compatible.<br/><br/>
+
+<tt>ao-chain</tt> &mdash; Blockchain logic: genesis block creation, block construction, assignment agreement validation, UTXO tracking, recording fee calculation, share expiration. Depends on <tt>ao-types</tt> and <tt>ao-crypto</tt>. Uses <tt>rusqlite</tt> for persistence.<br/><br/>
+
+<tt>ao-recorder</tt> &mdash; The AOR server binary. Axum HTTP + SSE + MQTT. Hosts one or more blockchain issues, accepts assignment agreements, constructs and publishes blocks, serves query requests, handles pico-payment query accounts.<br/><br/>
+
+<tt>ao-validator</tt> &mdash; The AOV binary. Periodically fetches recent blocks from configured AOR instances, hashes them together, publishes anchor proofs.<br/><br/>
+
+<tt>ao-cli</tt> &mdash; Command-line tools: genesis block creator (AOG), key management, chain inspection, test transaction generation.<br/><br/>
+
+<tt>ao-web</tt> &mdash; React PWA serving AOE, AOS, and AOI views. Communicates with <tt>ao-recorder</tt> over HTTPS and WebSocket. Manages private keys in browser.<br/><br/>
+
+<h2>Phase 1: Foundation (Weeks 1&ndash;6)</h2>
+
+Build the <tt>ao-types</tt> and <tt>ao-crypto</tt> crates, plus the genesis block creator CLI tool. At the end of this phase, you can create a genesis block, generate key pairs, sign data, and serialize/deserialize all on-chain data structures. This corresponds to the data layer that the original C++ codebase partially implemented, but done cleanly in Rust with comprehensive tests.<br/><br/>
+
+<h3>Deliverables</h3>
+
+<b>ao-types crate:</b> Variable byte coding (VBC) encoder/decoder matching the original specification in VariableByteCoding.html. DataItem and DataContainer types with serde support for both the binary on-chain format and JSON. Share and coin arithmetic using <tt>num-bigint</tt> and <tt>num-rational</tt>, implementing the fixed-point fraction scheme from SharesCoins.html including recording fee calculation per the formula in Fees.html. Timestamp type with signing-time semantics per R8. Item type code registry loaded from a Rust version of byteCodeDefinitions.json, with the separability bit convention from SeparableItems.html.<br/><br/>
+
+<b>ao-crypto crate:</b> Ed25519 key pair generation, signing, and verification via <tt>ed25519-dalek</tt>. SHA2-256 and BLAKE3 hash computation. Signature type that bundles the signature bytes, signing timestamp, and reference to what was signed per R1. Separable item hashing: replace separable DataItems with their hashes before computing a container's signature, per R1b3. Key-never-reuse enforcement utilities per KeyReuse.html.<br/><br/>
+
+<b>ao-cli (partial):</b> <tt>ao genesis</tt> command that creates a genesis block with configurable parameters per Parameters.html: starting shares, number of coins, recording fee rate, share expiration interval, supported signature types. Outputs the genesis block in both binary and JSON. <tt>ao keygen</tt> command that generates an Ed25519 key pair and prints the public key. <tt>ao inspect</tt> command that reads a binary block and pretty-prints its contents.<br/><br/>
+
+<b>Test suite:</b> Property-based tests (<tt>proptest</tt>) for VBC round-trip encoding of all i64 values. Round-trip serialization tests for every DataItem type. Signature verification tests including deliberately corrupted signatures. Share arithmetic tests verifying that recording fees produce correct coin inflation. Cross-validation against any test vectors recoverable from the original C++ test suite.<br/><br/>
+
+<h3>Acceptance criteria</h3>
+
+<tt>cargo test</tt> passes on x86_64 and aarch64 (cross-compiled). A genesis block can be created, serialized to binary, deserialized, and re-serialized to produce identical bytes. A key pair can sign a DataContainer and the signature can be verified. Recording fee arithmetic matches hand-calculated examples from Fees.html.<br/><br/>
+
+<h2>Phase 2: Single-Chain Recorder &mdash; TⒶ¹ (Weeks 7&ndash;14)</h2>
+
+Build the <tt>ao-chain</tt> crate and the <tt>ao-recorder</tt> server. At the end of this phase, a single AOR server can host a blockchain issue, accept signed assignment agreements, validate them, record them in new blocks, and serve the chain to clients. This is the TⒶ¹ milestone from the original roadmap: single recorder, offer-and-acceptance signed share assignments, recording tax, all checking done by the single recorder.<br/><br/>
+
+<h3>Deliverables</h3>
+
+<b>ao-chain crate:</b> Genesis block loading and validation. UTXO database: a SQLite table mapping sequence IDs to public keys, share amounts, and spent/unspent status per the atomic assignment model from AtomicAssignment.html. Block construction: given a set of validated assignment agreements, assemble a new block with correct sequence numbering (CB_FIRST_ID_SEQ_NUM), page layout, recording fee deduction, hash chaining to previous block, and blockmaker signature. Assignment agreement validation: check all signatures per R4, verify share availability against UTXO, verify timestamps per R8, verify recording bid sufficiency, verify no key reuse, verify recording deadline not passed. Share expiration sweep: when constructing a new block, expire any shares whose age exceeds the genesis-configured limit, per Expiration.html.<br/><br/>
+
+<b>ao-recorder binary:</b> Axum HTTP server with the following endpoints:<br/>
+<tt>GET /chain/{id}/info</tt> &mdash; Chain metadata: genesis hash, current block height, current shares outstanding, recording fee rate, estimated recording lag.<br/>
+<tt>GET /chain/{id}/blocks?from={seq}</tt> &mdash; Download blocks from sequence number onward. Pico-payment query account required per the throttling scheme from IslandLife.html.<br/>
+<tt>GET /chain/{id}/utxo/{seq_id}</tt> &mdash; Check whether a specific sequence ID's shares are available for assignment.<br/>
+<tt>POST /chain/{id}/submit</tt> &mdash; Submit a signed assignment agreement for recording. Returns acceptance or rejection with reason.<br/>
+<tt>GET /chain/{id}/events</tt> &mdash; SSE stream of new block notifications.<br/>
+Configuration via TOML file specifying which chain(s) to host, data directory, listen address, optional TLS. Designed to host multiple independent chain issues on a single server instance (Gene hosting both BCG and RFM).<br/><br/>
+
+<b>ao-cli (extended):</b> <tt>ao assign</tt> command that constructs an assignment agreement: specify giver sequence ID, receiver public key, amount, recording bid. Signs with the giver's private key. Outputs the partial agreement for the receiver to countersign. <tt>ao accept</tt> command that countersigns an assignment agreement with the receiver's private key and submits it to an AOR server. <tt>ao balance</tt> command that queries an AOR server for all unspent shares held by a given public key.<br/><br/>
+
+<b>Integration tests:</b> Spin up an AOR server in-process, create a genesis block with 10 shares, assign shares between generated key pairs through the HTTP API, verify UTXO updates, verify recording fees produce correct coin inflation, verify that double-spend attempts are rejected, verify that expired shares are swept.<br/><br/>
+
+<h3>Hosting target</h3>
+
+The recorder cross-compiles to <tt>aarch64-unknown-linux-gnu</tt> via <tt>cross-rs</tt> and runs on a Raspberry Pi 4 or 5. A GitHub Actions workflow builds both x86_64 and aarch64 release binaries on every tagged commit. A minimal <tt>Dockerfile</tt> and a <tt>systemd</tt> unit file are provided for deployment on either a Pi or a cloud VPS.<div class="tooltip"><sup>*</sup><span class="tooltiptext">At this point, deployment is manual: copy the binary, create a data directory, write a config TOML, start the service. No orchestration needed for a single-recorder setup.</span></div><br/><br/>
+
+<h3>Acceptance criteria</h3>
+
+Two CLI users on different machines can transfer shares through a single AOR server over HTTP. The AOR server runs on a Raspberry Pi for 72 hours under continuous test load (one assignment per second) without memory growth or data corruption. A chain with 100,000 recorded assignments can be fully validated from genesis in under 10 seconds on a Pi 4.<br/><br/>
+
+<h2>Phase 3: Vendor and Consumer Apps &mdash; AOS + AOE (Weeks 15&ndash;22)</h2>
+
+Build the <tt>ao-web</tt> PWA with vendor (AOS) and consumer (AOE) views. At the end of this phase, Bob can set up his grill cart with a tablet running AOS, and Alice can walk up with her phone running AOE and pay for a plate of curry goat by assigning a BCG share back to Bob. This is where Island Life comes to life as a working demo.<br/><br/>
+
+<h3>Deliverables</h3>
+
+<b>Key management in browser:</b> Ed25519 key pair generation using Web Crypto API (or <tt>tweetnacl-js</tt> as fallback). Private keys stored in IndexedDB, encrypted with a user-chosen passphrase via PBKDF2. Key backup as an encrypted file download. Key import from file. Display of public key as a QR code for in-person exchange.<br/><br/>
+
+<b>AOE (consumer) view:</b> Dashboard showing balances across all chain issues the user holds shares in, displayed as coin values with cash-equivalent estimates. Chain discovery: enter an AOR server URL or scan a QR code to add a new chain. Assignment flow: select an issue, enter amount, scan or paste recipient public key, review transaction details including recording fee, confirm with passphrase, submit to AOR, display confirmation when recorded. SSE subscription for real-time balance updates when incoming assignments are recorded. GPS-aware vendor map:<div class="tooltip"><sup>*</sup><span class="tooltiptext">Vendors who configure a location in their AOS profile appear on the map. This is the feature that lets guests find Bob's grill cart. Location data is published as a separable item in the vendor's chain, so it can be updated without a share assignment.</span></div> shows nearby vendors who accept shares in issues the user holds, with current availability status.<br/><br/>
+
+<b>AOS (vendor) view:</b> Vendor profile: business name, location (GPS or manual), description, operating hours, photo. These are published as separable items on the vendor's chain. Incoming assignment monitor: real-time display of assignments received, with running daily total. Quick-redeem interface: when a customer presents a share, the vendor taps to confirm receipt of goods/services, and the AOS records this as metadata on the vendor's chain.<div class="tooltip"><sup>*</sup><span class="tooltiptext">In the simplest case, the customer assigns a BCG share back to Bob's public key. Bob's AOS sees the incoming share, plays a confirmation sound, and Bob hands over the curry goat. The metadata recording is optional and provides a transaction log for Bob's bookkeeping.</span></div> Share float display: current number of shares outstanding, with color-coded warning when approaching the vendor's configured limit (like Bob's 200-plate cap). Price card: vendor sets ask prices for new shares, displayed to AOE users browsing the vendor's listing.<br/><br/>
+
+<b>Shared components:</b> Transaction history with filtering by date, chain, and counterparty. Settings: preferred currency display, notification preferences, AOR server list. Offline mode: queue outgoing assignments when connectivity is lost, submit when reconnected. The PWA service worker caches the app shell and recent chain state for offline viewing.<br/><br/>
+
+<b>AOR WebSocket endpoint:</b> Add a <tt>/chain/{id}/ws</tt> WebSocket endpoint to the recorder for bidirectional client communication, supporting the real-time interaction patterns needed for the multi-step assignment flow (proposing, countersigning, confirming).<br/><br/>
+
+<h3>Acceptance criteria</h3>
+
+Two phones on the same WiFi network, one running AOS and one running AOE, can complete a share assignment in under 3 seconds from tap-to-confirm to confirmation displayed. The PWA installs to home screen on both iOS Safari and Android Chrome. The AOS vendor map shows a test vendor's location within 50 meters of their actual GPS position. The app functions (read-only, showing cached balances) when the phone is in airplane mode.<br/><br/>
+
+<h2>Phase 4: Market Making &mdash; AOI + Exchange (Weeks 23&ndash;32)</h2>
+
+Build the AOI (investor/market maker) view and the exchange infrastructure that allows shares in different chain issues to be traded. This is where Eddie, Charlie, Ziggy, and Ted enter the picture, and where the system transitions from single-chain coupon redemption to a functioning micro-economy. This phase includes the first steps toward TⒶ² (multiple chain transactions) using the simplified exchange-agent model before tackling full atomic CAA.<br/><br/>
+
+<h3>Deliverables</h3>
+
+<b>AOI view:</b> Portfolio dashboard across multiple chain issues with bid/ask spread display. Automated trading rules engine matching the patterns described in AssignOnwardInvestor.html: configurable bid ladders, ask ladders, float-sensitive pricing (like Ted's discount when Bob exceeds 100 plates outstanding), and position limits (like Charlie's 24-plate cap). Order book display for each issue showing all visible bids and asks from all market participants. Trade execution: when an AOE user's desired purchase matches an AOI's ask, the AOI automatically countersigns the assignment agreement. ROI tracking: annualized return calculation per issue based on recording fee income (coin inflation) and realized trading gains.<br/><br/>
+
+<b>Exchange agent infrastructure:</b> A new data structure: the exchange listing, published as a separable item on an exchange agent's own chain. It advertises the agent's current bid and ask prices for shares in other chains, denominated in the agent's own credits (like Charlie's CCC). AOE and AOS apps discover exchange listings through a lightweight directory: each AOR server publishes a JSON index of all issues it hosts, including links to known exchange agents who trade in those issues. This is the DNS/discovery mechanism discussed in the <a href="2026review.html">2026 Review</a>.<br/><br/>
+
+<b>Two-party exchange (simplified CAA):</b> Before implementing the full multi-chain atomic protocol, implement a simpler exchange-agent-mediated model. When Alice wants to buy 1 BCG using CCC, her AOE finds Charlie advertising CCC↔BCG exchange. Alice sends 12 CCC to Charlie (a normal single-chain assignment on the CCC chain). Charlie's AOI, upon seeing the incoming CCC, automatically sends 1 BCG to Alice's designated key (a normal single-chain assignment on the BCG chain). The two assignments are not atomically linked at the protocol level; Charlie absorbs the settlement risk, which is acceptable because Charlie controls both sides and trusts himself.<div class="tooltip"><sup>*</sup><span class="tooltiptext">This is exactly what the Island Life narrative describes: Charlie pre-purchases BCG from Bob and resells them to guests. The atomicity is provided by Charlie's inventory and trustworthiness, not by protocol-level cross-chain escrow. This works for small amounts and known exchange agents, deferring the complexity of full CAA to a later phase.</span></div><br/><br/>
+
+<b>MQTT inter-recorder messaging:</b> AOR servers connect to a shared Mosquitto broker and publish new block notifications to per-chain MQTT topics. Exchange agent AOI instances subscribe to topics for all chains they trade in, receiving real-time updates that trigger automated trading responses. This replaces the polling that would otherwise be needed for cross-chain awareness.<br/><br/>
+
+<b>Referral fee tracking:</b> When an exchange agent facilitates a trade, the fee structure (Charlie's 5% with Ted, Ziggy's 10%) is recorded as metadata in the assignment agreement. AOI displays net-of-fees returns and supports configurable referral agreements between exchange agents.<br/><br/>
+
+<h3>Hosting additions</h3>
+
+A Mosquitto MQTT broker runs alongside the AOR server, either on the same Pi or as a separate lightweight service on a cloud VPS. The broker configuration is minimal: anonymous access with ACLs restricting publish to authenticated AOR servers, subscribe open to any authenticated client. For a single-island deployment, one Mosquitto instance is sufficient. For multi-island (Charlie connecting Caribbean islands), brokers can bridge to each other using Mosquitto's built-in bridge protocol.<br/><br/>
+
+<h3>Acceptance criteria</h3>
+
+An AOI instance configured with Charlie's trading rules from AssignOnwardInvestor.html automatically executes BCG trades without human intervention. A simulated market with 5 AOI instances trading in 3 chain issues reaches price equilibrium within 200 transactions. An AOE user can purchase BCG using CCC through Charlie's exchange in under 10 seconds end-to-end. The MQTT broker handles 100 messages per second (far beyond any realistic island transaction volume) on a Pi 4.<br/><br/>
+
+<h2>Phase 5: Validation and Trust &mdash; AOV (Weeks 33&ndash;38)</h2>
+
+Build the <tt>ao-validator</tt> binary and the trust infrastructure. This is Victor's contribution: independent validation that no AOR server has altered its chain history, anchored to external proof.<br/><br/>
+
+<h3>Deliverables</h3>
+
+<b>ao-validator binary:</b> Configurable list of AOR servers to monitor. Periodically (configurable interval, default hourly) fetches all new blocks from each monitored chain since the last check. Computes a rolled-up hash: hash together the most recent block hash from every monitored chain. Stores the rolled-up hash locally with timestamp. Optionally publishes the rolled-up hash to an external anchor.<div class="tooltip"><sup>*</sup><span class="tooltiptext">The original design suggested publishing to a major public blockchain. In practice, publishing a hash to any tamper-evident public record works: a Bitcoin OP_RETURN transaction, an Ethereum event log, or even a signed post to a public append-only log service. The point is that after publication, any alteration of any monitored chain would be detectable by re-computing the rolled-up hash and comparing to the anchored value.</span></div> Alerting: when a monitored AOR server returns chain data that does not match previously fetched blocks (evidence of history alteration), the validator emits an alert via MQTT and optionally webhook/email.<br/><br/>
+
+<b>Chain integrity API:</b> The validator exposes an HTTP endpoint that AOE/AOS/AOI clients can query: <tt>GET /validate/{chain_id}</tt> returns the last validated block height, timestamp, and the anchor publication reference. AOE displays a trust indicator (validated up to block N, anchored at time T) on each chain's detail view.<br/><br/>
+
+<b>AOR cross-reference:</b> AOR servers are configured with one or more AOV validator URLs. When serving chain info to clients, the AOR includes the validator's endorsement. Clients can independently verify by querying the validator directly. This is the pattern described in Island Life where AOR hosts configured their servers to refer guests' AOE to Victor's AOV.<br/><br/>
+
+<b>Vendor credential linking:</b> Per the Island Life narrative about Bob's food safety certificates, implement a mechanism for vendors to include verifiable credential references as separable items in their chain. These are URLs pointing to external records (community college completion records, professional licenses) along with a hash of the credential content at time of linking. AOE displays these credentials on the vendor's profile, with a visual indicator of whether the linked content still matches its recorded hash.<br/><br/>
+
+<h3>Acceptance criteria</h3>
+
+An AOV instance monitoring 10 chain issues detects a simulated history alteration (a single modified byte in a past block) within one polling interval and emits an alert. The rolled-up hash can be independently verified by a third party using only the anchor publication and the current chain data from the AOR servers. The validator runs continuously for 30 days on a Pi without memory growth.<br/><br/>
+
+<h2>Phase 6: Atomic Multi-Chain Exchange &mdash; TⒶ² (Weeks 39&ndash;48)</h2>
+
+Implement the full Conditional Assignment Agreement (CAA) protocol from <a href="MultichainExchange.html">MultichainExchange.html</a>, enabling trustless atomic exchanges across independent chains without requiring an exchange agent to absorb settlement risk. This is the most technically demanding phase and can be deferred indefinitely if the exchange-agent model from Phase 4 proves sufficient for real-world use.<br/><br/>
+
+<h3>Deliverables</h3>
+
+<b>CAA data structures in ao-types:</b> Conditional assignment agreement container extending the basic assignment agreement with: ordered list of concerned chains (by genesis hash), escrow period, per-chain assignment terms, and slots for recording proofs from each chain. State machine for CAA lifecycle: proposed → signed → recording-in-progress → binding → finalized, with timeout transitions to expired at each stage.<br/><br/>
+
+<b>Escrow support in ao-chain:</b> When a CAA is recorded on a chain, the shares involved are placed in escrow: marked as unavailable for other assignments but not yet transferred. The escrow has a deadline. If the binding proof (recording on all concerned chains) arrives before the deadline, the assignment takes effect. If the deadline passes without binding proof, the escrow is released and the shares return to their previous owner. This requires a new UTXO state: unspent, escrowed-pending-CAA, or spent.<br/><br/>
+
+<b>CAA coordinator in ao-recorder:</b> The AOR server acts as coordinator for CAAs involving its hosted chains. When a fully-signed CAA arrives, the AOR records it (placing shares in escrow), signs the recording block, and forwards the CAA with appended recording proof to the next chain's AOR in the ordered list. When the AOR receives a CAA with recording proofs from all other concerned chains, it records the binding proof, finalizing the escrow. The Ouroboros recording sequence described in MultichainExchange.html is implemented as a series of HTTP POST calls between AOR servers, with MQTT notifications to interested clients at each step.<br/><br/>
+
+<b>Timeout and recovery:</b> If any AOR server in the chain is unreachable during CAA recording, the coordinator retries with exponential backoff until the escrow deadline. If the deadline is reached without full recording, the coordinator records an escrow release on all chains where recording did occur. AOE/AOS/AOI clients are notified of CAA failure via SSE/WebSocket, and the assignment is shown as expired. The escrow release mechanism is the critical safety property: no shares can be permanently locked by a failed CAA.<br/><br/>
+
+<b>AOE multi-chain transaction flow:</b> When Alice wants to give Bob 1 BCG and she only holds CCC, the AOE presents this as a single action: "Give 1 BCG to Bob (costs 12 CCC via Charlie)." Behind the scenes, the AOE constructs a CAA involving both the CCC and BCG chains, collects signatures from all parties (Alice, Charlie, Bob), and submits it for coordinated recording. Alice sees a progress indicator as the CAA moves through the recording sequence, and a final confirmation when it becomes binding. If the CAA fails, Alice sees a clear explanation and her CCC balance is restored.<br/><br/>
+
+<h3>Acceptance criteria</h3>
+
+A three-party, two-chain CAA (the Alice/Charlie/Bob scenario from MultichainExchange.html) completes successfully end-to-end in under 30 seconds when both AOR servers are responsive. When one AOR server is made unreachable during a CAA, the escrow times out and all shares are correctly released on the responsive chain within the configured deadline. No shares are lost or double-spent under any combination of server failures, network partitions, and client disconnections, verified by a chaos-testing harness that randomly kills and restarts AOR processes during CAA recording.<br/><br/>
+
+<h2>Phase 7 and Beyond</h2>
+
+The following are not scheduled but represent the natural evolution after the core system is functional:<br/><br/>
+
+<b>TⒶ³ &mdash; Multiple recorders:</b> Extend the Ⓐ¹ single-recorder model to support multiple competing recorders for a single chain. This introduces temporary forks and merges, requiring a fork-choice rule (longest chain, or highest-residual-value chain as described in Architecture.html). Share incentives for recorders replace the flat hosting fee. This is a significant architectural change and should only be undertaken if single-recorder operation proves to be an unacceptable single point of failure for real deployments.<br/><br/>
+
+<b>TⒶ⁴ &mdash; Underwriters and error checkers:</b> Recognized shareholders may provide underwriting (staking their own shares to guarantee transaction validity) and error checkers may claim underwriting shares when they find invalid transactions. This completes the trust-but-verify model from BlockchainBasics.html and provides the economic security guarantees that make the system trustworthy at larger scale without proof of work.<br/><br/>
+
+<b>AOL &mdash; Licensing and learning records:</b> On-chain records of educational achievement, professional licensing, complaints and resolutions, as referenced throughout the Island Life narrative (Bob's food safety certificate, the community college courses).<br/><br/>
+
+<b>AOA &mdash; Artist shares:</b> Genesis blocks representing digital artworks with patron shares, as described in <a href="ArtPatronage.html">ArtPatronage.html</a> and <a href="Applications.html">Applications.html</a>.<br/><br/>
+
+<b>Pico-payment query throttling:</b> The full implementation of per-query micro-charges described in IslandLife.html and Fees.html, to protect AOR servers from abusive global traffic when an island issue attracts unwanted attention from speculators like Quincy.<br/><br/>
+
+<b>W3C DID integration:</b> Decentralized identifiers for vendor and exchange agent identity, providing machine-verifiable trust assertions that scale beyond the informal personal-knowledge model of the original Island Life community.<br/><br/>
+
+<h2>Timeline Summary</h2>
+
+<table border="1" cellpadding="6" cellspacing="0" style="zoom:0.85">
+<tr><td><b>Phase</b></td><td><b>Weeks</b></td><td><b>TⒶ Level</b></td><td><b>Key Milestone</b></td></tr>
+<tr><td>1: Foundation</td><td>1&ndash;6</td><td>&mdash;</td><td>Genesis block creation, key gen, sign/verify, share arithmetic</td></tr>
+<tr><td>2: Single-Chain Recorder</td><td>7&ndash;14</td><td>TⒶ¹</td><td>AOR server accepts and records assignments via HTTP</td></tr>
+<tr><td>3: Vendor + Consumer Apps</td><td>15&ndash;22</td><td>TⒶ¹</td><td>Bob and Alice transact via phones over a live AOR</td></tr>
+<tr><td>4: Market Making + Exchange</td><td>23&ndash;32</td><td>TⒶ¹→²</td><td>Charlie's AOI auto-trades BCG↔CCC; exchange agent model live</td></tr>
+<tr><td>5: Validation + Trust</td><td>33&ndash;38</td><td>TⒶ¹→²</td><td>Victor's AOV anchors chain integrity; vendor credentials</td></tr>
+<tr><td>6: Atomic Multi-Chain</td><td>39&ndash;48</td><td>TⒶ²</td><td>Trustless cross-chain CAA with escrow and timeout recovery</td></tr>
+</table><br/>
+
+The timeline assumes focused solo development. Phases 1 through 3 (roughly 5 months) produce a working single-chain system suitable for a small pilot deployment. Phase 4 makes it economically interesting. Phase 5 makes it auditable. Phase 6 makes it trustless. Each phase produces a demonstrable, testable system; none depends on later phases being completed to be useful.<br/><br/>
+
+</span>
+
+</div>
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2026-03-05"><div class="tooltip">5 March 2026<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2018 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+</div>
+
+</body></html>

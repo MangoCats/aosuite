@@ -142,9 +142,11 @@ Build `ao-chain` and `ao-recorder`, plus complete CLI tools.
 
 **ao-cli** — [src/ao-cli/](src/ao-cli/) ✓: 9 commands — `ao keygen`, `ao genesis`, `ao inspect` (Phase 1), plus `ao balance` (UTXO query with coin display), `ao assign` (build assignment with iterative fee estimation), `ao accept` (sign + submit authorization), `ao refute` (build refutation DataItem), `ao history` (block range summary), `ao export` (blocks as JSON).
 
-**Tests:** 79 tests total. Edge cases: expired UTXO rejection, double-spend rejection, key reuse rejection, timestamp ordering enforcement, multi-receiver assignment with fee convergence, two-block chain flow with UTXO state transitions. HTTP API tests: chain info, UTXO lookup, block retrieval, assignment submission, SSE/WebSocket real-time notifications.
+**Tests:** 82 tests total. Edge cases: expired UTXO rejection, double-spend rejection, key reuse rejection, timestamp ordering enforcement, multi-receiver assignment with fee convergence, two-block chain flow with UTXO state transitions, late recording allowed/rejected with refutation, before-deadline refutation bypass. HTTP API tests: chain info, UTXO lookup, block retrieval, assignment submission, invalid JSON, double-spend via API, SSE/WebSocket real-time notifications.
 
-**Remaining:** Multi-chain hosting. Dockerfile, `systemd` unit, GitHub Actions CI (x86_64 + aarch64). 72-hour Pi stress test. Late recording with refutation integration test.
+**Deployment** ✓: [Dockerfile](Dockerfile) (multi-stage, non-root, bookworm-slim). [ao-recorder.service](ao-recorder.service) (systemd hardened). [GitHub Actions CI](../.github/workflows/ci.yml) (build + test + clippy on x86_64, cross-build aarch64 with gcc-aarch64-linux-gnu).
+
+**Remaining:** Multi-chain hosting. 72-hour Pi stress test.
 
 ### Acceptance Criteria
 

@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use tracing::info;
 
@@ -43,11 +43,7 @@ async fn main() {
     let seed: [u8; 32] = seed_bytes.try_into().expect("blockmaker seed must be 32 bytes");
     let blockmaker_key = SigningKey::from_seed(&seed);
 
-    let state = Arc::new(AppState {
-        store: Mutex::new(store),
-        blockmaker_key,
-    });
-
+    let state = Arc::new(AppState::new(store, blockmaker_key));
     let app = build_router(state);
 
     let bind_addr = format!("{}:{}", cfg.host, cfg.port);

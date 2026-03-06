@@ -1,6 +1,6 @@
 /// Integration tests for the ao-recorder HTTP API.
 /// Spins up an in-process Axum server and tests all endpoints.
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use num_bigint::BigInt;
 
@@ -80,10 +80,7 @@ async fn start_test_server(
     let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
     let chain_id = hex::encode(meta.chain_id);
 
-    let state = Arc::new(AppState {
-        store: Mutex::new(store),
-        blockmaker_key: SigningKey::from_seed(blockmaker_key.seed()),
-    });
+    let state = Arc::new(AppState::new(store, SigningKey::from_seed(blockmaker_key.seed())));
 
     let app = build_router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -455,4 +452,144 @@ async fn test_double_spend_via_api() {
 
     let body: serde_json::Value = resp2.json().await.unwrap();
     assert!(body["error"].as_str().unwrap().contains("already spent"));
+}
+
+#[tokio::test]
+async fn test_sse_block_notification() {
+    let issuer = SigningKey::from_seed(&[0x18; 32]);
+    let blockmaker = SigningKey::from_seed(&[0x28; 32]);
+    let receiver = SigningKey::generate();
+
+    let (base, chain_id) = start_test_server(&issuer, &blockmaker).await;
+    let client = reqwest::Client::new();
+
+    // Connect SSE before submitting
+    let mut sse_resp = client
+        .get(format!("{}/chain/{}/events", base, chain_id))
+        .send().await.unwrap();
+    assert_eq!(sse_resp.status(), 200);
+
+    // Get chain info for the submission
+    let info: serde_json::Value = client
+        .get(format!("{}/chain/{}/info", base, chain_id))
+        .send().await.unwrap()
+        .json().await.unwrap();
+
+    let shares_out: BigInt = info["shares_out"].as_str().unwrap().parse().unwrap();
+    let fee_num: BigInt = info["fee_rate_num"].as_str().unwrap().parse().unwrap();
+    let fee_den: BigInt = info["fee_rate_den"].as_str().unwrap().parse().unwrap();
+
+    let utxo: serde_json::Value = client
+        .get(format!("{}/chain/{}/utxo/1", base, chain_id))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let giver_amount: BigInt = utxo["amount"].as_str().unwrap().parse().unwrap();
+
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    let auth = build_authorization(
+        &issuer, 1, &giver_amount, &receiver,
+        &fee_num, &fee_den, &shares_out,
+        Timestamp::from_raw(genesis_ts.raw() + 1_000_000),
+        Timestamp::from_raw(genesis_ts.raw() + 2_000_000),
+    );
+
+    // Read SSE stream in a background task
+    let (tx, rx) = tokio::sync::oneshot::channel::<String>();
+
+    let sse_task = tokio::spawn(async move {
+        let mut buffer = String::new();
+        // Read chunks from SSE response body
+        while let Some(chunk) = sse_resp.chunk().await.unwrap() {
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+            // Look for "data:" line in SSE
+            if let Some(data_start) = buffer.find("data:") {
+                let rest = &buffer[data_start + 5..];
+                if let Some(end) = rest.find('\n') {
+                    let data = rest[..end].trim().to_string();
+                    let _ = tx.send(data);
+                    return;
+                }
+            }
+        }
+    });
+
+    // Small delay for SSE connection to be ready
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+
+    // Submit assignment
+    let resp = client
+        .post(format!("{}/chain/{}/submit", base, chain_id))
+        .json(&ao_json::to_json(&auth))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // Wait for SSE notification
+    let sse_data = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        rx,
+    ).await.expect("SSE timeout").expect("SSE channel closed");
+
+    let block_info: serde_json::Value = serde_json::from_str(&sse_data).unwrap();
+    assert_eq!(block_info["height"], 1);
+    assert!(block_info["hash"].as_str().unwrap().len() == 64);
+
+    sse_task.abort();
+}
+
+#[tokio::test]
+async fn test_websocket_block_notification() {
+    let issuer = SigningKey::from_seed(&[0x19; 32]);
+    let blockmaker = SigningKey::from_seed(&[0x29; 32]);
+    let receiver = SigningKey::generate();
+
+    let (base, chain_id) = start_test_server(&issuer, &blockmaker).await;
+    let client = reqwest::Client::new();
+
+    // Connect WebSocket
+    let ws_url = format!("{}/chain/{}/ws", base.replace("http://", "ws://"), chain_id);
+    let (mut ws_stream, _) = tokio_tungstenite::connect_async(&ws_url)
+        .await.expect("WebSocket connect failed");
+
+    // Get chain info
+    let info: serde_json::Value = client
+        .get(format!("{}/chain/{}/info", base, chain_id))
+        .send().await.unwrap()
+        .json().await.unwrap();
+
+    let shares_out: BigInt = info["shares_out"].as_str().unwrap().parse().unwrap();
+    let fee_num: BigInt = info["fee_rate_num"].as_str().unwrap().parse().unwrap();
+    let fee_den: BigInt = info["fee_rate_den"].as_str().unwrap().parse().unwrap();
+
+    let utxo: serde_json::Value = client
+        .get(format!("{}/chain/{}/utxo/1", base, chain_id))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let giver_amount: BigInt = utxo["amount"].as_str().unwrap().parse().unwrap();
+
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    let auth = build_authorization(
+        &issuer, 1, &giver_amount, &receiver,
+        &fee_num, &fee_den, &shares_out,
+        Timestamp::from_raw(genesis_ts.raw() + 1_000_000),
+        Timestamp::from_raw(genesis_ts.raw() + 2_000_000),
+    );
+
+    // Submit assignment
+    let resp = client
+        .post(format!("{}/chain/{}/submit", base, chain_id))
+        .json(&ao_json::to_json(&auth))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // Read WebSocket message
+    use futures_util::StreamExt;
+    let msg = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        ws_stream.next(),
+    ).await.expect("WS timeout").expect("WS stream ended").expect("WS error");
+
+    let text = msg.into_text().expect("expected text message");
+    let block_info: serde_json::Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(block_info["height"], 1);
+    assert!(block_info["hash"].as_str().unwrap().len() == 64);
 }

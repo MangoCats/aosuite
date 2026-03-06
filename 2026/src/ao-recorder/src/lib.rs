@@ -1,13 +1,17 @@
 use std::sync::{Arc, Mutex};
+use std::convert::Infallible;
 
 use axum::{
     Router,
-    extract::{Path, State},
+    extract::{Path, State, WebSocketUpgrade, ws},
     http::StatusCode,
-    response::Json,
-    routing::{get, post},
+    response::{Json, Sse, sse},
+    routing::get,
 };
 use serde::Serialize;
+use tokio::sync::broadcast;
+use tokio_stream::StreamExt;
+use tokio_stream::wrappers::BroadcastStream;
 
 use ao_types::dataitem::DataItem;
 use ao_types::json as ao_json;
@@ -22,6 +26,28 @@ pub mod config;
 pub struct AppState {
     pub store: Mutex<ChainStore>,
     pub blockmaker_key: SigningKey,
+    pub block_tx: broadcast::Sender<BlockInfo>,
+}
+
+impl AppState {
+    pub fn new(store: ChainStore, blockmaker_key: SigningKey) -> Self {
+        let (block_tx, _) = broadcast::channel(64);
+        AppState {
+            store: Mutex::new(store),
+            blockmaker_key,
+            block_tx,
+        }
+    }
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct BlockInfo {
+    pub height: u64,
+    pub hash: String,
+    pub timestamp: i64,
+    pub shares_out: String,
+    pub first_seq: u64,
+    pub seq_count: u64,
 }
 
 #[derive(Serialize)]
@@ -49,16 +75,6 @@ struct UtxoInfo {
 }
 
 #[derive(Serialize)]
-pub struct BlockInfo {
-    pub height: u64,
-    pub hash: String,
-    pub timestamp: i64,
-    pub shares_out: String,
-    pub first_seq: u64,
-    pub seq_count: u64,
-}
-
-#[derive(Serialize)]
 struct ErrorResponse {
     error: String,
 }
@@ -73,8 +89,14 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/chain/{id}/info", get(chain_info))
         .route("/chain/{id}/utxo/{seq_id}", get(get_utxo))
         .route("/chain/{id}/blocks", get(get_blocks))
-        .route("/chain/{id}/submit", post(submit_assignment))
+        .route("/chain/{id}/submit", get(method_not_allowed).post(submit_assignment))
+        .route("/chain/{id}/events", get(sse_events))
+        .route("/chain/{id}/ws", get(ws_handler))
         .with_state(state)
+}
+
+async fn method_not_allowed() -> StatusCode {
+    StatusCode::METHOD_NOT_ALLOWED
 }
 
 /// Initialize chain state: load genesis if needed, return chain_id hex.
@@ -196,12 +218,70 @@ async fn submit_assignment(
         current_ts,
     ).map_err(|e| error_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
 
-    Ok(Json(BlockInfo {
+    let info = BlockInfo {
         height: constructed.height,
         hash: hex::encode(constructed.block_hash),
         timestamp: constructed.timestamp,
         shares_out: constructed.new_shares_out.to_string(),
         first_seq: constructed.first_seq,
         seq_count: constructed.seq_count,
-    }))
+    };
+
+    // Broadcast to SSE/WebSocket subscribers (ignore send errors — no receivers is fine)
+    let _ = state.block_tx.send(info.clone());
+
+    Ok(Json(info))
+}
+
+/// GET /chain/{id}/events — Server-Sent Events stream of block notifications.
+async fn sse_events(
+    State(state): State<Arc<AppState>>,
+    Path(_chain_id): Path<String>,
+) -> Sse<impl tokio_stream::Stream<Item = Result<sse::Event, Infallible>>> {
+    let rx = state.block_tx.subscribe();
+    let stream = BroadcastStream::new(rx).filter_map(|result| {
+        match result {
+            Ok(info) => {
+                let json = serde_json::to_string(&info).unwrap();
+                Some(Ok(sse::Event::default().event("block").data(json)))
+            }
+            Err(_) => None, // lagged — skip
+        }
+    });
+    Sse::new(stream).keep_alive(sse::KeepAlive::default())
+}
+
+/// GET /chain/{id}/ws — WebSocket stream of block notifications.
+async fn ws_handler(
+    State(state): State<Arc<AppState>>,
+    Path(_chain_id): Path<String>,
+    ws: WebSocketUpgrade,
+) -> axum::response::Response {
+    ws.on_upgrade(move |socket| ws_connection(socket, state))
+}
+
+async fn ws_connection(mut socket: ws::WebSocket, state: Arc<AppState>) {
+    let mut rx = state.block_tx.subscribe();
+    loop {
+        tokio::select! {
+            result = rx.recv() => {
+                match result {
+                    Ok(info) => {
+                        let json = serde_json::to_string(&info).unwrap();
+                        if socket.send(ws::Message::Text(json.into())).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(ws::Message::Close(_))) | None => break,
+                    _ => {} // ignore client messages
+                }
+            }
+        }
+    }
 }

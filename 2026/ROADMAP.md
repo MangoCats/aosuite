@@ -136,15 +136,15 @@ Build `ao-chain` and `ao-recorder`, plus complete CLI tools.
 
 ### Deliverables
 
-**ao-chain:** Genesis loading/validation. SQLite UTXO (sequence ID → key, amount, block, status). Block construction with sequence numbering, hash chaining, fee deduction, blockmaker signature. Assignment validation: signatures, UTXO availability, timestamp ordering, recording bid, key uniqueness, deadline (including late-recording rules). Expiration sweep (hard cutoff or age tax).
+**ao-chain** — [src/ao-chain/](src/ao-chain/) ✓: Genesis loading/validation with issuer signature verification and chain ID hash check. SQLite UTXO store (sequence ID → pubkey, amount, block, timestamp, status). Block construction with sequence numbering, hash chaining (PREV_HASH), fee deduction from shares_out, blockmaker signature. Assignment validation: participant signatures with timestamp ordering, UTXO availability and expiration check, recording bid ≥ chain fee rate, single-use key enforcement, deadline with late-recording rules, balance equation (givers = receivers + fee). Expiration sweep Mode 1 (hard cutoff). Refutation tracking. 10 unit tests + 7 integration tests.
 
-**ao-recorder:** Axum HTTP: `/chain/{id}/info`, `/chain/{id}/blocks`, `/chain/{id}/utxo/{seq_id}`, `/chain/{id}/submit`, `/chain/{id}/events` (SSE), `/chain/{id}/ws` (WebSocket). TOML config. Multi-chain hosting.
+**ao-recorder** — [src/ao-recorder/](src/ao-recorder/) ✓: Axum 0.8 HTTP server with lib + bin structure. `GET /chain/{id}/info` (chain metadata), `GET /chain/{id}/utxo/{seq_id}` (UTXO lookup), `GET /chain/{id}/blocks?from=&to=` (block range as JSON), `POST /chain/{id}/submit` (validate + record assignment), `GET /chain/{id}/events` (SSE block notifications with keep-alive), `GET /chain/{id}/ws` (WebSocket block notifications). TOML config (host, port, db_path, genesis_path, blockmaker_seed). Broadcast channel for real-time fan-out. 10 integration tests (including SSE and WebSocket).
 
-**ao-cli (complete):** `ao assign`, `ao accept`, `ao refute`, `ao balance`, `ao history`, `ao export`.
+**ao-cli** — [src/ao-cli/](src/ao-cli/) ✓: 9 commands — `ao keygen`, `ao genesis`, `ao inspect` (Phase 1), plus `ao balance` (UTXO query with coin display), `ao assign` (build assignment with iterative fee estimation), `ao accept` (sign + submit authorization), `ao refute` (build refutation DataItem), `ao history` (block range summary), `ao export` (blocks as JSON).
 
-**Integration tests:** In-process AOR. Genesis with 10 shares. HTTP API assignments. UTXO verification. Fee/inflation correctness. Double-spend rejection. Expiration sweep. Late recording and refutation. Timestamp ordering. 72-hour Pi stress test (1 assignment/second).
+**Tests:** 79 tests total. Edge cases: expired UTXO rejection, double-spend rejection, key reuse rejection, timestamp ordering enforcement, multi-receiver assignment with fee convergence, two-block chain flow with UTXO state transitions. HTTP API tests: chain info, UTXO lookup, block retrieval, assignment submission, SSE/WebSocket real-time notifications.
 
-**Deployment:** Dockerfile, `systemd` unit, GitHub Actions CI (x86_64 + aarch64).
+**Remaining:** Multi-chain hosting. Dockerfile, `systemd` unit, GitHub Actions CI (x86_64 + aarch64). 72-hour Pi stress test. Late recording with refutation integration test.
 
 ### Acceptance Criteria
 

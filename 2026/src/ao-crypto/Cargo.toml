@@ -1,0 +1,11 @@
+[package]
+name = "ao-crypto"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ao-types = { path = "../ao-types" }
+ring = "0.17"
+sha2 = "0.10"
+blake3 = "1"
+rand = "0.8"

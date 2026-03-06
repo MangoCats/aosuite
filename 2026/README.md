@@ -66,6 +66,17 @@ Changes:
 - Updated 2026/README.md to list new spec files
 ```
 
+### Lessons Learned
+
+When a problem requires 3 or more failed attempts before finding the actual solution, write a brief post-mortem in `2026/lessons/` analyzing:
+
+1. **What happened** — the symptom and the actual root cause.
+2. **Where it went astray** — which assumption or step first diverged from the correct path.
+3. **How it was resolved** — what finally identified the real issue.
+4. **Prevention** — what check or practice would have caught it sooner.
+
+The goal is to build a searchable record of debugging patterns so the same class of mistake isn't repeated. Keep each entry short (under 50 lines). Name files descriptively (e.g., `wrong-test-vector.md`, `cargo-feature-flag.md`).
+
 ### Documentation Structure
 
 - **Concise and modular.** Each document has a single clear purpose.

@@ -42,6 +42,7 @@ These are hard requirements from [CorePrinciples.html](../docs/html/CorePrincipl
 8. **Cryptographic agility.** The algorithm set is extensible via type codes.
 9. **Open source, MIT license.**
 10. **Scalability through federation** — many small chains, not one big one.
+11. **Wire format thrift.** Messages must be compact enough to traverse not only wired internet and 5G, but also low-bandwidth networks such as [Meshtastic](https://meshtastic.org/) LoRa mesh and similar constrained links.
 
 ## How the Economics Work
 

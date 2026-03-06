@@ -38,7 +38,9 @@ Six phases over approximately 54 weeks, starting with architecture and specifica
 
 This phase produces documents, not code. The 2018 design documents are spread across 30+ HTML files with numerous ambiguities — unspecified negative VBC encoding, undocumented type code schema, unresolved separability bit position, unspecified signature byte format, unspecified deterministic rounding rules. All of these are resolved in writing before coding begins.
 
-### Deliverable 0A: System Architecture Document
+### Deliverable 0A: System Architecture Document — [specs/Architecture.md](specs/Architecture.md) ✓ 2026-03-05
+
+
 
 Consolidates architectural decisions into a single implementation-grade document covering:
 
@@ -52,7 +54,9 @@ Consolidates architectural decisions into a single implementation-grade document
 
 **Non-negotiable principles:** Stated as testable assertions. No proof of work. Single-use keys for share transfers. Mutual consent. Timestamped signatures. Share expiration. Separable items. Cryptographic agility. Open source.
 
-### Deliverable 0B: Wire Format Specification
+### Deliverable 0B: Wire Format Specification — [specs/WireFormat.md](specs/WireFormat.md) ✓ 2026-03-06
+
+
 
 Precise, byte-level specification of the on-chain binary format. Design for minimal message size — protocol messages must be viable not only over standard internet and 5G but also over low-bandwidth transports such as [Meshtastic](https://meshtastic.org/) LoRa mesh networks.
 
@@ -68,7 +72,9 @@ Precise, byte-level specification of the on-chain binary format. Design for mini
 
 **Block structure:** Complete byte-level layout of an A1 signed block. Worked example of a minimal block containing one assignment.
 
-### Deliverable 0C: Cryptographic Choices Document
+### Deliverable 0C: Cryptographic Choices Document — [specs/CryptoChoices.md](specs/CryptoChoices.md) ✓ 2026-03-06
+
+
 
 **Signature:** Ed25519 per RFC 8032. 32-byte keys, 64-byte signatures, raw bytes (no DER). Signed data = serialized DataContainer with separable items replaced by SHA2-256 hashes, concatenated with 8-byte signing timestamp.
 
@@ -78,7 +84,9 @@ Precise, byte-level specification of the on-chain binary format. Design for mini
 
 **Scope:** One signature type (Ed25519), two hash types (SHA2-256, BLAKE3). Cryptographic agility preserved via type-code system for future additions.
 
-### Deliverable 0D: Economic Rules Specification
+### Deliverable 0D: Economic Rules Specification — [specs/EconomicRules.md](specs/EconomicRules.md) ✓ 2026-03-06
+
+
 
 Deterministic arithmetic rules that all nodes must agree on:
 

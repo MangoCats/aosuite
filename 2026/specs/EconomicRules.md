@@ -13,8 +13,8 @@ A chain starts with a genesis block declaring these economic parameters:
 | Parameter | Type | Typical Value | Description |
 |-----------|------|---------------|-------------|
 | `SHARES_OUT` | big integer | ~2⁸⁶ | Initial shares outstanding |
-| `COIN_COUNT` | big integer | ~2⁸³ | Fixed display coin count (never changes) |
-| `FEE_RATE` | rational | 1/1000000 | Recording fee per byte per coin |
+| `COIN_COUNT` | big integer | 10,000,000,000 | Fixed display coin count (never changes) |
+| `FEE_RATE` | rational | 1/1000000 | Fraction of SHARES_OUT retired per data byte (see §3) |
 | `EXPIRY_PERIOD` | timestamp delta | 1 year | Share expiration period |
 | `EXPIRY_MODE` | integer | 1 or 2 | 1 = hard cutoff, 2 = age tax |
 | `TAX_PARAMS` | (if mode 2) | start_age, doubling_period | Age tax curve parameters |
@@ -42,16 +42,7 @@ user_coins = (user_shares × COIN_COUNT) / SHARES_OUT
 
 ### 2.1 Worked Example
 
-Genesis: `SHARES_OUT = 2⁸⁶`, `COIN_COUNT = 2⁸³`.
-
-Alice holds 2⁸³ shares (1/8 of total):
-```
-user_coins = (2⁸³ × 2⁸³) / 2⁸⁶ = 2¹⁶⁶ / 2⁸⁶ = 2⁸⁰
-```
-
-Wait — that gives a huge number. The coin display should give `COIN_COUNT / 8 = 2⁸³ / 8 = 2⁸⁰`? That's still enormous.
-
-Let's use practical numbers. Genesis: `SHARES_OUT = 2⁸⁶`, `COIN_COUNT = 10,000,000,000` (10 billion, ~2³³).
+Genesis: `SHARES_OUT = 2⁸⁶`, `COIN_COUNT = 10,000,000,000` (10 billion).
 
 Alice holds 2⁸³ shares (1/8 of total):
 ```
@@ -82,6 +73,8 @@ fee_shares = ceil( data_bytes × FEE_RATE_num × SHARES_OUT / FEE_RATE_den )
 
 Where `FEE_RATE = FEE_RATE_num / FEE_RATE_den` is the rational fee rate from genesis.
 
+**What FEE_RATE means:** `FEE_RATE` is the fraction of `SHARES_OUT` retired per byte of recorded data. With `FEE_RATE = 1/1,000,000`, each byte retires one-millionth of all remaining shares. A 500-byte transaction retires 500/1,000,000 = 0.05% of `SHARES_OUT`. In coin terms, the fee is approximately `data_bytes × FEE_RATE × COIN_COUNT` coins — stable regardless of how many shares have been retired, because the share-to-coin ratio adjusts proportionally.
+
 ### 3.1 Deterministic Rules
 
 1. All arithmetic uses **arbitrary-precision integers** (`num-bigint`).
@@ -106,7 +99,7 @@ fee = ceil(500 × 1 × 77,371,252,455,336,267,181,195,264 / 1,000,000)
 In coins (with `COIN_COUNT = 10,000,000,000`):
 ```
 fee_coins = 38,685,626,227,668,133,590,598 × 10,000,000,000 / 77,371,252,455,336,267,181,195,264
-          ≈ 0.000005 coins (5 microcoins)
+          ≈ 5,000,000 coins (0.05% of COIN_COUNT)
 ```
 
 **Example 2:** 2000-byte assignment, same chain.
@@ -123,7 +116,7 @@ fee = ceil(500 × 38,685,626,227,668,133,590,597,632 / 1,000,000)
     = 19,342,813,113,834,066,795,299
 ```
 
-Half the shares in absolute terms, but the same fee in coins (~5 microcoins) because the share/coin ratio also halved.
+Half the shares in absolute terms, but the same fee in coins (~5,000,000 coins) because the share/coin ratio also halved.
 
 ### 3.3 Balance Equation
 
@@ -155,7 +148,7 @@ At each block, the Recorder sweeps all UTXOs. For any UTXO where `current_block_
 
 **Worked Example:**
 - Alice receives 1,000,000 shares in block at timestamp T₀.
-- `EXPIRY_PERIOD` = 1 year = `189,000,000 × 365.25 × 86,400 = 5,960,878,200,000,000` AO timestamp units.
+- `EXPIRY_PERIOD` = 1 year = `31,557,600 × 189,000,000 = 5,964,386,400,000,000` AO timestamp units.
 - At T₀ + 5,960,878,200,000,001: Alice's shares are expired and retired.
 - To prevent expiration, Alice self-assigns before the deadline (costs a recording fee).
 
@@ -234,7 +227,64 @@ The Recorder does NOT receive the fee shares — they are destroyed. The Recorde
 
 ---
 
-## 7. Invariants
+## 7. Chain Lifetime and Migration
+
+### 7.1 Share Pool Decay
+
+Because recording fees retire shares and new shares are never created, `SHARES_OUT` decays exponentially over the life of a chain. Each transaction retires a fraction of the remaining pool:
+
+```
+fraction_per_tx ≈ data_bytes / FEE_RATE_den
+```
+
+For a 500-byte transaction with `FEE_RATE = 1/1,000,000`, each transaction retires ~0.05% of `SHARES_OUT`. After N transactions:
+
+```
+SHARES_OUT_N = SHARES_OUT_0 × (1 - fraction_per_tx)^N
+```
+
+Starting at 2⁸⁶ with `COIN_COUNT = 10,000,000,000` (~2³³), nanocoin precision requires at least ~2³³ shares — a loss of 53 bits of range. The number of transactions to reach that point:
+
+```
+N ≈ 53 × ln(2) / fraction_per_tx ≈ 73,400 transactions (at 500 bytes, FEE_RATE = 1/1,000,000)
+```
+
+| Daily Transaction Rate | Approximate Years to Lose Nanocoin Precision |
+|-----------------------:|---------------------------------------------:|
+| 1 tx/day | ~201 years |
+| 10 tx/day | ~20 years |
+| 50 tx/day | ~4 years |
+| 100 tx/day | ~2 years |
+
+Share expiration and age tax accelerate this decay further, since every refresh transaction also costs a fee.
+
+### 7.2 Finite Chain Lifetime Is By Design
+
+Chains are **not intended to run forever.** A chain serves a community for a bounded period, after which share holders migrate to a successor chain. This is a feature, not a limitation:
+
+1. **Parameter re-evaluation.** Genesis parameters (`FEE_RATE`, `EXPIRY_PERIOD`, `EXPIRY_MODE`, `TAX_PARAMS`) are immutable. Migration to a successor chain is the mechanism for adjusting these parameters based on operational experience.
+
+2. **Fresh arithmetic headroom.** The successor chain starts with a full `SHARES_OUT` pool, restoring nanocoin precision for another generation.
+
+3. **Graceful transition via age tax.** Mode 2 (age tax) naturally encourages regular share refreshing. When a successor chain is announced, share holders refresh by migrating to the new chain instead of self-assigning on the old one. The age tax ensures that abandoned shares on the old chain decay to insignificance without requiring any explicit shutdown.
+
+4. **Recorder succession.** Migration is also the mechanism for transitioning to a new Recorder operator, upgrading cryptographic algorithms (via new type codes on the successor chain), or splitting/merging communities.
+
+### 7.3 Migration Process
+
+Migration from an old chain to a successor chain is an exchange operation (see [Architecture.md](Architecture.md) §3.2):
+
+1. The Recorder announces a successor chain with its genesis block and parameters.
+2. The Recorder (or a designated exchange agent) offers 1:1 coin-equivalent exchange between the old and successor chains.
+3. Share holders transfer their old-chain shares to the exchange agent and receive equivalent shares on the successor chain (minus recording fees on both chains).
+4. The age tax on the old chain ensures stragglers lose value gradually rather than being cut off abruptly. Wallet software SHOULD notify users of pending migrations.
+5. The old chain remains readable indefinitely for audit purposes, even after all shares have expired or migrated.
+
+The Recorder's choice of `FEE_RATE` and `EXPIRY_MODE` on the successor chain can reflect lessons learned — a busier-than-expected community might choose a lower `FEE_RATE` to extend chain lifetime, while a community that found expiration too aggressive might lengthen `EXPIRY_PERIOD` or adjust `TAX_PARAMS`.
+
+---
+
+## 8. Invariants
 
 These must hold at all times and are checked by Validators:
 

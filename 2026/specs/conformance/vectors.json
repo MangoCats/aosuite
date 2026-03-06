@@ -44,8 +44,8 @@
       { "value": -8191,    "wire": 16383,  "hex": "ff7f", "note": "max 2-byte negative" },
       { "value": 8192,     "wire": 16384,  "hex": "808001", "note": "first 3-byte positive" },
       { "value": -8192,    "wire": 16385,  "hex": "818001", "note": "first 3-byte negative" },
-      { "value": 1000000,  "wire": 2000000, "hex": "80a17a", "note": "3 bytes" },
-      { "value": -1000000, "wire": 2000001, "hex": "81a17a", "note": "3 bytes" }
+      { "value": 1000000,  "wire": 2000000, "hex": "80897a", "note": "3 bytes" },
+      { "value": -1000000, "wire": 2000001, "hex": "81897a", "note": "3 bytes" }
     ],
     "invalid": [
       { "hex": "01", "reason": "negative zero (wire value 1) is not permitted" }
@@ -96,8 +96,8 @@
       },
       { "value": "77371252455336267181195264",
         "byte_count": 11,
-        "magnitude_hex": "40000000000000000000000",
-        "full_hex": "0b40000000000000000000000",
+        "magnitude_hex": "4000000000000000000000",
+        "full_hex": "0b4000000000000000000000",
         "note": "~2^86 typical genesis share pool (exact: 2^86 = 4 * 2^84)"
       }
     ]
@@ -117,14 +117,14 @@
         "value": "-3/7",
         "numerator": "-3", "denominator": "7",
         "num_hex": "fd", "denom_hex": "07",
-        "full_hex": "030101fd07",
-        "note": "WRONG - need to recheck. TotalSize=3, NumSize=1, num=[fd], denom=[07]"
+        "full_hex": "0301fd07",
+        "note": "TotalSize=3, NumSize=1, num=[fd], denom=[07]"
       },
       {
         "value": "1/1000000",
         "numerator": "1", "denominator": "1000000",
         "num_hex": "01", "denom_hex": "0f4240",
-        "full_hex": "050101 0f4240",
+        "full_hex": "0501010f4240",
         "note": "TotalSize=5, NumSize=1, num=[01], denom=[0f4240]"
       },
       {
@@ -154,7 +154,7 @@
         "unix_seconds": 1704067200,
         "ao_timestamp_formula": "1704067200 * 189000000",
         "ao_timestamp": "322068700800000000",
-        "note": "verify with big integer multiplication"
+        "hex": "047837c6e874a000"
       },
       {
         "description": "2026-01-01",
@@ -162,7 +162,7 @@
         "unix_seconds": 1767225600,
         "ao_timestamp_formula": "1767225600 * 189000000",
         "ao_timestamp": "334005638400000000",
-        "note": "verify with big integer multiplication"
+        "hex": "04a2a05bc5cf4000"
       },
       {
         "description": "2026-03-06",
@@ -170,14 +170,14 @@
         "unix_seconds": 1772611200,
         "ao_timestamp_formula": "1772611200 * 189000000",
         "ao_timestamp": "335023516800000000",
-        "note": "verify with big integer multiplication"
+        "hex": "04a63e1d0e442000"
       },
       {
         "description": "1-second resolution check",
         "utc": "1970-01-01T00:00:01Z",
         "unix_seconds": 1,
         "ao_timestamp": 189000000,
-        "hex": "000000000b454600"
+        "hex": "000000000b43e940"
       }
     ]
   },
@@ -199,8 +199,8 @@
       {
         "input_utf8": "Assign Onward",
         "input_hex": "41737369676e204f6e77617264",
-        "output_hex": "COMPUTE_AT_IMPLEMENTATION",
-        "note": "project name hash - compute during Phase 1"
+        "output_hex": "94305f099f3291fac25073818585021f160a57bb996bd08f4b46cde825c7d53c",
+        "note": "project name hash"
       }
     ]
   },
@@ -256,9 +256,9 @@
         "fee_rate_num": 1,
         "fee_rate_den": 1000000,
         "shares_out": "77371252455336267181195264",
-        "numerator": "16557448025441961017175746496",
-        "expected_fee": "16557448025441961017176",
-        "note": "minimal assignment estimate from Architecture.md"
+        "numerator": "16557448025441961176775786496",
+        "expected_fee": "16557448025441961176776",
+        "note": "minimal assignment estimate from WireFormat.md §6.3"
       },
       {
         "description": "500 bytes, different fee rate",
@@ -281,7 +281,7 @@
         "receipt_unix_seconds": 1767225600,
         "expiry_period_seconds": 31557600,
         "expiry_unix_seconds": 1798783200,
-        "expiry_period_ao": "5964285600000000",
+        "expiry_period_ao": "5964386400000000",
         "note": "31557600 = 365.25 * 86400 (Julian year). Shares valid at 1798783199, expired at 1798783201."
       }
     ]

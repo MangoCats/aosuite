@@ -32,6 +32,8 @@ A change is successful and ready to commit when either:
 
 Documentation-only changes (Phase 0 specs, README updates) fall under criterion 1. Code changes (Phase 1+) require criterion 2.
 
+When a deliverable is approved, its heading in [ROADMAP.md](ROADMAP.md) is updated with the document's location in the project and the approval date (e.g., `— [specs/Architecture.md](specs/Architecture.md) ✓ 2026-03-05`).
+
 ### Commits
 
 Each successful change is committed with a message in this format:

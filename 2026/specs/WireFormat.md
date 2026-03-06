@@ -28,7 +28,7 @@ Byte layout:  [cont:7] [d6:6] [d5:5] [d4:4] [d3:3] [d2:2] [d1:1] [d0:0]
 
 Maximum: 10 bytes → 70 data bits. Values up to 2⁶³−1 are valid (we reject values ≥ 2⁶³ to keep within i64 range).
 
-**Why 10 bytes:** VBC targets 64-bit signed integers — sufficient for type codes, byte-count sizes, sequence IDs, and list counts. 10 bytes is the minimum that covers the full i64 magnitude (6 + 9×7 = 69 bits ≥ 63 needed). Values exceeding 64 bits (share amounts, coin counts) use BigInt encoding (§4) instead, which is unbounded. The 10-byte cap also guarantees bounded reads — a decoder never consumes more than 10 bytes per VBC field.
+**Why 10 bytes:** VBC targets 64-bit signed integers — sufficient for type codes, byte-count sizes, sequence IDs, and list counts. Unsigned VBC in 10 bytes carries 70 data bits; signed VBC carries 6 magnitude bits in the first byte plus 9×7 = 63 in continuation bytes, for 69 magnitude bits total — covering the full i64 range. Values exceeding 64 bits (share amounts, coin counts) use BigInt encoding (§4) instead, which is unbounded. The 10-byte cap also guarantees bounded reads — a decoder never consumes more than 10 bytes per VBC field.
 
 ### 1.2 Signed VBC
 
@@ -68,8 +68,8 @@ The wire value is then encoded as unsigned VBC. In the first byte, bit 0 is the 
 | −8191 | 16383 | `ff 7f` | Max 2-byte negative |
 | 8192 | 16384 | `80 80 01` | First 3-byte positive |
 | −8192 | 16385 | `81 80 01` | First 3-byte negative |
-| 1000000 | 2000000 | `80 a1 7a` | 3 bytes |
-| −1000000 | 2000001 | `81 a1 7a` | 3 bytes |
+| 1000000 | 2000000 | `80 89 7a` | 3 bytes |
+| −1000000 | 2000001 | `81 89 7a` | 3 bytes |
 
 **Unsigned VBC test vectors** (for sizes and byte counts):
 
@@ -153,7 +153,7 @@ Type codes are signed VBC integers. The sign distinguishes code variants (not da
 | 27 | `LIST_SIZE` | vbc-value | Count of items in a list |
 | 28 | `REFUTATION` | container | Explicit refutation of a prior agreement |
 | 29 | `PAGE_INDEX` | vbc-value | Page number within block (0-based) |
-| 30 | `AUTH_SIG` | container | Participant signature: sig + timestamp + index |
+| 30 | `AUTH_SIG` | container | Signature container (children vary by context, see §6) |
 | −1 | `EXPIRY_MODE` | vbc-value | Expiration mode (1=hard cutoff, 2=age tax) |
 | −2 | `TAX_PARAMS` | container | Age tax parameters (start age, doubling period) |
 
@@ -180,6 +180,8 @@ fn is_separable(type_code: i64) -> bool {
 ```
 
 Before signing, walk the DataItem tree and replace each separable item with a `SHA256` item (code 3) containing its SHA2-256 hash. The hash is computed over the separable item's **complete encoding** (type code + size + data).
+
+**Note on code ranges:** The bit 5 rule creates alternating 32-wide bands: |codes| 1–31 inseparable, 32–63 separable, 64–95 inseparable, 96–127 separable, etc. All A1 type codes fall in the 1–63 range. Future type codes must be assigned with this pattern in mind.
 
 ---
 
@@ -249,15 +251,15 @@ Rational = TotalSize(unsigned VBC) + NumSize(unsigned VBC) + Numerator(big-endia
 
 Timestamps encode UTC time as `Unix_seconds × 189,000,000` in an **8-byte big-endian signed integer**.
 
-The multiplier 189,000,000 = 2³ × 3³ × 5⁶ × 7 provides ~5.29 ns resolution and clean division by any integer 2–10.
+The multiplier 189,000,000 = 2⁶ × 3³ × 5⁶ × 7 provides ~5.29 ns resolution and clean division by any integer 2–10.
 
 ### 5.1 Timestamp Test Vectors
 
 | Description | UTC | Unix Seconds | AO Timestamp | Hex (8 bytes BE) |
 |:---|:---|---:|---:|:---|
 | Epoch | 1970-01-01T00:00:00Z | 0 | 0 | `00 00 00 00 00 00 00 00` |
-| 2026-01-01 | 2026-01-01T00:00:00Z | 1767225600 | 334005398400000000 | `04 a3 16 76 0d 44 00 00` |
-| 2026-03-06 | 2026-03-06T00:00:00Z | 1772611200 | 335023516800000000 | `04 a6 ec 53 73 44 00 00` |
+| 2026-01-01 | 2026-01-01T00:00:00Z | 1767225600 | 334005638400000000 | `04 a2 a0 5b c5 cf 40 00` |
+| 2026-03-06 | 2026-03-06T00:00:00Z | 1772611200 | 335023516800000000 | `04 a6 3e 1d 0e 44 20 00` |
 
 ### 5.2 Monotonicity
 
@@ -296,13 +298,14 @@ BLOCK (11)
 │   │               ├── ED25519_SIG (2): 64-byte signature
 │   │               ├── TIMESTAMP (5): time of signing
 │   │               └── PAGE_INDEX (29): participant index
-│   ├── AUTH_SIG (30) [block maker signature]
-│   │   ├── ED25519_SIG (2)
-│   │   ├── TIMESTAMP (5)
-│   │   └── ED25519_PUB (1): block maker's public key
-│   └── ED25519_PUB (1): block maker's public key
+│   └── AUTH_SIG (30) [block maker signature]
+│       ├── ED25519_SIG (2)
+│       ├── TIMESTAMP (5)
+│       └── ED25519_PUB (1): block maker's public key
 └── SHA256 (3): hash of BLOCK_SIGNED encoding
 ```
+
+**AUTH_SIG children vary by context:** Within AUTHORIZATION, each `AUTH_SIG` contains `ED25519_SIG` + `TIMESTAMP` + `PAGE_INDEX` (identifying which participant signed). The block maker's `AUTH_SIG` contains `ED25519_SIG` + `TIMESTAMP` + `ED25519_PUB` (the block maker's public key). Implementations should dispatch on parent container type to determine expected children.
 
 ### 6.1 Genesis Block
 
@@ -314,21 +317,24 @@ GENESIS (15)
 ├── CHAIN_SYMBOL (21): e.g., "BCG"
 ├── DESCRIPTION (34): chain description [separable]
 ├── ICON (35): chain icon [separable]
-├── COIN_COUNT (18): display coins (e.g., ~2⁸³)
+├── COIN_COUNT (18): display coins (e.g., 10,000,000,000)
 ├── SHARES_OUT (23): initial shares (e.g., ~2⁸⁶)
 ├── FEE_RATE (19): recording fee rate (rational)
 ├── EXPIRY_PERIOD (20): share expiration period
 ├── EXPIRY_MODE (-1): hard cutoff (1) or age tax (2)
+├── TAX_PARAMS (-2) [if EXPIRY_MODE = 2]
+│   ├── TIMESTAMP (5): TAX_START_AGE (timestamp delta)
+│   └── TIMESTAMP (5): TAX_DOUBLING_PERIOD (timestamp delta)
 ├── PARTICIPANT (10) [issuer — receives all initial shares]
 │   ├── ED25519_PUB (1): issuer's public key
 │   └── AMOUNT (6): = SHARES_OUT
 ├── AUTH_SIG (30) [issuer's signature]
 │   ├── ED25519_SIG (2)
 │   └── TIMESTAMP (5)
-└── SHA256 (3): hash of genesis content
+└── SHA256 (3): hash of all preceding genesis content
 ```
 
-The chain ID is the SHA2-256 hash of the complete genesis block encoding.
+The trailing `SHA256` is computed over the complete encoding of all items within the `GENESIS` container **except** the `SHA256` item itself. The **chain ID** is this hash value — equivalently, the SHA2-256 hash of the genesis block encoding with the trailing hash item excluded.
 
 ### 6.2 Signature Construction
 

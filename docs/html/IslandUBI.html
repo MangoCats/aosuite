@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<!--
+ MIT License
+
+ Copyright (c) 2018 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+
+<meta charset="UTF-8"/>
+<title>Island UBI</title>
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+
+<img src="AO.png" alt="&#x24B6;" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Island UBI: The Tax Loop</h1>
+
+<span itemprop="articleBody">
+
+In December 2025, the Republic of the Marshall Islands launched the world's first blockchain-based universal basic income program. Every citizen receives about US$200 per quarter, delivered through the Lomalo digital wallet app. The program is real, it is funded, and it is running. This story imagines what happens next: how a small island nation could use Assign Onward to turn one-way benefit distribution into a self-sustaining local economy.<br/><br/>
+
+<h2>Nalu's Atoll</h2>
+
+Nalu lives on Likiep, one of the outer atolls of the Marshall Islands. About 400 people live on the atoll, scattered across a handful of islets connected by shallow reef passages. The nearest bank branch is on Majuro, a 90-minute flight away. There is no ATM on Likiep. Mail delivery is sporadic. Cell coverage works most of the time, but bandwidth is thin&mdash;video calls are a luxury, and anything that requires a persistent high-speed connection is unreliable.<div class="tooltip"><sup>*</sup><span class="tooltiptext">Satellite internet is available but expensive and intermittent. Many outer atoll households share a single connection. This is exactly the kind of environment where aosuite's wire format&mdash;designed for LoRa mesh at 22 kbps&mdash;provides an advantage over systems that assume always-on broadband.</span></div><br/><br/>
+
+Nalu is a fisherman. He catches tuna, reef fish, and octopus. He sells what he can locally, trades some with his neighbors for breadfruit and copra, and occasionally ships coolers of fish to Majuro on the weekly supply boat. He has never had a bank account. His income is irregular, undocumented, and invisible to any financial institution.<br/><br/>
+
+When the ENRA program started, Nalu received his first UBI payment: US$200 deposited into a Lomalo wallet on his phone. He was pleased but uncertain. The money was there on his screen, but what could he actually do with it on Likiep? There's no store that accepts digital payments. The copra trader pays cash. The supply boat captain wants cash for freight. The tokens sit in Nalu's wallet like a claim check with no counter to present it at.<br/><br/>
+
+<h2>Tia's Idea</h2>
+
+Tia runs the small general store on Likiep&mdash;the only one. She stocks rice, canned goods, fuel, fishing line, and the supplies that come in on the weekly boat from Majuro. She extends credit to most families on the atoll, keeping track of who owes what in a ruled notebook. Some debts get repaid. Some don't. Tia absorbs the losses because that's how island life works, but it strains her ability to restock.<div class="tooltip"><sup>*</sup><span class="tooltiptext">Informal credit networks are the backbone of commerce in Pacific island communities. The storekeeper extends credit against future copra sales, fishing catches, or government payments. The problem is not that the system doesn't work&mdash;it does, through social trust&mdash;but that it's invisible, unverifiable, and provides no basis for Tia to get a loan from a bank to improve her store.</span></div><br/><br/>
+
+Tia's nephew Mako works for the IT department on Majuro. He's heard about the Assign Onward pilot in the Caribbean, where beach vendors use independent blockchains to record transactions. He tells Tia: "Aunty, you could run your own chain. Every sale, every credit extension, every repayment&mdash;all on a record that everyone can see. And you could accept those ENRA tokens that everyone has sitting in their wallets."<br/><br/>
+
+Mako sets up a Raspberry Pi in Tia's store, connected to her satellite internet. He creates <b>Tia's General Store</b> (TGS) chain. One TGS credit equals one US dollar of store goods. He also sets up Mako as the exchange agent between the government ENRA chain and Tia's TGS chain, running on the same Pi.<br/><br/>
+
+<h2>The First Transaction</h2>
+
+Nalu walks into Tia's store on a Tuesday. He needs a new fishing reel (US$35) and a bag of rice (US$12). He has US$200 in ENRA tokens and no cash. Tia pulls up her AOS vendor app on a tablet behind the counter.<br/><br/>
+
+Nalu opens his Lomalo wallet.<div class="tooltip"><sup>*</sup><span class="tooltiptext">In a full deployment, Nalu's wallet could be the AOE app directly, capable of interacting with both the government ENRA chain and local vendor chains. For this story, we assume the ENRA tokens are bridged through Mako's exchange agent to Tia's TGS chain. The user experience for Nalu is: open wallet, tap pay, done.</span></div> He sends 47 ENRA tokens to Mako's exchange address. Mako's exchange agent automatically credits Nalu with 47 TGS on Tia's chain (at par&mdash;Mako takes no spread for now because he wants to get the system started). Tia's AOS app shows the incoming 47 TGS from Nalu. She hands him the reel and the rice.<br/><br/>
+
+For the first time in the history of Likiep atoll, a retail purchase has been recorded on a transparent, verifiable ledger. Nalu has a receipt on his phone. Tia has an auditable sale in her books. The government's UBI tokens have been converted into actual commerce.<br/><br/>
+
+<h2>The Credit Book Goes Digital</h2>
+
+Within a few weeks, families on the atoll start using TGS credits at Tia's store. Some pay with ENRA tokens. Some pay with fish&mdash;Tia accepts reef fish at a fair market price and issues TGS credits in return, which the fisherman can spend at the store later. Tia's old notebook still sits on the counter, but now the numbers in it match the numbers on her chain. When Jojo owes Tia US$30 and brings in a cooler of tuna worth US$45, the transaction is recorded: Jojo's debt cleared, plus US$15 in TGS credit.<br/><br/>
+
+Something surprising happens: people start paying off old debts. When the credit book was private&mdash;just Tia's word against yours&mdash;there was a social temptation to let debts slide. Now that the ledger is transparent, the social incentive reverses. Nobody wants to be the person whose outstanding debt is visible to the whole atoll.<div class="tooltip"><sup>*</sup><span class="tooltiptext">This is the transparency effect that the original Assign Onward design documents predicted but couldn't prove. Transparency creates accountability not through enforcement but through social visibility. On a small atoll where everyone knows everyone, a public ledger is a powerful behavioral nudge.</span></div><br/><br/>
+
+<h2>The Tax Loop</h2>
+
+Six months later, the national government introduces a modest goods-and-services levy<div class="tooltip"><sup>*</sup><span class="tooltiptext">The IMF and PFTAC have been pushing the Marshall Islands to implement a broad-based VAT. When this happens&mdash;likely in 2026 or 2027&mdash;the government will need a way to collect it from remote atolls where there are no bank branches and no tax offices. A blockchain-based collection mechanism that integrates with the existing ENRA distribution chain is a natural fit.</span></div> of 5% on retail goods. Tia now needs to remit tax to the government. In the old cash economy, this was nearly impossible to enforce on outer atolls&mdash;how do you audit a ruled notebook? But now Tia's sales are on-chain. The tax obligation is calculated automatically. And Tia can pay it by transferring ENRA-denominated tokens back to the government's chain.<br/><br/>
+
+The loop closes:<br/><br/>
+
+<ol>
+<li><b>Government distributes</b> US$200 in ENRA tokens to every citizen, including Nalu.</li>
+<li><b>Nalu spends</b> ENRA tokens at Tia's store, converting them to TGS credits via Mako's exchange.</li>
+<li><b>Tia accumulates</b> TGS credits backed by ENRA inflows, which she converts back to ENRA tokens through Mako.</li>
+<li><b>Tia remits</b> 5% of her sales revenue as ENRA tokens back to the government's tax chain.</li>
+<li><b>Government recirculates</b> tax revenue into next quarter's ENRA distribution.</li>
+</ol>
+
+Every step is transparent. The government can verify that Tia collected and remitted the correct tax. Tia can verify that her tax payment was received. Nalu can verify that his UBI was distributed fairly. And the entire economy of Likiep atoll&mdash;previously invisible to any financial system&mdash;now has a verifiable, auditable record.<br/><br/>
+
+<h2>What Nalu Gets</h2>
+
+<ul>
+<li><b>His UBI actually works.</b> Instead of tokens sitting unused in a wallet, Nalu can buy fishing supplies, rice, and fuel at the only store on his atoll.</li>
+<li><b>His catch has a recorded value.</b> When Nalu sells fish to Tia, the transaction creates a record. Over months, this builds into a documented income history&mdash;something Nalu has never had.</li>
+<li><b>Credit access becomes possible.</b> After a year of documented fishing income on-chain, Nalu could approach a microfinance institution for a boat repair loan. The lender can verify Nalu's income directly from the chain, without requiring the bank statements and pay stubs that Nalu has never had.</li>
+<li><b>Remittances connect directly.</b> Nalu's daughter works in Honolulu. When she sends money home, instead of paying Western Union 8-10% to wire cash that Nalu has to travel to Majuro to collect, she can send ENRA-compatible tokens directly to Nalu's wallet. The money arrives instantly and Nalu can spend it at Tia's store the same day.</li>
+</ul>
+
+<h2>What Tia Gets</h2>
+
+<ul>
+<li><b>Verifiable business records</b> that she can show to a wholesale supplier when negotiating better terms, or to a bank when seeking a loan to expand her store.</li>
+<li><b>Automated tax compliance</b> that doesn't require a trip to Majuro or an accountant.</li>
+<li><b>Reduced credit risk</b> from the transparency effect: customers are more likely to repay when the ledger is public.</li>
+<li><b>A digital payment system</b> that works on her atoll's intermittent satellite connection, because the wire format was designed for exactly this kind of constrained network.</li>
+</ul>
+
+<h2>What the Government Gets</h2>
+
+<ul>
+<li><b>UBI tokens that circulate</b> instead of sitting dormant. Velocity means the same dollar of UBI generates multiple transactions of economic activity before returning as tax revenue.</li>
+<li><b>Tax collection from remote atolls</b> that was previously impossible to enforce.</li>
+<li><b>Transparent audit trail</b> for donor reporting. The Marshall Islands' Compact Trust Fund is backed by US taxpayer money. The ability to demonstrate exactly how UBI funds flow through the economy&mdash;from distribution to spending to tax return&mdash;is a powerful accountability tool for maintaining donor confidence.</li>
+<li><b>Economic data</b> from previously invisible informal economies. For the first time, the government can see actual commercial activity on outer atolls, enabling better policy decisions about infrastructure investment, supply routes, and public services.</li>
+</ul>
+
+<h2>The Low-Bandwidth Advantage</h2>
+
+Most blockchain systems assume reliable broadband internet. On Likiep, the satellite link drops out during storms, overloads during school hours when kids are doing homework, and costs more per megabyte than anywhere in the continental US. This is where aosuite's design for wire-format thrift matters in practice.<br/><br/>
+
+A typical Assign Onward transaction&mdash;one share assignment with signatures&mdash;is a few hundred bytes. At LoRa mesh speeds (22 kbps), that's under one second to transmit. Even on a degraded satellite link, transactions complete in moments. A full day's activity on Tia's chain might be 50-100 transactions, totaling a few tens of kilobytes. The entire chain could be synchronized between Mako's Pi and a backup server on Majuro using the bandwidth of a single low-resolution photo.<br/><br/>
+
+In an emergency&mdash;typhoon, cable cut, satellite failure&mdash;a Meshtastic LoRa node<div class="tooltip"><sup>*</sup><span class="tooltiptext">A Meshtastic node costs about US$30 for the hardware, runs on a battery or small solar panel, and provides peer-to-peer messaging over several kilometers. A chain of relay nodes across the atoll could provide transaction capability even when all internet connectivity is lost. This was a design requirement from the original Assign Onward specification, not an afterthought.</span></div> on each islet could relay transactions across the atoll entirely off-grid. Tia's store could keep operating&mdash;accepting payments, extending credit, recording sales&mdash;while the rest of the world's digital payment infrastructure is down. When connectivity returns, the local chain syncs up with the cloud backup automatically.<br/><br/>
+
+<h2>Replication</h2>
+
+Likiep has 400 people. The Marshall Islands has about 42,000 across 29 atolls. If the Likiep pilot works, the model replicates to every atoll with a store and a Pi. The government doesn't need to build bank branches on every atoll&mdash;it needs one motivated storekeeper, one exchange agent (who might be the same person), and a US$80 computer.<br/><br/>
+
+Beyond the Marshalls, the same pattern applies wherever governments distribute benefits to dispersed populations with limited banking infrastructure:<br/><br/>
+
+<ul>
+<li><b>Tonga</b> (remittances = 40% of GDP, 170 islands)</li>
+<li><b>Samoa</b> (remittances = 30% of GDP)</li>
+<li><b>Dominica</b> (already deployed the MLajan mobile wallet post-hurricane)</li>
+<li><b>Vanuatu</b> (83 islands, 15% GDP from remittances)</li>
+</ul>
+
+In each case, the same elements apply: government distribution seeds the economy with tokens, local vendors give the tokens somewhere to go, and tax acceptance creates the demand that closes the loop. The flywheel spins because every participant gets something they didn't have before: Nalu gets usable benefits, Tia gets business records, the government gets tax compliance and economic visibility.<br/><br/>
+
+The historical precedent is clear. The Bristol Pound (2012-2021) demonstrated that a local currency accepted for tax payment achieves merchant adoption that purely voluntary currencies do not. El Salvador (2021-2025) demonstrated that top-down mandates without local commerce infrastructure fail. The Assign Onward model combines the insight from both: government distribution for cold start, local vendor chains for utility, and tax acceptance for permanence.<br/><br/>
+
+</span>
+
+</div>
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2026-03-07"><div class="tooltip">7 March 2026<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2018 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+</div>
+
+</body></html>

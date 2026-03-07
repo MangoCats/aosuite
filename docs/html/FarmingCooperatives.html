@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<!--
+ MIT License
+
+ Copyright (c) 2018 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+
+<meta charset="UTF-8"/>
+<title>Farming Cooperatives</title>
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+
+<img src="AO.png" alt="&#x24B6;" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Farming Cooperatives: Amara's Harvest</h1>
+
+<span itemprop="articleBody">
+
+Rita's mango tree in the <a href="IslandLife.html">Island Life</a> story was the first sketch of how Assign Onward could work for agricultural producers. This story takes that idea to where it's needed most: a farming cooperative in rural Kenya, where 450 million smallholder farmers across Sub-Saharan Africa produce 80% of the continent's food but have almost no access to formal credit, transparent accounting, or fair market pricing.<br/><br/>
+
+<h2>The Kiambu Cooperative</h2>
+
+Amara grows tomatoes and kale on a half-acre plot outside Kiambu, about 15 kilometers from Nairobi. She's a member of the Riuki Farmers' Cooperative&mdash;a Sacco<div class="tooltip"><sup>*</sup><span class="tooltiptext">Sacco: Savings and Credit Co-operative. Kenya has over 15,000 registered Saccos with more than 14 million members. They are the primary savings and credit vehicle for most rural Kenyans. The legal framework for Saccos is well-established under the Sacco Societies Regulatory Authority (SASRA).</span></div> with about 60 member farmers, mostly growing vegetables for the Nairobi market. The cooperative pools transport to get produce to the Wakulima wholesale market, negotiates with buyers as a group, and manages a small revolving fund for seeds and fertilizer.<br/><br/>
+
+The cooperative's books are kept by the treasurer, Benson, in a ledger book and a spreadsheet on his phone. Members contribute a portion of each sale to the cooperative fund. The cooperative buys inputs in bulk and distributes them to members. At the end of each season, profits are supposed to be shared proportionally.<br/><br/>
+
+The problem is trust. Not because Benson is dishonest&mdash;he's not&mdash;but because the accounting is opaque. When Amara delivers 200 kilos of tomatoes to the cooperative truck and the truck returns from Wakulima market with KES 18,000 for the load, she has no way to verify what price was actually achieved, what the transport cost was, or whether her share of the proceeds is correct. She trusts Benson, mostly, but she's heard stories from other cooperatives where treasurers skimmed, where transport costs were inflated, where members' contributions disappeared.<div class="tooltip"><sup>*</sup><span class="tooltiptext">This is not hypothetical. A 2023 survey by the Kenya National Bureau of Statistics found that 34% of Sacco members reported concerns about financial transparency. The Sacco Societies Regulatory Authority deregistered over 200 Saccos between 2020 and 2024 for governance failures, many involving misappropriation of member funds.</span></div><br/><br/>
+
+Amara also has no way to get a bank loan. Kenya Commercial Bank will lend to farmers, but they want collateral, financial statements, and documented income. Amara has a half-acre plot (no title deed&mdash;it's family land), a handful of M-Pesa receipts from selling vegetables at the roadside, and Benson's word that she's a reliable cooperative member. The bank says come back with records.<br/><br/>
+
+<h2>Wanjiku Brings the Idea</h2>
+
+Wanjiku is Amara's daughter. She works in Nairobi as a software developer and she's been following the Assign Onward project since she read about the Caribbean tourism pilot. She realizes that the <a href="IslandLife.html">Island Life</a> model&mdash;small independent chains representing real goods from specific producers, joined through exchange agents&mdash;is exactly what her mother's cooperative needs.<br/><br/>
+
+Wanjiku spends a weekend at the cooperative's meeting hall with a Raspberry Pi, a solar battery pack, and a Safaricom SIM card for data. She sets up the Riuki Cooperative recording server and creates three types of chains:<br/><br/>
+
+<b>1. Individual farmer chains.</b> Each member gets their own chain representing their production. Amara's chain is <b>AFT: Amara's Farm Tomatoes</b>. At the start of the season, Amara issues shares representing her expected harvest&mdash;say, 2,000 kilos of tomatoes. The shares don't promise delivery on a specific date; they represent Amara's production capacity for the season, similar to how Rita's mango credits represent the right to buy mangoes when they're available.<br/><br/>
+
+<b>2. The cooperative chain.</b> <b>RCC: Riuki Cooperative Credits</b> represents the cooperative's pooled resources and shared services. When members contribute produce for the cooperative truck to sell at Wakulima, the transaction is recorded on both the individual farmer's chain (outgoing tomatoes) and the RCC chain (incoming produce for sale). When the truck returns with payment, the distribution is recorded on-chain: exactly how much was sold, at what price, minus verifiable transport costs, with each member's share calculated transparently.<br/><br/>
+
+<b>3. An exchange chain.</b> <b>MPC: M-Pesa Credits</b> bridges between the on-chain cooperative economy and Kenya's ubiquitous M-Pesa mobile money system. Wanjiku acts as the initial exchange agent, converting between MPC and M-Pesa at par.<div class="tooltip"><sup>*</sup><span class="tooltiptext">M-Pesa penetration in Kenya is 91% of adults. Any viable system for rural Kenya must interoperate with M-Pesa, not compete with it. The exchange agent role converts between the cooperative's transparent on-chain records and the M-Pesa rails that connect to the broader Kenyan economy.</span></div><br/><br/>
+
+<h2>Planting Season</h2>
+
+April is planting season. Amara needs KES 15,000 (about US$115) for seeds, fertilizer, and irrigation supplies. In previous years, she would ask Benson for an advance from the cooperative revolving fund, and Benson would write it in his ledger. This year, the transaction is different:<br/><br/>
+
+Amara opens her AOE app and submits a request to the cooperative fund: "15,000 MPC for planting inputs." The cooperative's governance process&mdash;a vote of the management committee&mdash;approves the advance. The 15,000 MPC transfer from the RCC fund to Amara's key is recorded on the RCC chain, visible to all members. Amara converts the MPC to M-Pesa through Wanjiku's exchange and buys her supplies at the agrovet in Kiambu town.<br/><br/>
+
+The advance is recorded as a lien against Amara's AFT chain: she owes the cooperative 15,000 MPC worth of tomatoes from her harvest, to be repaid before she receives her share of cooperative profits. Every member can see this. Every member's advances are similarly visible. Benson's job just got easier and harder simultaneously: easier because the math does itself, harder because there's nowhere to hide a mistake.<br/><br/>
+
+<h2>Harvest</h2>
+
+Three months later, Amara's tomatoes are ready. She picks 180 kilos on a Thursday and delivers them to the cooperative collection point. The receiving clerk&mdash;a member named Ouma who volunteers for the role in rotation&mdash;weighs the tomatoes and records the delivery on Amara's AFT chain: 180 kilos, Grade A, received 7:15 AM Thursday. Amara gets a notification on her phone confirming the entry.<br/><br/>
+
+The cooperative truck takes Amara's tomatoes along with produce from eleven other members to Wakulima market. The driver, Joseph, sells the load to a wholesaler for KES 42 per kilo&mdash;a decent price. Here's where transparency changes everything:<br/><br/>
+
+<ol>
+<li>Joseph records the sale on-chain: 180 kg of Amara's tomatoes at KES 42/kg = KES 7,560.</li>
+<li>Transport cost (fuel, market fees, Joseph's time) is recorded on the RCC chain: KES 800 allocated to Amara's portion of the load, proportional to weight.</li>
+<li>Cooperative commission (5% for the revolving fund): KES 378.</li>
+<li>Advance repayment: KES 2,500 (partial repayment of her 15,000 MPC planting advance).</li>
+<li>Net to Amara: KES 3,882, transferred as MPC to her wallet.</li>
+</ol>
+
+Amara can see every line item. She can verify that the wholesale price Joseph recorded matches the market rate&mdash;because other cooperative members' tomatoes sold at the same price in the same transaction, and the total adds up to the amount the wholesaler paid. She can see that transport costs are shared fairly across all members whose produce was on the truck. She can see exactly how much of her advance she's paid off and how much she still owes.<br/><br/>
+
+Compare this with last year, when Joseph came back from market, handed some cash to Benson, Benson wrote some numbers in his ledger, and Amara got an M-Pesa transfer for an amount she had to take on faith.<div class="tooltip"><sup>*</sup><span class="tooltiptext">Middleman price manipulation is endemic in East African agricultural markets. Studies show that transparent price reporting&mdash;even just SMS-based market price alerts&mdash;improves farmer prices by 5-12%. A fully transparent on-chain record of actual sale prices, shared across all cooperative members, is a much stronger tool.</span></div><br/><br/>
+
+<h2>Pre-Season Investment</h2>
+
+This is where the system begins to resemble Rita's mango futures from the original design. Once Amara has a season of on-chain production history, her AFT chain becomes something an outside investor can evaluate.<br/><br/>
+
+Amara's brother James works in Dubai. Every month he sends KES 10,000 home through M-Pesa, and the family uses it for school fees, medical bills, and household expenses. But James has been wanting to invest in something back home. He doesn't trust the stock market and he can't monitor a rental property from Dubai.<br/><br/>
+
+With Amara's AFT chain, James can see exactly what his sister produced last season, what prices she achieved, and how reliable she was in meeting her commitments. He decides to buy KES 30,000 worth of shares in Amara's next season&mdash;essentially pre-purchasing her tomatoes at a discount. Amara gets working capital before planting season, and James gets a claim on a portion of the harvest, sold at market price, with the profit (or loss) transparent on-chain.<br/><br/>
+
+This is not charity. It's not a gift. It's a documented investment in a verifiable productive enterprise. James can see the return on his investment in real time as Amara's harvest is sold. If the season goes well, he earns a return. If drought or disease hits, the loss is documented transparently&mdash;no suspicion that Amara pocketed the money.<div class="tooltip"><sup>*</sup><span class="tooltiptext">This addresses a real pain point in remittance economies. The World Bank estimates that only 10-15% of remittances to Africa are used for productive investment; the rest goes to consumption. Families want to invest but lack transparent, accountable vehicles. A farming chain with on-chain production records provides exactly the accountability that diaspora investors need.</span></div><br/><br/>
+
+<h2>The Cooperative as a Federation</h2>
+
+The Riuki Cooperative is now a federation of 60 individual farmer chains, one cooperative chain, and one exchange chain&mdash;all running on a single Raspberry Pi with a cloud backup on a KES 500/month VM in Nairobi. Each farmer's chain is independent: Amara's tomato chain, Kwame's cabbage chain, Fatuma's spinach chain, Peter's maize chain. The cooperative chain records shared transactions: collective sales, input purchases, transport costs, profit distributions.<br/><br/>
+
+Victor's role from the Island Life story maps to the cooperative's auditor. Once a month, the validator rolls up all chain hashes and anchors them to a public chain. The county agricultural officer can verify the cooperative's records for compliance purposes. A microfinance institution evaluating the cooperative for a larger loan can audit the entire operation from the on-chain records.<br/><br/>
+
+<h2>What Amara Gets</h2>
+
+<ul>
+<li><b>Verified income history.</b> After two seasons on-chain, Amara has a documented record of production, sales, and income that any lender can verify. She can finally apply for a bank loan.</li>
+<li><b>Fair market prices.</b> Transparent sale records across the cooperative make it impossible for middlemen to underreport prices. Research shows this alone can improve farmer income by 12%.</li>
+<li><b>Access to diaspora investment.</b> Her brother's remittances become productive capital, not just consumption support.</li>
+<li><b>Cooperative accountability.</b> She can verify that the cooperative's books are correct, that her contributions are recorded, and that profit sharing is fair.</li>
+</ul>
+
+<h2>What the Cooperative Gets</h2>
+
+<ul>
+<li><b>Trust.</b> The single most important thing. When every transaction is visible, members don't leave because they suspect corruption. Cooperatives that retain members and grow are cooperatives that build collective bargaining power.</li>
+<li><b>Auditable books</b> for regulatory compliance (SASRA oversight), donor reporting (if NGO-funded), and commercial credibility (bulk buyer contracts).</li>
+<li><b>Working capital access.</b> A cooperative with two years of on-chain records can approach Kenya Commercial Bank or a microfinance institution with verifiable financials&mdash;not a handwritten ledger.</li>
+<li><b>Automated accounting.</b> Transport cost allocation, commission calculation, advance tracking, and profit distribution happen on-chain instead of in Benson's spreadsheet.</li>
+</ul>
+
+<h2>What the Buyer Gets</h2>
+
+The wholesaler at Wakulima market, and ultimately the supermarket chain or restaurant that buys from them, gets provenance. When Amara's tomatoes travel from her plot to a Nairobi Carrefour shelf, the entire chain of custody is on the record: who grew them, when they were harvested, how they were transported, what inputs were used. This is the supply-chain transparency that the blockchain industry has been promising for years but has only delivered for luxury goods and pharmaceuticals.<div class="tooltip"><sup>*</sup><span class="tooltiptext">The global blockchain-in-agriculture market is growing at 36% CAGR (2025-2035). But current solutions target large commercial farms and international supply chains. Nothing exists for the smallholder cooperative level. This is a gap of approximately 450 million producers.</span></div><br/><br/>
+
+As Kenya's agricultural export sector grows&mdash;tea, coffee, avocados, flowers for European markets&mdash;the demand for verifiable supply chain records will intensify. EU regulations increasingly require provenance documentation. A cooperative with on-chain records from farm to market is positioned to access premium export channels that cooperatives with paper records cannot.<br/><br/>
+
+<h2>Handling Bad Harvests</h2>
+
+Agriculture is risky. Drought, pest, flood&mdash;any of these can destroy a season. This is where share expiration and the validator become critical.<br/><br/>
+
+In February, an unexpected hailstorm destroys 60% of Amara's tomato crop. The damage is documented: Ouma inspects the plot and records the loss on Amara's AFT chain, with photos stored as separable items. Victor's validator flags the event. James, watching from Dubai, can see exactly what happened. Amara's outstanding shares represent 2,000 kilos of expected production, but she can only deliver about 800 kilos.<br/><br/>
+
+The shares that represent the destroyed crop lose value&mdash;there's less harvest to redeem them against. But the loss is documented, transparent, and verifiable. Compare this with the old system, where Amara would simply tell Benson "the harvest was bad" and Benson would write a number in his ledger. No verification, no documentation, no basis for crop insurance claims or disaster relief.<br/><br/>
+
+Over time, as farmers build multi-season on-chain histories of both good and bad harvests, the data becomes the foundation for actuarial assessment. An insurance provider can calculate risk from actual historical records rather than regional averages. This is the beginning of affordable crop insurance for smallholders&mdash;something that currently covers less than 3% of African farmers.<br/><br/>
+
+<h2>Scaling the Model</h2>
+
+Kenya has over 15,000 registered Saccos. If the Riuki pilot works, the model replicates to any cooperative that has a motivated member with a smartphone, a Raspberry Pi or cheap laptop, and mobile data coverage. The recording server costs less than a bag of fertilizer. The exchange agent role can be filled by the cooperative treasurer, the local M-Pesa agent, or a dedicated community member.<br/><br/>
+
+Beyond Kenya, the same pattern applies across Sub-Saharan Africa:<br/><br/>
+
+<ul>
+<li><b>Ghana:</b> Cocoa cooperatives supplying Fairtrade-certified beans. On-chain records from tree to export container.</li>
+<li><b>Rwanda:</b> Coffee washing stations serving smallholder growers. Rwanda's government is the most digitally progressive in East Africa.</li>
+<li><b>Tanzania:</b> Cross-border trade cooperatives moving goods between Dar es Salaam and Nairobi.</li>
+<li><b>Nigeria:</b> The continent's largest agricultural sector and largest crypto market. Cassava, yam, and palm oil cooperatives.</li>
+</ul>
+
+In each case, the value proposition is the same: transparent accounting builds trust, trust retains cooperative members, retained members build bargaining power, bargaining power improves prices, documented prices build credit history, credit history unlocks finance, finance enables investment, and investment grows the harvest. The chain of cause and effect is long, but each link is concrete, and the first link&mdash;transparent accounting&mdash;is exactly what Assign Onward provides.<br/><br/>
+
+</span>
+
+</div>
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2026-03-07"><div class="tooltip">7 March 2026<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2018 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+</div>
+
+</body></html>

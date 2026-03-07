@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<!--
+ MIT License
+
+ Copyright (c) 2018 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+
+<meta charset="UTF-8"/>
+<title>Tourism Vendors</title>
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+
+<img src="AO.png" alt="&#x24B6;" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Tourism Vendors: Sandy Ground Market</h1>
+
+<span itemprop="articleBody">
+
+This story follows the <a href="IslandLife.html">Island Life</a> characters into a pilot deployment where a cluster of beach vendors replace credit card terminals with Assign Onward chains. It illustrates how the system works for a tourist arriving by cruise ship, the vendors who serve her, and the exchange agent who bridges between tourist money and local vendor credit.<br/><br/>
+
+<h2>The Problem on the Ground</h2>
+
+It's a Friday morning in January and the Odyssey is pulling into the harbor. There are about 3,000 guests aboard and maybe 400 of them will make it up to Sandy Ground over the course of the day. Bob has his grill cart set up at Eddie's bar. Down the beach, Patrice sells handmade jewelry from a folding table and Lucia runs kayak rentals out of a shed. On the road above, Sharon is waiting for taxi fares.<br/><br/>
+
+Every one of them loses money to the payment system. Bob managed to get a card terminal last year through a local bank. It costs him EC$50 a month in fees, plus 3.2% of every card transaction.<div class="tooltip"><sup>*</sup><span class="tooltiptext">That 3.2% is the blended merchant discount rate for international credit cards in the Caribbean, which includes interchange (1.5-2.0%), cross-border assessment (0.6-1.0%), and acquirer markup. On a US$10 plate of curry goat, Bob loses about 32 cents.</span></div> Settlement takes three to five business days, which means the cash from Friday's cruise ship doesn't reach Bob's account until Wednesday at the earliest. Patrice and Lucia don't have terminals at all&mdash;the bank wouldn't give them one because their monthly volume is too low to justify the fixed costs. They're cash-only, which means they miss sales from tourists who don't carry cash, and they have to make change from a cigar box.<br/><br/>
+
+Then there are chargebacks. Last month a guest bought EC$200 worth of jewelry from Patrice's cousin Marie, paid by card through Marie's terminal, went home to Florida, and filed a chargeback claiming the jewelry was "not as described." Marie lost the jewelry, the EC$200, and got hit with a EC$50 chargeback fee on top. Total cost: EC$250 and a piece of handmade silver. The card company didn't ask Marie's side of the story.<div class="tooltip"><sup>*</sup><span class="tooltiptext">Chargeback fraud ("friendly fraud") accounts for 61-75% of all chargebacks globally. The average cost to a merchant is US$191 per incident. For a beach vendor selling $200/day, a single chargeback can wipe out a week's profit.</span></div><br/><br/>
+
+<h2>Charlie Steps Up</h2>
+
+Charlie the launch captain has been watching Bob's blockchain experiment with Eddie for months now. He's seen how the recording fees are fractions of a cent per transaction instead of percentage cuts, how settlement is instant, and how transactions are final&mdash;no chargebacks because the buyer received what they paid for at the point of sale.<br/><br/>
+
+Charlie proposes something to the Sandy Ground vendors: he'll act as the exchange agent. He already has a relationship with every guest who rides his launch from the cruise ship to the beach&mdash;he's their first point of contact on the island. Here's how it works:<br/><br/>
+
+<b>Charlie's Exchange Service (CCC: Charlie's Cruise Credits)</b><br/><br/>
+
+Charlie sets up his own chain. One CCC equals one Eastern Caribbean dollar. He accepts payment from tourists via credit card, cash, or mobile payment apps&mdash;whatever they've got. In return, he sends them CCC tokens on their phones through the AOE app. Charlie absorbs the credit card fee on his end, but he buys CCC from himself at a slight discount<div class="tooltip"><sup>*</sup><span class="tooltiptext">Charlie charges a 5% exchange spread. A tourist pays US$100 and gets EC$257 worth of CCC (instead of the interbank rate of EC$270). This is competitive with the airport currency exchange which charges 8-12%, and much better than the 3-5% card fee that vendors would otherwise absorb per transaction. Charlie also batches his credit card charges&mdash;one large charge per tourist instead of many small ones&mdash;which gets him a lower interchange rate.</span></div> and the tourist gets spending tokens that work at every participating vendor on the beach.<br/><br/>
+
+<b>On the Launch Ride In</b><br/><br/>
+
+Alice is a guest from Miami. On the 10-minute launch ride from the Odyssey to Sandy Ground, Charlie hands her a laminated card with a QR code. "Scan this, it'll set you up with the local vendors. Works like a gift card&mdash;load it up and spend it at any of the stalls on the beach." Alice scans the code, which opens the AOE web app in her browser. No app store download needed.<div class="tooltip"><sup>*</sup><span class="tooltiptext">This is critical. Tourists will not download and install a native app for a single day on an island. A Progressive Web App that opens directly from a QR code, works immediately, and requires no account creation is the only viable option for casual tourists.</span></div><br/><br/>
+
+Alice taps "Load Credits," enters US$50, and pays with her credit card through Charlie's payment page. The AOE app now shows her balance: 127 CCC (EC$127). The whole process took about 90 seconds.<br/><br/>
+
+<h2>Lunch at Bob's</h2>
+
+Alice and her friend walk up the beach to Eddie's bar. Bob's grill cart is smoking and the smell of curry goat is unmistakable. A hand-lettered sign says "Curry Goat EC$25 / 25 CCC." Alice opens her AOE app, which shows Bob's stall on a map because Bob's AOS app is broadcasting his location.<div class="tooltip"><sup>*</sup><span class="tooltiptext">The AOS vendor app has a "vendor beacon" mode that publishes the vendor's GPS coordinates and current menu to a local discovery topic. The AOE consumer app subscribes to nearby vendor beacons, so Alice can see who's selling what before she even reaches the stall.</span></div><br/><br/>
+
+Alice taps "Pay Bob's Curry Goat" and selects 2 plates (50 CCC). Her phone shows a confirmation: "Send 50 CCC to Bob's Curry Goat? This is a final transaction." She confirms. Bob's phone chimes. He sees "+50 CCC from Alice" and starts plating up two servings.<br/><br/>
+
+What just happened under the hood:<br/><br/>
+
+<ol>
+<li>Alice's AOE app created an assignment transferring 50 CCC from her key to Bob's key on Charlie's CCC chain.</li>
+<li>The assignment was signed with Alice's private key (which never leaves her phone) and submitted to Charlie's recording server.</li>
+<li>The recorder validated the assignment (Alice has the shares, signature is good, no double-spend), recorded it in a new block, and notified Bob's AOS app via server-sent events.</li>
+<li>A tiny recording fee (a fraction of a CCC, paid in shares that are retired) was deducted. On a 50 CCC transaction, the fee is about 0.05 CCC&mdash;one tenth of one percent.</li>
+<li>Total elapsed time: under 2 seconds.</li>
+</ol>
+
+Bob now has 50 CCC that he can hold, spend at other vendors, or redeem with Charlie for cash at the end of the day. There is no chargeback window, no settlement delay, and no percentage cut to Visa.<br/><br/>
+
+<h2>Shopping on the Beach</h2>
+
+After lunch, Alice walks down to Patrice's jewelry table. Patrice has never had a card terminal, but she has the AOS vendor app running on her phone. Alice buys a silver bracelet for 80 CCC. Same process: tap, confirm, done. Patrice's phone shows the payment instantly.<br/><br/>
+
+Alice's friend wants a kayak rental from Lucia. 40 CCC for an hour. Lucia pulls up her AOS app, shows Alice's friend the QR code for her vendor page, and the payment goes through. Lucia has been cash-only for six years; this is the first time she's accepted a non-cash payment from a tourist.<br/><br/>
+
+Later, Sharon gives Alice a taxi ride back to the dock: 15 CCC. Alice has 12 CCC left in her wallet. She doesn't bother converting them back&mdash;she'll spend them next time a cruise stops here, or she might not. If she never comes back, those 12 CCC will eventually expire<div class="tooltip"><sup>*</sup><span class="tooltiptext">Share expiration is a configurable parameter set at chain genesis. Charlie might set CCC expiration to 2 years. If Alice never returns and never transfers her remaining CCC, the shares are eventually retired, which fractionally increases the value of all remaining CCC holders' shares. Abandoned value returns to the community rather than sitting locked forever.</span></div> and their value returns to the community&mdash;unlike a Visa gift card balance that enriches the card issuer when it goes unspent.<br/><br/>
+
+<h2>End of Day</h2>
+
+At sunset, Bob walks over to Charlie with his phone. Bob has accumulated 310 CCC from the day's sales (about EC$310, or US$115). Charlie pays him EC$295 in cash<div class="tooltip"><sup>*</sup><span class="tooltiptext">Charlie keeps a 5% spread on cash-out too, so Bob gets EC$295 for 310 CCC. Bob's total cost: about 5% to Charlie for exchange service, plus a fraction of a percent in recording fees. Compare this with his old card terminal: 3.2% per transaction plus EC$50/month fixed fee plus 3-5 day settlement delay plus chargeback risk. Bob is ahead on every dimension except the exchange spread&mdash;and Charlie's spread is negotiable as volume grows.</span></div> and Bob's CCC transfer back to Charlie's key. Patrice cashes out too&mdash;for the first time she's had a way to accept tourist payments without cash. Lucia decides to keep her CCC: she'll use them to buy supplies from the hardware store in town, which also participates.<br/><br/>
+
+<h2>What the Vendors Get</h2>
+
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Dimension</th><th>Before (Card/Cash)</th><th>After (CCC)</th></tr>
+<tr><td>Transaction fee</td><td>3.2% (card) / 0% (cash)</td><td>~0.1% recording fee</td></tr>
+<tr><td>Exchange cost</td><td>N/A</td><td>~5% to Charlie (negotiable)</td></tr>
+<tr><td>Monthly fixed cost</td><td>EC$50 terminal fee</td><td>None</td></tr>
+<tr><td>Settlement time</td><td>3-5 business days</td><td>Instant</td></tr>
+<tr><td>Chargeback risk</td><td>Yes (US$191 avg cost)</td><td>None (transactions final)</td></tr>
+<tr><td>Cash-only vendors included?</td><td>No</td><td>Yes</td></tr>
+<tr><td>Business records</td><td>Receipts in a cigar box</td><td>Full on-chain history</td></tr>
+<tr><td>Credit history for bank loans</td><td>None</td><td>Transparent, verifiable</td></tr>
+</table><br/>
+
+The per-transaction cost is dramatically lower. The exchange spread is higher than a card fee, but it includes the currency exchange service that tourists would otherwise pay separately at an airport kiosk (at 8-12%). And vendors who couldn't accept cards at all&mdash;Patrice, Lucia, Sharon&mdash;now have access to tourist spending they were previously shut out of.<br/><br/>
+
+<h2>What the Tourist Gets</h2>
+
+Alice didn't think about blockchain once. She scanned a QR code, loaded credits, and tapped to pay. It felt like using a transit card or a theme park wristband. The AOE app showed her a map of nearby vendors, what they sell, and their prices. She didn't need to carry cash, worry about exchange rates, or wonder if vendors were going to overcharge her card.<div class="tooltip"><sup>*</sup><span class="tooltiptext">Transparent pricing is a real benefit. The on-chain record means Alice can verify exactly what she paid and what the vendor charged. No surprise currency conversion fees appearing on her credit card statement two weeks later.</span></div><br/><br/>
+
+For Alice, the system is invisible infrastructure. She doesn't know or care that there's a blockchain underneath. She just knows that paying vendors on this island was easier than fumbling with cash and cheaper than her cruise ship's onboard credit system.<br/><br/>
+
+<h2>What Charlie Gets</h2>
+
+Charlie processes US$4,000 worth of tourist payments on a busy cruise ship day. His 5% exchange spread earns him about US$200 gross. He pays credit card fees on the incoming side (~3%, or US$120), leaving him US$80 net for the day's work. He also earns a small recording fee from the CCC chain itself.<br/><br/>
+
+Over a month with 8-10 cruise ship days, Charlie earns US$640-800 from exchange services alone&mdash;a solid supplement to his launch captain income. As volume grows and more vendors join, Charlie's position becomes more valuable. He might eventually have competition from another exchange agent, which is fine: competition drives down the spread, benefiting vendors and tourists, and the system is designed for multiple exchange agents to coexist.<br/><br/>
+
+<h2>Scaling Up</h2>
+
+Word spreads. The hardware store in town starts accepting CCC because vendors want to spend their credits locally instead of cashing out. The grocery store follows. A second exchange agent, Doreen, sets up at the airport to catch tourists arriving by plane. Eddie starts accepting BCG (Bob's Curry Goat tokens) directly from guests who bought them from Charlie's exchange, bridging the CCC and BCG chains.<br/><br/>
+
+Gene's recording server on the Raspberry Pi in Faythe's closet now hosts a dozen vendor chains. The cloud backup handles peak load when the big ships are in. Victor runs his validator, periodically anchoring rolled-up hashes to a public chain, so anyone can verify that none of the local chains have been tampered with.<br/><br/>
+
+The tourism board takes notice. They propose sponsoring an island-wide rollout for the next cruise season, with a professionally designed AOE app featuring an island map, vendor directory, and event listings. The cold-start problem that seemed insurmountable in theory was solved in practice by one man on a boat handing tourists a laminated QR code.<br/><br/>
+
+<h2>Regulatory Notes</h2>
+
+CCC tokens are denominated in Eastern Caribbean dollars and redeemable for goods and services from specific local vendors. They function as prepaid credits&mdash;closer to a gift card or loyalty point system than to a cryptocurrency.<div class="tooltip"><sup>*</sup><span class="tooltiptext">Under the Eastern Caribbean Central Bank's regulations, stored value instruments below certain thresholds are subject to lighter regulatory requirements than full financial services. Charlie may need a money services business license for the currency exchange component, but this is the same license that existing beach-side currency exchange booths already hold. The underlying blockchain technology is an implementation detail, not a regulatory trigger.</span></div> Charlie's exchange service is a currency exchange operation, which is a familiar and well-regulated activity in any tourism economy. The key regulatory insight: it's the economic function (exchanging currency, storing prepaid value) that determines the regulatory category, not the technology used to implement it.<br/><br/>
+
+</span>
+
+</div>
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2026-03-07"><div class="tooltip">7 March 2026<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2018 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+</div>
+
+</body></html>

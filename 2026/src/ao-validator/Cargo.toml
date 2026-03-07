@@ -1,0 +1,32 @@
+[package]
+name = "ao-validator"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "ao_validator"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ao-validator"
+path = "src/main.rs"
+
+[dependencies]
+ao-types = { path = "../ao-types" }
+ao-crypto = { path = "../ao-crypto" }
+reqwest = { version = "0.12", features = ["json"] }
+rusqlite = { version = "0.35", features = ["bundled"] }
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+hex = "0.4"
+anyhow = "1"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[dev-dependencies]
+tempfile = "3"

@@ -410,6 +410,44 @@ impl ChainStore {
         }
     }
 
+    /// Get a block hash by height (without loading block data).
+    pub fn get_block_hash(&self, height: u64) -> Result<Option<[u8; 32]>> {
+        let mut stmt = self.conn.prepare("SELECT hash FROM blocks WHERE height = ?1")?;
+        let mut rows = stmt.query(params![height as i64])?;
+        match rows.next()? {
+            Some(row) => {
+                let hash_bytes: Vec<u8> = row.get(0)?;
+                if hash_bytes.len() == 32 {
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&hash_bytes);
+                    Ok(Some(arr))
+                } else {
+                    Ok(None)
+                }
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Get block hashes for a range of heights (inclusive).
+    pub fn get_block_hashes(&self, from: u64, to: u64) -> Result<Vec<(u64, [u8; 32])>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT height, hash FROM blocks WHERE height >= ?1 AND height <= ?2 ORDER BY height"
+        )?;
+        let mut rows = stmt.query(params![from as i64, to as i64])?;
+        let mut result = Vec::new();
+        while let Some(row) = rows.next()? {
+            let h: i64 = row.get(0)?;
+            let hash_bytes: Vec<u8> = row.get(1)?;
+            if hash_bytes.len() == 32 {
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&hash_bytes);
+                result.push((h as u64, arr));
+            }
+        }
+        Ok(result)
+    }
+
     /// Get current block height.
     pub fn block_count(&self) -> Result<u64> {
         let count: i64 = self.conn.query_row(
@@ -522,6 +560,32 @@ mod tests {
         assert!(!store.is_refuted(&hash).unwrap());
         store.add_refutation(&hash).unwrap();
         assert!(store.is_refuted(&hash).unwrap());
+    }
+
+    #[test]
+    fn test_block_hash_retrieval() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        let hash1 = [0x11; 32];
+        let hash2 = [0x22; 32];
+        store.store_block(0, 100, &hash1, b"block0").unwrap();
+        store.store_block(1, 200, &hash2, b"block1").unwrap();
+
+        // Single hash lookup
+        assert_eq!(store.get_block_hash(0).unwrap(), Some(hash1));
+        assert_eq!(store.get_block_hash(1).unwrap(), Some(hash2));
+        assert_eq!(store.get_block_hash(2).unwrap(), None);
+
+        // Range lookup
+        let hashes = store.get_block_hashes(0, 1).unwrap();
+        assert_eq!(hashes.len(), 2);
+        assert_eq!(hashes[0], (0, hash1));
+        assert_eq!(hashes[1], (1, hash2));
+
+        // Empty range
+        let empty = store.get_block_hashes(5, 10).unwrap();
+        assert!(empty.is_empty());
     }
 
     #[test]

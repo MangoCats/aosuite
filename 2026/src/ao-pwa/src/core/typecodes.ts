@@ -44,6 +44,15 @@ export const DESCRIPTION = 34n;
 export const ICON = 35n;
 export const VENDOR_PROFILE = 36n;
 export const EXCHANGE_LISTING = 37n;
+export const CREDENTIAL_REF = 38n;
+export const CREDENTIAL_URL = 39n;
+
+// Inseparable types, second band (|code| 64-95)
+export const VALIDATOR_ATTESTATION = 64n;
+export const VALIDATED_HEIGHT = 65n;
+export const ROLLED_HASH = 66n;
+export const ANCHOR_REF = 67n;
+export const ANCHOR_TIMESTAMP = 68n;
 
 export type SizeCategory =
   | { kind: 'fixed'; size: number }
@@ -65,21 +74,25 @@ const SIZE_CATEGORIES = new Map<bigint, SizeCategory>([
   [DEADLINE, fixed(8)],
   [EXPIRY_PERIOD, fixed(8)],
   [PREV_HASH, fixed(32)],
+  [ROLLED_HASH, fixed(32)],
+  [ANCHOR_TIMESTAMP, fixed(8)],
 
   [AMOUNT, variable], [RECORDING_BID, variable], [COIN_COUNT, variable],
   [FEE_RATE, variable], [CHAIN_SYMBOL, variable], [SHARES_OUT, variable],
   [REFERRAL_FEE, variable],
   [NOTE, variable], [DATA_BLOB, variable], [DESCRIPTION, variable], [ICON, variable],
+  [CREDENTIAL_URL, variable], [ANCHOR_REF, variable],
 
   [SEQ_ID, vbcValue], [PROTOCOL_VER, vbcValue], [FIRST_SEQ, vbcValue],
   [SEQ_COUNT, vbcValue], [LIST_SIZE, vbcValue], [PAGE_INDEX, vbcValue],
-  [EXPIRY_MODE, vbcValue],
+  [EXPIRY_MODE, vbcValue], [VALIDATED_HEIGHT, vbcValue],
 
   [ASSIGNMENT, container], [AUTHORIZATION, container], [PARTICIPANT, container],
   [BLOCK, container], [BLOCK_SIGNED, container], [BLOCK_CONTENTS, container],
   [PAGE, container], [GENESIS, container], [REFUTATION, container],
   [AUTH_SIG, container], [TAX_PARAMS, container],
   [VENDOR_PROFILE, container], [EXCHANGE_LISTING, container],
+  [CREDENTIAL_REF, container], [VALIDATOR_ATTESTATION, container],
 ]);
 
 export function sizeCategory(code: bigint): SizeCategory | undefined {
@@ -111,6 +124,10 @@ const TYPE_NAMES = new Map<bigint, string>([
   [TAX_PARAMS, 'TAX_PARAMS'], [NOTE, 'NOTE'], [DATA_BLOB, 'DATA_BLOB'],
   [DESCRIPTION, 'DESCRIPTION'], [ICON, 'ICON'],
   [VENDOR_PROFILE, 'VENDOR_PROFILE'], [EXCHANGE_LISTING, 'EXCHANGE_LISTING'],
+  [CREDENTIAL_REF, 'CREDENTIAL_REF'], [CREDENTIAL_URL, 'CREDENTIAL_URL'],
+  [VALIDATOR_ATTESTATION, 'VALIDATOR_ATTESTATION'],
+  [VALIDATED_HEIGHT, 'VALIDATED_HEIGHT'], [ROLLED_HASH, 'ROLLED_HASH'],
+  [ANCHOR_REF, 'ANCHOR_REF'], [ANCHOR_TIMESTAMP, 'ANCHOR_TIMESTAMP'],
 ]);
 
 export function typeName(code: bigint): string | undefined {

@@ -168,8 +168,23 @@ These items can be stripped from blocks and replaced with their SHA2-256 hash wi
 | 34 | `DESCRIPTION` | variable | Chain description (UTF-8) |
 | 35 | `ICON` | variable | Chain icon (image bytes) |
 | 36 | `VENDOR_PROFILE` | container | Vendor metadata (name, location, etc.) |
+| 37 | `EXCHANGE_LISTING` | container | Exchange agent listing (Phase 4) |
+| 38 | `CREDENTIAL_REF` | container | Credential reference: URL + content hash (Phase 5, see [ValidationAndTrust.md](ValidationAndTrust.md) §5) |
+| 39 | `CREDENTIAL_URL` | variable | URL of credential document (UTF-8) |
 
-### 3.3 Separability Rule
+### 3.3 Validator Types (Inseparable, |code| 64–68)
+
+Second inseparable band. See [ValidationAndTrust.md](ValidationAndTrust.md) §4.1.
+
+| Code | Name | Size | Description |
+|---:|:---|:---|:---|
+| 64 | `VALIDATOR_ATTESTATION` | container | Validator attestation (children: height, hash, anchor ref, timestamp) |
+| 65 | `VALIDATED_HEIGHT` | vbc-value | Block height at validation time |
+| 66 | `ROLLED_HASH` | 32 | SHA2-256 rolled hash at validated height |
+| 67 | `ANCHOR_REF` | variable | External anchor reference string (UTF-8) |
+| 68 | `ANCHOR_TIMESTAMP` | 8 | Anchor publication timestamp |
+
+### 3.4 Separability Rule
 
 To determine if a DataItem is separable, check bit 5 of the type code's absolute value:
 

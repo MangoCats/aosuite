@@ -8,7 +8,7 @@ use ao_types::dataitem::DataItem;
 use ao_crypto::sign::SigningKey;
 use ao_chain::store::ChainStore;
 
-use ao_recorder::{AppState, ChainState, build_router, config, mqtt};
+use ao_recorder::{AppState, ChainState, build_router, config, mqtt, poll_validators};
 
 fn load_blockmaker_key(seed_hex: &str) -> Result<SigningKey> {
     let seed_bytes: Vec<u8> = hex::decode(seed_hex.trim())
@@ -92,6 +92,16 @@ async fn main() -> Result<()> {
         } else {
             tracing::warn!("MQTT configured but connection failed — continuing without MQTT");
         }
+    }
+
+    // Start validator polling background task if validators are configured
+    if !cfg.validators.is_empty() {
+        let validator_state = Arc::clone(&state);
+        let validators = cfg.validators.clone();
+        tokio::spawn(async move {
+            poll_validators(validator_state, validators).await;
+        });
+        info!(count = cfg.validators.len(), "Validator polling enabled");
     }
 
     let chain_count = state.chains.read()

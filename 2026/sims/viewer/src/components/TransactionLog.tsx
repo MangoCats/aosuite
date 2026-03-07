@@ -2,9 +2,10 @@ import { useStore } from '../store';
 import type { TransactionEvent } from '../api';
 
 export function TransactionLog() {
-  const { transactions, txSort, setTxSort, txFilter, setTxFilter, selectAgent } = useStore();
+  const { transactions, txSort, setTxSort, txFilter, setTxFilter, selectAgent, timeFilter } = useStore();
 
   const filtered = transactions.filter((t) => {
+    if (timeFilter !== null && t.timestamp_ms > timeFilter) return false;
     if (!txFilter) return true;
     const q = txFilter.toLowerCase();
     return (

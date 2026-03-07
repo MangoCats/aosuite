@@ -116,6 +116,7 @@ As Phase 0 deliverables and later code are produced, the folder will grow:
 │   ├── ao-chain/
 │   ├── ao-recorder/
 │   ├── ao-exchange/
+│   ├── ao-validator/
 │   ├── ao-cli/
 │   └── ao-pwa/            # React PWA (Phase 3)
 └── sims/                  # Independent simulation suite

@@ -19,6 +19,9 @@ pub struct SimulationConfig {
     /// Total simulation duration in seconds (real time).
     #[serde(default = "default_duration")]
     pub duration_secs: u64,
+    /// MQTT broker port (0 = disabled).
+    #[serde(default)]
+    pub mqtt_port: u16,
 }
 
 fn default_speed() -> f64 { 1.0 }
@@ -102,6 +105,12 @@ pub struct ExchangeConfig {
     /// Multi-chain mode: initial inventory to buy per chain symbol.
     #[serde(default)]
     pub inventory: Vec<InventoryConfig>,
+    /// Referral fee: fraction kept when referring a customer to another exchange (0.0–1.0).
+    #[serde(default)]
+    pub referral_fee: f64,
+    /// Rebalance threshold: restock when inventory drops below this fraction of initial (0.0–1.0).
+    #[serde(default = "default_rebalance_threshold")]
+    pub rebalance_threshold: f64,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -128,6 +137,7 @@ pub struct InventoryConfig {
 }
 
 fn default_initial_buy() -> u64 { 50 }
+fn default_rebalance_threshold() -> f64 { 0.25 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ConsumerConfig {

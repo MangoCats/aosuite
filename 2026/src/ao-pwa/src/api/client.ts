@@ -20,6 +20,15 @@ export interface ChainListEntry {
   exchange_agents?: ExchangeAgentEntry[];
 }
 
+export interface ValidatorEndorsement {
+  url: string;
+  label?: string;
+  validated_height: number;
+  rolled_hash: string;
+  status: string;
+  last_checked: number;
+}
+
 export interface ChainInfo {
   chain_id: string;
   symbol: string;
@@ -31,6 +40,7 @@ export interface ChainInfo {
   expiry_period: number;
   expiry_mode: number;
   next_seq_id: number;
+  validators?: ValidatorEndorsement[];
 }
 
 export interface UtxoInfo {

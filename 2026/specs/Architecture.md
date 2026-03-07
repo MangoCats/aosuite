@@ -279,7 +279,7 @@ BLAKE3 is identified as the first alternate hash: structurally different from SH
 
 **Deferred to Phase 4:** Exchange agents. MQTT pub/sub. AOI automated trading. Referral fees.
 
-**Deferred to Phase 5:** Validators. External anchoring. Vendor credentials.
+**Deferred to Phase 5:** Validators. External anchoring. Vendor credentials. See [ValidationAndTrust.md](ValidationAndTrust.md).
 
 **Deferred to Phase 6:** CAA atomic multi-chain escrow. Multiple competing recorders.
 

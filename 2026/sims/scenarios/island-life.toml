@@ -1,0 +1,301 @@
+# Island Life scenario — full IslandLife cast on Anguilla geography
+#
+# Vendors:
+#   Bob — BCG (Bob's Curry Goat) at Sandy Ground
+#   Rita — RMF (Rita's Mango Futures) at George Hill
+#   Dave — DEB (Dave's E-Bikes) at Blowing Point
+#   Oscar — OGP (Oscar's Goat Plates) at The Valley (competing, incompetent)
+#
+# Exchange agents:
+#   Charlie — CCC (Charlie's Cruise Credits, USD-pegged), main exchange
+#   Ziggy — ZIC (Ziggy's Island Credits), aggressive competitor, undercuts Charlie
+#   Ted — TCC (Ted's Caribbean Credits), regional intermediary
+#
+# Consumers:
+#   Alice — tourist, buys BCG via Charlie (pays CCC)
+#   Eddie — local investor, buys BCG via Charlie (pays CCC)
+#   Karen — nurse, buys RMF via Charlie (pays CCC)
+#   Luke — tourist, buys DEB via Ziggy (pays ZIC, cheaper)
+#   Mona — local, buys BCG via Ziggy (pays ZIC, undercut)
+#
+# Recorders:
+#   Gene — primary recorder at Crocus Bay
+#   Faythe — backup recorder (embedded, no agent loop)
+#
+# MQTT is enabled for exchange agent block notifications.
+
+[simulation]
+name = "island-life"
+recorder_port = 0
+speed = 10.0
+duration_secs = 300
+mqtt_port = 1884
+
+# ── Vendors ──────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Bob"
+role = "vendor"
+lat = 18.2027
+lon = -63.0890   # Sandy Ground
+
+[agent.vendor]
+symbol = "BCG"
+description = "Bob's Curry Goat"
+coins = "1000000000"
+shares = "2^40"
+plate_price = 25
+initial_float = 100
+
+[[agent]]
+name = "Rita"
+role = "vendor"
+lat = 18.2173
+lon = -63.0578   # George Hill
+
+[agent.vendor]
+symbol = "RMF"
+description = "Rita's Mango Futures"
+coins = "500000000"
+shares = "2^38"
+plate_price = 10
+initial_float = 200
+
+[[agent]]
+name = "Dave"
+role = "vendor"
+lat = 18.1755
+lon = -63.0925   # Blowing Point
+
+[agent.vendor]
+symbol = "DEB"
+description = "Dave's E-Bikes"
+coins = "200000000"
+shares = "2^36"
+plate_price = 50
+initial_float = 40
+
+[[agent]]
+name = "Oscar"
+role = "vendor"
+lat = 18.2167
+lon = -63.0500   # The Valley
+
+[agent.vendor]
+symbol = "OGP"
+description = "Oscar's Goat Plates"
+coins = "2000000000"        # over-issued relative to demand
+shares = "2^42"
+plate_price = 20            # cheaper than Bob, but sketchy
+initial_float = 50
+
+# ── Recorders ────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Gene"
+role = "recorder"
+lat = 18.2060
+lon = -63.1510   # Crocus Bay
+
+[[agent]]
+name = "Faythe"
+role = "recorder"
+lat = 18.2173
+lon = -63.0578   # George Hill (Faythe's closet)
+
+# ── Exchange agents ──────────────────────────────────────────────────
+
+[[agent]]
+name = "Charlie"
+role = "exchange"
+lat = 18.2190
+lon = -63.0350   # near the cruise port / Sandy Ground marina
+
+[agent.exchange]
+referral_fee = 0.05         # 5% referral fee on cross-chain trades
+rebalance_threshold = 0.25  # restock when below 25% of initial
+
+pairs = [
+    { sell = "BCG", buy = "CCC", rate = 12.0 },   # 1 BCG plate ($25) = 12 CCC ($2.08 each)
+    { sell = "RMF", buy = "CCC", rate = 5.0 },    # 1 RMF plate ($10) = 5 CCC
+    { sell = "DEB", buy = "CCC", rate = 24.0 },   # 1 DEB plate ($50) = 24 CCC
+    { sell = "OGP", buy = "CCC", rate = 8.0 },    # 1 OGP plate ($20) = 8 CCC
+]
+
+# Charlie issues CCC (his own chain) and stocks vendor inventory
+[[agent.exchange.inventory]]
+vendor = "Bob"
+plates = 80
+
+[[agent.exchange.inventory]]
+vendor = "Rita"
+plates = 150
+
+[[agent.exchange.inventory]]
+vendor = "Dave"
+plates = 30
+
+[[agent.exchange.inventory]]
+vendor = "Oscar"
+plates = 20
+
+[[agent]]
+name = "Ziggy"
+role = "exchange"
+lat = 18.2100
+lon = -63.0600   # The Valley area
+
+[agent.exchange]
+referral_fee = 0.02         # 2% referral — Ziggy undercuts Charlie
+rebalance_threshold = 0.30  # more aggressive restocking
+
+pairs = [
+    { sell = "BCG", buy = "ZIC", rate = 11.4 },  # Ziggy undercuts: BCG for 11.4 ZIC vs Charlie's 12 CCC
+    { sell = "DEB", buy = "ZIC", rate = 22.0 },  # DEB for 22 ZIC (cheaper than Charlie's 24)
+]
+
+[[agent.exchange.inventory]]
+vendor = "Bob"
+plates = 60
+
+[[agent.exchange.inventory]]
+vendor = "Dave"
+plates = 25
+
+[[agent]]
+name = "Ted"
+role = "exchange"
+lat = 18.4400
+lon = -64.6200   # off-island (Road Town, Tortola — regional)
+
+[agent.exchange]
+referral_fee = 0.03
+rebalance_threshold = 0.20
+
+pairs = [
+    { sell = "BCG", buy = "TCC", rate = 10.0 },   # Ted's regional rate
+    { sell = "RMF", buy = "TCC", rate = 4.0 },
+]
+
+[[agent.exchange.inventory]]
+vendor = "Bob"
+plates = 40
+
+[[agent.exchange.inventory]]
+vendor = "Rita"
+plates = 80
+
+# ── CCC vendor (Charlie also issues CCC) ─────────────────────────────
+# Charlie's Cruise Credits are the USD-pegged payment chain.
+# Consumers buy CCC from Charlie directly (acts as both vendor and exchange).
+
+[[agent]]
+name = "CCC-Issuer"
+role = "vendor"
+lat = 18.2190
+lon = -63.0355
+
+[agent.vendor]
+symbol = "CCC"
+description = "Charlie's Cruise Credits"
+coins = "10000000000"       # high supply — USD peg, many small transactions
+shares = "2^44"
+plate_price = 1             # 1 CCC = ~$2
+initial_float = 5000
+
+# Ziggy issues ZIC (his own payment chain)
+[[agent]]
+name = "ZIC-Issuer"
+role = "vendor"
+lat = 18.2105
+lon = -63.0605
+
+[agent.vendor]
+symbol = "ZIC"
+description = "Ziggy's Island Credits"
+coins = "5000000000"
+shares = "2^42"
+plate_price = 1
+initial_float = 3000
+
+# Ted issues TCC (regional payment chain)
+[[agent]]
+name = "TCC-Issuer"
+role = "vendor"
+lat = 18.4405
+lon = -64.6205
+
+[agent.vendor]
+symbol = "TCC"
+description = "Ted's Caribbean Credits"
+coins = "5000000000"
+shares = "2^42"
+plate_price = 1
+initial_float = 2000
+
+# ── Consumers ────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Alice"
+role = "consumer"
+lat = 18.2030
+lon = -63.0885   # Sandy Ground beach (tourist)
+
+[agent.consumer]
+buy_from = "Charlie"
+want_symbol = "BCG"
+pay_symbol = "CCC"
+fund_from = "CCC-Issuer"
+interval_secs = 30
+
+[[agent]]
+name = "Eddie"
+role = "consumer"
+lat = 18.2050
+lon = -63.0870   # near Sandy Ground (local investor)
+
+[agent.consumer]
+buy_from = "Charlie"
+want_symbol = "BCG"
+pay_symbol = "CCC"
+fund_from = "CCC-Issuer"
+interval_secs = 45
+
+[[agent]]
+name = "Karen"
+role = "consumer"
+lat = 18.2165
+lon = -63.0560   # near George Hill hospital
+
+[agent.consumer]
+buy_from = "Charlie"
+want_symbol = "RMF"
+pay_symbol = "CCC"
+fund_from = "CCC-Issuer"
+interval_secs = 40
+
+[[agent]]
+name = "Luke"
+role = "consumer"
+lat = 18.1760
+lon = -63.0920   # Blowing Point (tourist)
+
+[agent.consumer]
+buy_from = "Ziggy"
+want_symbol = "DEB"
+pay_symbol = "ZIC"
+fund_from = "ZIC-Issuer"
+interval_secs = 60
+
+[[agent]]
+name = "Mona"
+role = "consumer"
+lat = 18.2100
+lon = -63.0500   # The Valley (local, uses Ziggy for cheaper BCG)
+
+[agent.consumer]
+buy_from = "Ziggy"
+want_symbol = "BCG"
+pay_symbol = "ZIC"
+fund_from = "ZIC-Issuer"
+interval_secs = 35

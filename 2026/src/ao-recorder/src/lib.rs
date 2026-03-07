@@ -107,6 +107,19 @@ pub struct AppState {
     mqtt: std::sync::OnceLock<mqtt::MqttPublisher>,
     /// Exchange agents registered per chain: chain_id → Vec<ExchangeAgentEntry>.
     exchange_agents: RwLock<HashMap<String, Vec<ExchangeAgentEntry>>>,
+    /// Cached validator endorsements per chain: chain_id → Vec<ValidatorEndorsement>.
+    validator_cache: RwLock<HashMap<String, Vec<ValidatorEndorsement>>>,
+}
+
+/// Cached result from polling a validator's GET /validate/{chain_id}.
+#[derive(Serialize, Clone, Debug)]
+pub struct ValidatorEndorsement {
+    pub url: String,
+    pub label: Option<String>,
+    pub validated_height: u64,
+    pub rolled_hash: String,
+    pub status: String,
+    pub last_checked: i64,
 }
 
 impl AppState {
@@ -123,6 +136,7 @@ impl AppState {
             default_blockmaker_key: blockmaker_key,
             mqtt: std::sync::OnceLock::new(),
             exchange_agents: RwLock::new(HashMap::new()),
+            validator_cache: RwLock::new(HashMap::new()),
         }
     }
 
@@ -134,12 +148,20 @@ impl AppState {
             default_blockmaker_key: blockmaker_key,
             mqtt: std::sync::OnceLock::new(),
             exchange_agents: RwLock::new(HashMap::new()),
+            validator_cache: RwLock::new(HashMap::new()),
         }
     }
 
     /// Set the MQTT publisher. Must be called before serving requests.
     pub fn set_mqtt(&self, publisher: mqtt::MqttPublisher) {
         let _ = self.mqtt.set(publisher);
+    }
+
+    /// Update cached validator endorsements for a chain.
+    pub fn set_validator_cache(&self, chain_id: String, endorsements: Vec<ValidatorEndorsement>) {
+        if let Ok(mut cache) = self.validator_cache.write() {
+            cache.insert(chain_id, endorsements);
+        }
     }
 
     /// Register a chain.
@@ -186,6 +208,8 @@ struct ChainInfo {
     expiry_period: i64,
     expiry_mode: u64,
     next_seq_id: u64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    validators: Vec<ValidatorEndorsement>,
 }
 
 #[derive(Serialize)]
@@ -371,6 +395,7 @@ async fn create_chain(
             expiry_period: meta.expiry_period,
             expiry_mode: meta.expiry_mode,
             next_seq_id: meta.next_seq_id,
+            validators: Vec::new(),
         };
 
         Ok((store, info, chain_id_hex))
@@ -395,6 +420,14 @@ async fn chain_info(
     Path(chain_id_hex): Path<String>,
 ) -> Result<Json<ChainInfo>, RecorderError> {
     let chain = state.get_chain_or_err(&chain_id_hex)?;
+
+    // Snapshot validator cache for this chain
+    let validators = state.validator_cache.read()
+        .map_err(|e| RecorderError::LockPoisoned(format!("validator cache read: {}", e)))?
+        .get(&chain_id_hex)
+        .cloned()
+        .unwrap_or_default();
+
     let info = blocking(move || {
         let store = lock_store(&chain)?;
         let meta = store.load_chain_meta()
@@ -411,6 +444,7 @@ async fn chain_info(
             expiry_period: meta.expiry_period,
             expiry_mode: meta.expiry_mode,
             next_seq_id: meta.next_seq_id,
+            validators,
         })
     }).await?;
     Ok(Json(info))
@@ -592,6 +626,67 @@ async fn register_exchange_agent(
     }
 
     Ok(StatusCode::OK)
+}
+
+/// Background task: poll configured validators and update the endorsement cache.
+/// Runs every 60 seconds. Each validator is queried for each hosted chain.
+pub async fn poll_validators(state: Arc<AppState>, validators: Vec<config::ValidatorEndpoint>) {
+    let http = reqwest::Client::new();
+    let interval = std::time::Duration::from_secs(60);
+
+    loop {
+        // Snapshot current chain IDs
+        let chain_ids: Vec<String> = match state.chains.read() {
+            Ok(chains) => chains.keys().cloned().collect(),
+            Err(_) => Vec::new(),
+        };
+
+        for chain_id in &chain_ids {
+            let mut endorsements = Vec::new();
+            for v in &validators {
+                let url = format!("{}/validate/{}", v.url.trim_end_matches('/'), chain_id);
+                let result = http.get(&url).timeout(std::time::Duration::from_secs(10)).send().await;
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs() as i64;
+
+                match result {
+                    Ok(resp) if resp.status().is_success() => {
+                        if let Ok(body) = resp.json::<serde_json::Value>().await {
+                            endorsements.push(ValidatorEndorsement {
+                                url: v.url.clone(),
+                                label: v.label.clone(),
+                                validated_height: body.get("validated_height")
+                                    .and_then(|v| v.as_u64()).unwrap_or(0),
+                                rolled_hash: body.get("rolled_hash")
+                                    .and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                                status: body.get("status")
+                                    .and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
+                                last_checked: now,
+                            });
+                        }
+                    }
+                    Ok(resp) if resp.status() == reqwest::StatusCode::NOT_FOUND => {
+                        // Validator doesn't track this chain — skip silently
+                    }
+                    _ => {
+                        endorsements.push(ValidatorEndorsement {
+                            url: v.url.clone(),
+                            label: v.label.clone(),
+                            validated_height: 0,
+                            rolled_hash: String::new(),
+                            status: "unreachable".to_string(),
+                            last_checked: now,
+                        });
+                    }
+                }
+            }
+            state.set_validator_cache(chain_id.clone(), endorsements);
+        }
+
+        tokio::time::sleep(interval).await;
+    }
 }
 
 async fn ws_connection(mut socket: ws::WebSocket, chain: Arc<ChainState>) {

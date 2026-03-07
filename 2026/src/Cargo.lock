@@ -163,6 +163,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "ao-validator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ao-crypto",
+ "ao-types",
+ "axum",
+ "clap",
+ "hex",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "arrayref"
 version = "0.3.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -144,44 +144,58 @@ A geographic visualization of the simulated community, rendered on a pannable, z
 
 ```
 sims/
-├── docs/              ← you are here
-│   └── README.md
-├── coordinator/       ← sim coordinator service (Rust or TS)
-├── agents/            ← agent framework and role implementations
-│   ├── profiles/      ← personality profiles (TOML/JSON)
-│   ├── vendor.rs      ← vendor agent logic
-│   ├── consumer.rs    ← consumer agent logic
-│   ├── exchange.rs    ← exchange agent logic
-│   ├── auditor.rs     ← validator/auditor agent logic
-│   └── attacker.rs    ← adversarial agent logic
-├── viewer/            ← React PWA for all three view perspectives
-│   ├── user-view/     ← individual user perspective
-│   ├── table-view/    ← community tables
-│   └── map-view/      ← geographic visualization
-└── scenarios/         ← predefined simulation setups
-    ├── island-life.toml   ← full IslandLife cast
-    ├── minimal.toml       ← 1 vendor + 1 consumer + 1 recorder
-    └── stress.toml        ← many agents, high transaction rate
+├── docs/
+│   ├── README.md      ← you are here
+│   └── ROADMAP.md     ← sims development roadmap
+├── src/               ← Rust binary (ao-sims)
+│   ├── main.rs        ← CLI entry, coordinator, embedded recorder
+│   ├── agents.rs      ← all agent roles (vendor, exchange, consumer)
+│   ├── client.rs      ← HTTP client for ao-recorder API
+│   ├── config.rs      ← scenario TOML config structs
+│   ├── mqtt.rs        ← embedded MQTT broker + subscriber
+│   ├── observer.rs    ← text-mode terminal dashboard
+│   ├── transfer.rs    ← assignment builder (genesis + transfers)
+│   ├── viewer.rs      ← viewer REST/WebSocket API server
+│   └── wallet.rs      ← per-agent key + UTXO management
+├── viewer/            ← React PWA
+│   └── src/
+│       ├── App.tsx            ← main layout, tabs, time controls
+│       ├── api.ts             ← REST/WebSocket client types
+│       ├── store.ts           ← Zustand state store
+│       └── components/
+│           ├── AgentTable.tsx      ← community agent table
+│           ├── AgentDetail.tsx     ← individual agent view
+│           ├── ChainTable.tsx      ← chain summary table
+│           ├── TransactionLog.tsx  ← global transaction feed
+│           ├── MapView.tsx         ← Leaflet map with agent markers
+│           └── TimeControls.tsx    ← play/pause + time scrubber
+└── scenarios/         ← predefined simulation setups (TOML)
+    ├── minimal.toml         ← 1 vendor, 1 consumer, 1 exchange, 1 recorder
+    ├── three-chain.toml     ← 3 vendors, 3 exchanges, 2 consumers
+    ├── exchange-3chain.toml ← 3 vendors, 2 exchanges, cross-chain trading
+    └── island-life.toml     ← full IslandLife cast (17 agents, 7 chains, MQTT)
 ```
 
 ## Scenarios
 
 A scenario file defines the initial community: which agents exist, their profiles, which chains to create, initial share distributions, and geographic layout.
 
-**island-life** — The full IslandLife cast: Bob, Rita, Eddie, Alice, Charlie, Ziggy, Dave, Ted, Oscar, Victor, Gene, Faythe, Sharon, Karen. Multiple chains (BCG, RFM, CCC, DEB, ZIC, TCC). Caribbean island geography. The canonical demonstration scenario.
+**minimal** — One vendor (Bob), one consumer (Alice), one exchange agent (Charlie), one recorder (Gene). Single chain (BCG). Basic buy-redeem loop.
 
-**minimal** — One vendor (Bob), one consumer (Alice), one exchange agent (Charlie), one recorder. Single chain. Useful for development and debugging.
+**three-chain** — Three vendors (Bob, Maria, Kwame), three exchange agents, two consumers. Tests multi-vendor single-chain trading.
 
-**stress** — 50+ agents, 10+ chains, aggressive trading. Tests system limits and surfaces performance issues. Maps to the ROADMAP acceptance criterion of 100K assignments from genesis.
+**exchange-3chain** — Three vendors, two exchange agents doing cross-chain trades. Tests the two-leg cross-chain exchange flow (Alice pays CCC for BCG via Charlie).
+
+**island-life** — Full IslandLife cast on Anguilla geography: Bob (BCG), Rita (RMF), Dave (DEB), Oscar (OGP), Charlie (CCC), Ziggy (ZIC), Ted (TCC), plus consumers Alice, Eddie, Karen, Luke, Mona, and recorders Gene and Faythe. 17 agents, 7 chains, MQTT enabled. Ziggy undercuts Charlie, referral fees, position rebalancing.
 
 ## Relationship to ROADMAP
 
-The sims module is not part of the current Phase 2 deliverables. It can begin development alongside Phase 3 (when the React PWA exists to reference for the viewer) and grows incrementally:
+See [ROADMAP.md](ROADMAP.md) for the full sims development plan. Current status:
 
-| Phase | Sims Capability |
-|-------|----------------|
-| Phase 2 (now) | CLI-only agents using ao-cli commands against ao-recorder. Text-only observation. |
-| Phase 3 | Viewer PWA with user view and table view. Consumer and vendor agents. |
-| Phase 4 | Exchange agent agents. Map view. Multi-chain scenarios. |
-| Phase 5 | Auditor agents with cross-chain visibility. Attacker scenarios. |
-| Phase 6 | CAA escrow simulation. Full island-life scenario. |
+| Sims Phase | Base Dependency | Status |
+|------------|----------------|--------|
+| Sim-A | Phase 2 | Complete — CLI agents, text observer, minimal + three-chain scenarios |
+| Sim-B | Phase 3 | Complete — Viewer PWA, agent/chain/transaction tables, WebSocket updates |
+| Sim-C | Phase 4 | Complete — Map view, MQTT exchange agents, referral fees, island-life scenario |
+| Sim-D | Phase 5 | Not started — Auditor agents, adversarial agents |
+| Sim-E | Phase 6 | Not started — CAA escrow, chaos testing |

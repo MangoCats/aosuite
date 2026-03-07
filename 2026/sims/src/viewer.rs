@@ -135,26 +135,21 @@ async fn ws_connection(mut socket: ws::WebSocket, state: ViewerAppState) {
     }
 
     // Stream incremental updates
-    loop {
-        match rx.changed().await {
-            Ok(()) => {
-                let _ = *rx.borrow();
-                let agents = state.viewer.get_agents().await;
-                let new_txns = state.viewer.get_transactions(last_sent_id, 100).await;
-                if let Some(last) = new_txns.last() {
-                    last_sent_id = last.id;
-                }
+    while let Ok(()) = rx.changed().await {
+        let _ = *rx.borrow();
+        let agents = state.viewer.get_agents().await;
+        let new_txns = state.viewer.get_transactions(last_sent_id, 100).await;
+        if let Some(last) = new_txns.last() {
+            last_sent_id = last.id;
+        }
 
-                let update = serde_json::json!({
-                    "type": "update",
-                    "agents": agents,
-                    "transactions": new_txns,
-                });
-                if socket.send(ws::Message::Text(update.to_string().into())).await.is_err() {
-                    break;
-                }
-            }
-            Err(_) => break,
+        let update = serde_json::json!({
+            "type": "update",
+            "agents": agents,
+            "transactions": new_txns,
+        });
+        if socket.send(ws::Message::Text(update.to_string().into())).await.is_err() {
+            break;
         }
     }
 }

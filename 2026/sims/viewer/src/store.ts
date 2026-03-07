@@ -6,13 +6,13 @@ export interface ViewerStore {
   transactions: TransactionEvent[];
   chains: ChainSummary[];
   selectedAgent: string | null;
-  tab: 'agents' | 'chains' | 'transactions';
+  tab: 'agents' | 'chains' | 'transactions' | 'map';
 
   setAgents: (agents: AgentState[]) => void;
   addTransactions: (txns: TransactionEvent[]) => void;
   setChains: (chains: ChainSummary[]) => void;
   selectAgent: (name: string | null) => void;
-  setTab: (tab: 'agents' | 'chains' | 'transactions') => void;
+  setTab: (tab: 'agents' | 'chains' | 'transactions' | 'map') => void;
 
   // Sorting
   agentSort: { key: string; asc: boolean };
@@ -25,6 +25,12 @@ export interface ViewerStore {
   setAgentFilter: (f: string) => void;
   txFilter: string;
   setTxFilter: (f: string) => void;
+
+  // Time controls
+  paused: boolean;
+  setPaused: (p: boolean) => void;
+  timeFilter: number | null;  // null = live (show all), number = max timestamp_ms
+  setTimeFilter: (t: number | null) => void;
 }
 
 export const useStore = create<ViewerStore>((set) => ({
@@ -61,4 +67,9 @@ export const useStore = create<ViewerStore>((set) => ({
   setAgentFilter: (agentFilter) => set({ agentFilter }),
   txFilter: '',
   setTxFilter: (txFilter) => set({ txFilter }),
+
+  paused: false,
+  setPaused: (paused) => set({ paused }),
+  timeFilter: null,
+  setTimeFilter: (timeFilter) => set({ timeFilter }),
 }));

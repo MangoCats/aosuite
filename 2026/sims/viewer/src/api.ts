@@ -11,6 +11,8 @@ export interface AgentState {
   name: string;
   role: string;
   status: string;
+  lat: number;
+  lon: number;
   chains: ChainHolding[];
   transactions: number;
   last_action: string;
@@ -67,13 +69,38 @@ export async function fetchAgentTransactions(name: string): Promise<TransactionE
   return res.json();
 }
 
-export function connectWs(onMessage: (msg: WsMessage) => void): WebSocket {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}/api/ws`;
-  const ws = new WebSocket(wsUrl);
-  ws.onmessage = (e) => {
-    const msg = JSON.parse(e.data) as WsMessage;
-    onMessage(msg);
+export function connectWs(onMessage: (msg: WsMessage) => void): { close: () => void } {
+  let ws: WebSocket | null = null;
+  let closed = false;
+  let retryDelay = 1000;
+
+  function connect() {
+    if (closed) return;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/api/ws`;
+    ws = new WebSocket(wsUrl);
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data) as WsMessage;
+      onMessage(msg);
+    };
+    ws.onopen = () => {
+      retryDelay = 1000; // reset on successful connect
+    };
+    ws.onclose = () => {
+      if (!closed) setTimeout(connect, retryDelay);
+      retryDelay = Math.min(retryDelay * 2, 30000);
+    };
+    ws.onerror = () => {
+      ws?.close();
+    };
+  }
+
+  connect();
+
+  return {
+    close: () => {
+      closed = true;
+      ws?.close();
+    },
   };
-  return ws;
 }

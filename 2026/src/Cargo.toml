@@ -7,4 +7,5 @@ members = [
     "ao-cli",
     "ao-recorder",
     "ao-exchange",
+    "ao-validator",
 ]

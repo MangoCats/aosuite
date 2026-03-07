@@ -45,6 +45,18 @@ pub struct Config {
     /// Optional MQTT configuration for block notification publishing.
     #[serde(default)]
     pub mqtt: Option<MqttConfig>,
+    /// Optional validator endpoints for trust indicators in chain info.
+    #[serde(default)]
+    pub validators: Vec<ValidatorEndpoint>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct ValidatorEndpoint {
+    /// Validator API base URL (e.g. "http://localhost:4000").
+    pub url: String,
+    /// Human-readable label.
+    #[serde(default)]
+    pub label: Option<String>,
 }
 
 impl Default for Config {
@@ -58,6 +70,7 @@ impl Default for Config {
             genesis_path: Some("genesis.bin".to_string()),
             chains: Vec::new(),
             mqtt: None,
+            validators: Vec::new(),
         }
     }
 }

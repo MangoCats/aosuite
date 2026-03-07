@@ -29,3 +29,5 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+rumqttc = "0.24"
+rumqttd = "0.19"

@@ -1,1 +1,1 @@
-{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/store.ts","./src/components/agentdetail.tsx","./src/components/agenttable.tsx","./src/components/chaintable.tsx","./src/components/transactionlog.tsx"],"version":"5.9.3"}
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/store.ts","./src/components/agentdetail.tsx","./src/components/agenttable.tsx","./src/components/chaintable.tsx","./src/components/mapview.tsx","./src/components/timecontrols.tsx","./src/components/transactionlog.tsx"],"version":"5.9.3"}

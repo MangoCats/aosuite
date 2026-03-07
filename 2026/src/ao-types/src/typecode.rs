@@ -46,6 +46,15 @@ pub const DESCRIPTION: i64 = 34;
 pub const ICON: i64 = 35;
 pub const VENDOR_PROFILE: i64 = 36;
 pub const EXCHANGE_LISTING: i64 = 37;
+pub const CREDENTIAL_REF: i64 = 38;
+pub const CREDENTIAL_URL: i64 = 39;
+
+/// Inseparable types, second band (|code| 64–95)
+pub const VALIDATOR_ATTESTATION: i64 = 64;
+pub const VALIDATED_HEIGHT: i64 = 65;
+pub const ROLLED_HASH: i64 = 66;
+pub const ANCHOR_REF: i64 = 67;
+pub const ANCHOR_TIMESTAMP: i64 = 68;
 
 /// How the data portion of a DataItem is sized.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,17 +82,23 @@ pub fn size_category(code: i64) -> Option<SizeCategory> {
         EXPIRY_PERIOD => Some(SizeCategory::Fixed(8)),
         PREV_HASH => Some(SizeCategory::Fixed(32)),
 
+        ROLLED_HASH => Some(SizeCategory::Fixed(32)),
+        ANCHOR_TIMESTAMP => Some(SizeCategory::Fixed(8)),
+
         AMOUNT | RECORDING_BID | COIN_COUNT | FEE_RATE |
         CHAIN_SYMBOL | SHARES_OUT | REFERRAL_FEE |
-        NOTE | DATA_BLOB | DESCRIPTION | ICON => Some(SizeCategory::Variable),
+        NOTE | DATA_BLOB | DESCRIPTION | ICON |
+        CREDENTIAL_URL | ANCHOR_REF => Some(SizeCategory::Variable),
 
         SEQ_ID | PROTOCOL_VER | FIRST_SEQ | SEQ_COUNT |
-        LIST_SIZE | PAGE_INDEX | EXPIRY_MODE => Some(SizeCategory::VbcValue),
+        LIST_SIZE | PAGE_INDEX | EXPIRY_MODE |
+        VALIDATED_HEIGHT => Some(SizeCategory::VbcValue),
 
         ASSIGNMENT | AUTHORIZATION | PARTICIPANT |
         BLOCK | BLOCK_SIGNED | BLOCK_CONTENTS |
         PAGE | GENESIS | REFUTATION | AUTH_SIG |
-        TAX_PARAMS | VENDOR_PROFILE | EXCHANGE_LISTING => Some(SizeCategory::Container),
+        TAX_PARAMS | VENDOR_PROFILE | EXCHANGE_LISTING |
+        CREDENTIAL_REF | VALIDATOR_ATTESTATION => Some(SizeCategory::Container),
 
         _ => None,
     }
@@ -136,6 +151,13 @@ pub fn type_name(code: i64) -> Option<&'static str> {
         ICON => Some("ICON"),
         VENDOR_PROFILE => Some("VENDOR_PROFILE"),
         EXCHANGE_LISTING => Some("EXCHANGE_LISTING"),
+        CREDENTIAL_REF => Some("CREDENTIAL_REF"),
+        CREDENTIAL_URL => Some("CREDENTIAL_URL"),
+        VALIDATOR_ATTESTATION => Some("VALIDATOR_ATTESTATION"),
+        VALIDATED_HEIGHT => Some("VALIDATED_HEIGHT"),
+        ROLLED_HASH => Some("ROLLED_HASH"),
+        ANCHOR_REF => Some("ANCHOR_REF"),
+        ANCHOR_TIMESTAMP => Some("ANCHOR_TIMESTAMP"),
         _ => None,
     }
 }
@@ -161,8 +183,16 @@ mod tests {
         assert!(is_separable(36));   // VENDOR_PROFILE
         assert!(is_separable(63));   // end of first separable band
 
-        // Next inseparable band: 64-95
-        assert!(!is_separable(64));
+        // Credential refs are separable
+        assert!(is_separable(CREDENTIAL_REF)); // 38
+        assert!(is_separable(CREDENTIAL_URL)); // 39
+
+        // Next inseparable band: 64-95 (validator types)
+        assert!(!is_separable(VALIDATOR_ATTESTATION)); // 64
+        assert!(!is_separable(VALIDATED_HEIGHT));       // 65
+        assert!(!is_separable(ROLLED_HASH));             // 66
+        assert!(!is_separable(ANCHOR_REF));              // 67
+        assert!(!is_separable(ANCHOR_TIMESTAMP));        // 68
         assert!(!is_separable(95));
 
         // Next separable band: 96-127
@@ -181,7 +211,9 @@ mod tests {
             FIRST_SEQ, SEQ_COUNT, LIST_SIZE, REFUTATION, PAGE_INDEX,
             AUTH_SIG, REFERRAL_FEE, EXPIRY_MODE, TAX_PARAMS,
             NOTE, DATA_BLOB, DESCRIPTION, ICON, VENDOR_PROFILE,
-            EXCHANGE_LISTING,
+            EXCHANGE_LISTING, CREDENTIAL_REF, CREDENTIAL_URL,
+            VALIDATOR_ATTESTATION, VALIDATED_HEIGHT, ROLLED_HASH,
+            ANCHOR_REF, ANCHOR_TIMESTAMP,
         ];
         for code in all_codes {
             assert!(

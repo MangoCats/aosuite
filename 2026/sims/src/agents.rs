@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use num_bigint::BigInt;
+use num_traits::Zero;
 use serde::Serialize;
 use tokio::sync::{mpsc, oneshot, RwLock};
 use tracing::{info, warn};
@@ -79,6 +80,8 @@ pub struct AgentState {
     pub name: String,
     pub role: String,
     pub status: String,
+    pub lat: f64,
+    pub lon: f64,
     pub chains: Vec<ChainHolding>,
     pub transactions: u64,
     pub last_action: String,
@@ -245,6 +248,7 @@ pub async fn run_vendor(
     mut mailbox: mpsc::Receiver<AgentMessage>,
 ) -> Result<()> {
     let name = config.name.clone();
+    let (lat, lon) = (config.lat, config.lon);
     let mut wallet = Wallet::new(&name);
     let mut tx_count: u64 = 0;
 
@@ -275,7 +279,7 @@ pub async fn run_vendor(
     }
     let issuer_entry = wallet.import_key(seed, &chain_id);
     wallet.register_utxo(&issuer_entry.pubkey, 1, shares.clone());
-    let _ = state_tx.send(ViewerEvent::State(build_state(&name,"vendor", "ready", &wallet, &chain_id, &vendor_cfg.symbol, tx_count, "genesis created"))).await;
+    let _ = state_tx.send(ViewerEvent::State(build_state(&name,"vendor", "ready", lat, lon, &wallet, &chain_id, &vendor_cfg.symbol, tx_count, "genesis created"))).await;
 
     // Handle messages
     while let Some(msg) = mailbox.recv().await {
@@ -292,13 +296,13 @@ pub async fn run_vendor(
                     let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
                         &cid, &vendor_cfg.symbol, &name, &buyer_name, r.block_height, "vendor sold shares",
                     ))).await;
-                    let _ = state_tx.send(ViewerEvent::State(build_state(&name,"vendor", "ready", &wallet, &chain_id, &vendor_cfg.symbol, tx_count, &format!("block {}", r.block_height)))).await;
+                    let _ = state_tx.send(ViewerEvent::State(build_state(&name,"vendor", "ready", lat, lon, &wallet, &chain_id, &vendor_cfg.symbol, tx_count, &format!("block {}", r.block_height)))).await;
                 }
                 let _ = reply.send(result);
             }
             AgentMessage::NotifyUtxo { pubkey, seq_id, amount } => {
                 wallet.register_utxo(&pubkey, seq_id, amount);
-                let _ = state_tx.send(ViewerEvent::State(build_state(&name,"vendor", "ready", &wallet, &chain_id, &vendor_cfg.symbol, tx_count, "received redemption"))).await;
+                let _ = state_tx.send(ViewerEvent::State(build_state(&name,"vendor", "ready", lat, lon, &wallet, &chain_id, &vendor_cfg.symbol, tx_count, "received redemption"))).await;
             }
             AgentMessage::CrossChainBuy { reply, .. } => {
                 let _ = reply.send(Err(anyhow::anyhow!("{}: vendors do not handle cross-chain buys", name)));
@@ -310,6 +314,7 @@ pub async fn run_vendor(
 
 // ── Exchange agent ──────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_exchange(
     config: AgentConfig,
     exchange_cfg: ExchangeConfig,
@@ -318,8 +323,10 @@ pub async fn run_exchange(
     state_tx: StateCollector,
     mut mailbox: mpsc::Receiver<AgentMessage>,
     _speed: f64,
+    mut block_rx: Option<mpsc::Receiver<crate::mqtt::BlockNotification>>,
 ) -> Result<()> {
     let name = config.name.clone();
+    let (lat, lon) = (config.lat, config.lon);
     let mut wallet = Wallet::new(&name);
     let mut tx_count: u64 = 0;
 
@@ -385,12 +392,57 @@ pub async fn run_exchange(
         }
     }
 
+    // Track initial inventory levels for rebalancing
+    let mut initial_balances: HashMap<String, BigInt> = HashMap::new();
+    for chain_id in my_chains.keys() {
+        initial_balances.insert(chain_id.clone(), wallet.balance(chain_id));
+    }
+    let rebalance_threshold = exchange_cfg.rebalance_threshold;
+
     let _ = state_tx.send(ViewerEvent::State(build_multi_state(
-        &name, "exchange", "ready", &wallet, &my_chains, tx_count, "inventory acquired",
+        &name, "exchange", "ready", lat, lon, &wallet, &my_chains, tx_count, "inventory acquired",
     ))).await;
 
-    // Handle messages
-    while let Some(msg) = mailbox.recv().await {
+    // Handle messages + optional MQTT block notifications
+    loop {
+        let msg = tokio::select! {
+            Some(msg) = mailbox.recv() => msg,
+            Some(notif) = async { match block_rx.as_mut() { Some(rx) => rx.recv().await, None => std::future::pending().await } } => {
+                if my_chains.contains_key(&notif.chain_id) {
+                    info!("{}: block notification on {} height {}", name, notif.chain_id.get(..12).unwrap_or(&notif.chain_id), notif.height);
+                    // Check if rebalancing is needed on this chain
+                    if let Some(initial) = initial_balances.get(&notif.chain_id) {
+                        let current = wallet.balance(&notif.chain_id);
+                        let threshold = BigInt::from((rebalance_threshold * 1_000_000.0) as u64);
+                        let scale = BigInt::from(1_000_000u64);
+                        if &current * &scale < initial * &threshold && !initial.is_zero() {
+                            let sym = my_chains.get(&notif.chain_id).cloned().unwrap_or_default();
+                            info!("{}: {} inventory low ({} < {}% of initial), restocking",
+                                name, sym, current, (rebalance_threshold * 100.0) as u64);
+                            // Find vendor for this chain and restock
+                            if let Some(vendor_name) = find_vendor_for_chain(&directory, &notif.chain_id).await {
+                                let restock = initial - &current;
+                                match request_purchase(&name, &mut wallet, &directory, &vendor_name, &notif.chain_id, &restock).await {
+                                    Ok(()) => {
+                                        tx_count += 1;
+                                        info!("{}: Restocked {} from {}", name, sym, vendor_name);
+                                        let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                                            &notif.chain_id, &sym, &vendor_name, &name, 0, "exchange restocked",
+                                        ))).await;
+                                        let _ = state_tx.send(ViewerEvent::State(build_multi_state(
+                                            &name, "exchange", "ready", lat, lon, &wallet, &my_chains, tx_count, &format!("restocked {}", sym),
+                                        ))).await;
+                                    }
+                                    Err(e) => warn!("{}: Restock failed: {}", name, e),
+                                }
+                            }
+                        }
+                    }
+                }
+                continue;
+            }
+            else => break,
+        };
         match msg {
             AgentMessage::RequestPubkey { chain_id: cid, reply } => {
                 let entry = wallet.generate_key(&cid);
@@ -407,7 +459,7 @@ pub async fn run_exchange(
                     ))).await;
                 }
                 let _ = state_tx.send(ViewerEvent::State(build_multi_state(
-                    &name, "exchange", "ready", &wallet, &my_chains, tx_count,
+                    &name, "exchange", "ready", lat, lon, &wallet, &my_chains, tx_count,
                     &format!("sold {}", sym),
                 ))).await;
                 let _ = reply.send(result);
@@ -420,7 +472,7 @@ pub async fn run_exchange(
                     &name, &mut wallet, &client, &directory,
                     &sell_chain_id, &pay_chain_id, &pay_amount,
                     receiver_pubkey, receiver_seed,
-                    &pair_rates,
+                    &pair_rates, exchange_cfg.referral_fee,
                 ).await;
                 if let Ok(ref r) = result {
                     tx_count += 2; // two legs
@@ -438,7 +490,7 @@ pub async fn run_exchange(
                     ))).await;
                 }
                 let _ = state_tx.send(ViewerEvent::State(build_multi_state(
-                    &name, "exchange", "ready", &wallet, &my_chains, tx_count, "cross-chain trade",
+                    &name, "exchange", "ready", lat, lon, &wallet, &my_chains, tx_count, "cross-chain trade",
                 ))).await;
                 let _ = reply.send(result);
             }
@@ -451,6 +503,7 @@ pub async fn run_exchange(
 }
 
 /// Handle a cross-chain buy: receive payment on pay_chain, send on sell_chain.
+#[allow(clippy::too_many_arguments)]
 async fn handle_cross_chain_buy(
     name: &str,
     wallet: &mut Wallet,
@@ -462,24 +515,25 @@ async fn handle_cross_chain_buy(
     consumer_recv_pubkey: [u8; 32],
     consumer_recv_seed: [u8; 32],
     pair_rates: &HashMap<(String, String), f64>,
+    referral_fee: f64,
 ) -> Result<CrossChainResult> {
     // Look up exchange rate
     let rate = pair_rates.get(&(sell_chain_id.to_string(), pay_chain_id.to_string()))
         .ok_or_else(|| anyhow::anyhow!("{}: no trading pair for this chain combination", name))?;
 
-    // Leg 1: Receive payment on pay_chain (consumer sends to us)
-    // Consumer already built the payment transfer — we just need to confirm
-    // In this sim, the consumer already executed leg 1 before sending CrossChainBuy.
-    // So we just need to do leg 2.
-
-    // Calculate sell amount from pay amount and rate.
-    // rate = how many pay units per 1 sell unit (as f64, converted to rational).
-    // sell_amount = pay_amount / rate, using integer arithmetic to avoid f64 precision loss.
-    // Express rate as integer ratio: rate = rate_num / rate_den (multiply by 1_000_000 for precision).
+    // Calculate sell amount from pay amount and rate, minus referral fee.
+    // rate = how many pay units per 1 sell unit. sell_amount = pay_amount / rate.
+    // After referral fee: sell_amount *= (1 - referral_fee).
     let rate_scale = 1_000_000u64;
     let rate_num = BigInt::from((*rate * rate_scale as f64) as u64);
     let rate_den = BigInt::from(rate_scale);
-    let sell_amount = pay_amount * &rate_den / &rate_num;
+    let mut sell_amount = pay_amount * &rate_den / &rate_num;
+
+    // Apply referral fee (exchange keeps a fraction)
+    if referral_fee > 0.0 {
+        let fee_keep = &sell_amount * BigInt::from((referral_fee * rate_scale as f64) as u64) / BigInt::from(rate_scale);
+        sell_amount -= fee_keep;
+    }
 
     if sell_amount <= BigInt::from(0) {
         anyhow::bail!("{}: sell amount too small after rate conversion", name);
@@ -539,6 +593,7 @@ pub async fn run_consumer(
     speed: f64,
 ) -> Result<()> {
     let name = config.name.clone();
+    let (lat, lon) = (config.lat, config.lon);
     let mut wallet = Wallet::new(&name);
     let mut tx_count: u64 = 0;
 
@@ -546,19 +601,20 @@ pub async fn run_consumer(
 
     if is_cross_chain {
         run_cross_chain_consumer(
-            &name, &consumer_cfg, &client, &directory, &state_tx,
+            &name, lat, lon, &consumer_cfg, &client, &directory, &state_tx,
             &mut wallet, &mut tx_count, speed,
         ).await
     } else {
         run_single_chain_consumer(
-            &name, &consumer_cfg, &client, &directory, &state_tx,
+            &name, lat, lon, &consumer_cfg, &client, &directory, &state_tx,
             &mut wallet, &mut tx_count, speed,
         ).await
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_single_chain_consumer(
-    name: &str,
+    name: &str, lat: f64, lon: f64,
     consumer_cfg: &ConsumerConfig,
     client: &RecorderClient,
     directory: &Arc<RwLock<AgentDirectory>>,
@@ -615,12 +671,13 @@ async fn run_single_chain_consumer(
             }
         }
 
-        let _ = state_tx.send(ViewerEvent::State(build_state(name, "consumer", "active", wallet, &chain_id, &symbol, *tx_count, "purchased + redeemed"))).await;
+        let _ = state_tx.send(ViewerEvent::State(build_state(name, "consumer", "active", lat, lon, wallet, &chain_id, &symbol, *tx_count, "purchased + redeemed"))).await;
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn run_cross_chain_consumer(
-    name: &str,
+    name: &str, lat: f64, lon: f64,
     consumer_cfg: &ConsumerConfig,
     client: &RecorderClient,
     directory: &Arc<RwLock<AgentDirectory>>,
@@ -778,7 +835,7 @@ async fn run_cross_chain_consumer(
         }
 
         let _ = state_tx.send(ViewerEvent::State(build_multi_state(
-            name, "consumer", "active", wallet, &my_chains, *tx_count, "cross-chain trade",
+            name, "consumer", "active", lat, lon, wallet, &my_chains, *tx_count, "cross-chain trade",
         ))).await;
     }
 }
@@ -791,7 +848,7 @@ async fn handle_sell(
     wallet: &mut Wallet,
     client: &RecorderClient,
     chain_id: &str,
-    receivers: &mut Vec<Receiver>,
+    receivers: &mut [Receiver],
 ) -> Result<TransferResult> {
     let utxo = wallet.find_unspent(chain_id)
         .ok_or_else(|| anyhow::anyhow!("{}: no unspent UTXO on chain", name))?;
@@ -973,9 +1030,19 @@ async fn wait_for_chain_symbol(
     }
 }
 
+/// Find the vendor name for a given chain_id from the directory.
+async fn find_vendor_for_chain(
+    directory: &Arc<RwLock<AgentDirectory>>,
+    chain_id: &str,
+) -> Option<String> {
+    let dir = directory.read().await;
+    dir.chains.get(chain_id).map(|reg| reg.vendor_name.clone())
+}
+
 /// Build an AgentState snapshot for reporting.
+#[allow(clippy::too_many_arguments)]
 fn build_state(
-    name: &str, role: &str, status: &str,
+    name: &str, role: &str, status: &str, lat: f64, lon: f64,
     wallet: &Wallet, chain_id: &str, symbol: &str,
     transactions: u64, last_action: &str,
 ) -> AgentState {
@@ -983,6 +1050,7 @@ fn build_state(
         name: name.to_string(),
         role: role.to_string(),
         status: status.to_string(),
+        lat, lon,
         chains: vec![ChainHolding {
             chain_id: chain_id.to_string(),
             symbol: symbol.to_string(),
@@ -995,8 +1063,9 @@ fn build_state(
 }
 
 /// Build an AgentState snapshot for multi-chain agents.
+#[allow(clippy::too_many_arguments)]
 fn build_multi_state(
-    name: &str, role: &str, status: &str,
+    name: &str, role: &str, status: &str, lat: f64, lon: f64,
     wallet: &Wallet, chains: &HashMap<String, String>,
     transactions: u64, last_action: &str,
 ) -> AgentState {
@@ -1013,6 +1082,7 @@ fn build_multi_state(
         name: name.to_string(),
         role: role.to_string(),
         status: status.to_string(),
+        lat, lon,
         chains: holdings,
         transactions,
         last_action: last_action.to_string(),

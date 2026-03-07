@@ -32,15 +32,15 @@ To preserve the *option* of future `no_std` extraction without paying that cost 
 
 ## Phase Overview
 
-| Phase | Weeks | Deliverables |
-|-------|-------|-------------|
-| 0: Architecture & Specification | 1–4 | Resolve ambiguities, produce implementation-grade specs, generate test vectors |
-| 1: Foundation | 5–10 | `ao-types` + `ao-crypto` crates, genesis CLI |
-| 2: Single-Chain Recorder (TⒶ¹) | 11–20 | `ao-chain` + `ao-recorder`, full CLI tools |
-| 3: Vendor + Consumer Apps | 21–28 | React PWA with AOS + AOE views |
-| 4: Market Making + Exchange | 29–38 | AOI view, exchange agents, MQTT, automated trading |
-| 5: Validation + Trust (AOV) | 39–44 | Validator, anchor proofs, vendor credentials |
-| 6: Atomic Multi-Chain (TⒶ²) | 45–54 | Full CAA escrow protocol |
+| Phase | Weeks | Deliverables | Status | Outstanding |
+|-------|-------|-------------|--------|-------------|
+| 0: Architecture & Specification | 1–4 | Specs, test vectors | ✓ | — |
+| 1: Foundation | 5–10 | `ao-types` + `ao-crypto`, genesis CLI | ✓ | — |
+| 2: Single-Chain Recorder (TⒶ¹) | 11–20 | `ao-chain` + `ao-recorder`, full CLI | ✓ | 72-hr Pi stress test; 100K-assignment Pi benchmark |
+| 3: Vendor + Consumer Apps | 21–28 | React PWA with AOS + AOE views | ✓ | Two-device <3s assignment test; iOS/Android install test; Lighthouse PWA audit |
+| 4: Market Making + Exchange | 29–38 | AOI view, exchange agents, MQTT | ✓ | 5-AOI 3-chain equilibrium sim; 100 msg/s MQTT on Pi; 24-hr stability test |
+| 5: Validation + Trust (AOV) | 39–44 | Validator, anchors, credentials | ✓ | 30-day Pi memory stability test |
+| 6: Atomic Multi-Chain (TⒶ²) | 45–54 | Full CAA escrow protocol | — | All deliverables |
 
 ---
 
@@ -152,7 +152,7 @@ Build `ao-chain` and `ao-recorder`, plus complete CLI tools.
 
 **ao-cli** — [src/ao-cli/](src/ao-cli/) ✓: 9 commands — `ao keygen`, `ao genesis`, `ao inspect` (Phase 1), plus `ao balance` (UTXO query with coin display), `ao assign` (build assignment with iterative fee estimation), `ao accept` (sign + submit authorization), `ao refute` (build refutation DataItem), `ao history` (block range summary), `ao export` (blocks as JSON).
 
-**Tests:** 89 tests total. Edge cases: expired UTXO rejection, double-spend rejection, key reuse rejection, timestamp ordering enforcement, multi-receiver assignment with fee convergence, two-block chain flow with UTXO state transitions, late recording allowed/rejected with refutation, before-deadline refutation bypass. HTTP API tests: chain info, UTXO lookup, block retrieval, assignment submission, invalid JSON, double-spend via API, SSE/WebSocket real-time notifications.
+**Tests:** 102 tests total (42 ao-types + 13 ao-crypto + 21 ao-chain + 15 ao-recorder + 11 ao-validator). Edge cases: expired UTXO rejection, double-spend rejection, key reuse rejection, timestamp ordering enforcement, multi-receiver assignment with fee convergence, two-block chain flow with UTXO state transitions, late recording allowed/rejected with refutation, before-deadline refutation bypass. HTTP API tests: chain info, UTXO lookup, block retrieval, assignment submission, invalid JSON, double-spend via API, SSE/WebSocket real-time notifications.
 
 **Deployment** ✓: [Dockerfile](Dockerfile) (multi-stage, non-root, bookworm-slim). [ao-recorder.service](ao-recorder.service) (systemd hardened). [GitHub Actions CI](../.github/workflows/ci.yml) (build + test + clippy on x86_64, cross-build aarch64 with gcc-aarch64-linux-gnu).
 
@@ -310,21 +310,48 @@ Automated BCG trades without intervention. 5-AOI, 3-chain market reaches equilib
 
 ---
 
-## Phase 5: Validation and Trust — AOV (Weeks 39–44)
+## Phase 5: Validation and Trust — AOV (Weeks 39–44) — ✓ 2026-03-07
+
+Specification: [specs/ValidationAndTrust.md](specs/ValidationAndTrust.md) ✓ 2026-03-07
+
+### Design Principle: Built-In, Not Required
+
+External anchors, W3C credential references, and validator endorsements are **supported by all relevant software modules** but **never required for operation**. A chain with zero validators, zero anchors, and zero credentials is a valid, functional chain. These features reduce risk when available — the software makes them easy to adopt, surfaces their results clearly, and degrades gracefully when absent. No user action is needed to benefit from trust signals published by others (validators, anchor operators, credential issuers).
+
+This principle applies across all modules:
+
+| Module | Trust feature supported | User activation required? |
+|--------|------------------------|--------------------------|
+| **ao-types** | Type codes for validator attestations (64–68), credential references (38–39) | No — codes exist in registry, parsed automatically |
+| **ao-chain** | Credential references in vendor profiles; validator attestation containers | No — stored if present, ignored if absent |
+| **ao-recorder** | Validator endorsement cache in chain info; credential refs in blocks | No — endorsements served when validators are configured; credentials recorded when submitted |
+| **ao-validator** | Rolled-up hash verification; file-based anchoring; HTTP attestation API | Operator configures chains to monitor; anchoring is opt-in per deployment |
+| **ao-pwa** | Trust indicator display (validator dots, credential hash-match); W3C VC URL fetch | No — indicators appear automatically when data is present; hidden when absent |
+| **ao-cli** | Inspect/export validator attestations and credential refs | No — displayed when present in block data |
 
 ### Deliverables
 
-**ao-validator:** Monitors AOR servers. Periodic rolled-up hash across monitored chains. Local storage + optional external anchor (Bitcoin OP_RETURN or equivalent). Alteration alerts via MQTT/webhook.
+**5A: Specification** — [specs/ValidationAndTrust.md](specs/ValidationAndTrust.md) ✓: Chain integrity verification (rolled-up hash), validator protocol (polling, state transitions, HTTP API), external anchoring (file backend, pluggable architecture), on-chain type codes (validator 64–68, credential 38–39), vendor credentials (URL + content hash, separable), W3C VC/DID compatibility mapping, trust indicator display spec, scope boundaries.
 
-**Chain integrity API:** `GET /validate/{chain_id}` — last validated height, timestamp, anchor ref. AOE trust indicator.
+**5B: ao-validator crate** — [src/ao-validator/](src/ao-validator/) ✓: Validator daemon with periodic polling. Block verification against rolled-up hash per ValidationAndTrust.md §1. Chain status tracking (ok / unreachable / alert). SQLite state store with validated height and rolled hash per chain. Recorder HTTP client for block fetching. 11 tests.
 
-**AOR cross-reference:** Validator endorsement in chain info responses.
+**5C: Validator HTTP API** — ✓ `GET /validate` (all chains), `GET /validate/{chain_id}` (single chain: validated height, rolled hash, status, alert message, latest anchor). JSON responses per ValidationAndTrust.md §2.3.
 
-**Vendor credentials:** Verifiable credential references as separable items (URL + content hash). Hash-match indicator in AOE. W3C DID compatibility considered.
+**5D: Alert system** — ✓ Structured logging (tracing) for all state transitions. Optional webhook (HTTP POST, fire-and-forget) for alteration/unreachable/recovered events per ValidationAndTrust.md §2.5.
+
+**5E: External anchoring** — ✓ File-based anchor backend: append-only JSON lines, `publish()` and `verify()` operations. Anchor records include chain ID, height, rolled hash, timestamp, backend-specific locator. Pluggable backend trait for future Bitcoin OP_RETURN, transparency log, or IPFS backends. Anchoring is operator-invoked, not automatic — frequency is a deployment decision per ValidationAndTrust.md §3.4.
+
+**5F: Recorder validator integration** — ✓ `poll_validators()` background task in ao-recorder polls configured validator endpoints, caches endorsements per chain, serves them in `GET /chain/{id}/info` responses. Cache is best-effort — poisoned lock or unreachable validator results in stale/absent data, never a recorder failure.
+
+**5G: Vendor credentials on-chain** — ✓ `CREDENTIAL_REF` (code 38) and `CREDENTIAL_URL` (code 39) as separable items in `VENDOR_PROFILE`. Structure: URL + SHA2-256 content hash. Client-side verification: fetch URL, compare hash. No JSON-LD parsing, no DID resolution, no issuer signature verification — hash-match only per ValidationAndTrust.md §5.3.
+
+**5H: PWA trust indicators** — ✓ Validator endorsement display: green (verified, ≤1 block behind), amber (lagging), red (alert/unreachable). Credential hash-match indicator: green check (match), red warning (mismatch/unreachable), grey dash (none). `TrustIndicator` component in `ChainDetail`, conditionally rendered when data present, hidden when absent.
+
+**5I: Integration testing** — ✓ Verifier tests: single block round-trip, multi-block chain verification, tampered hash detection. End-to-end: validator polls recorder, detects simulated alteration within one poll interval, alert fires.
 
 ### Acceptance Criteria
 
-Detects simulated alteration within one poll interval. Rolled-up hash independently verifiable. 30 days on Pi without memory growth.
+Detects simulated alteration within one poll interval. Rolled-up hash independently verifiable. File anchor round-trip (publish + verify). Validator endorsements appear in chain info when configured, absent when not. Credential hash-match works in PWA. All trust indicators degrade gracefully to hidden/grey when upstream data is absent. 30 days on Pi without memory growth.
 
 ---
 

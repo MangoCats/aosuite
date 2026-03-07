@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useStore } from '../store/useStore.ts';
 import { RecorderClient } from '../api/client.ts';
+import { TrustIndicator } from './TrustIndicator.tsx';
 
 export function ChainDetail() {
   const { recorderUrl, selectedChainId, chainInfo, setChainInfo } = useStore();
@@ -47,6 +48,12 @@ export function ChainDetail() {
           <Row label="Next Seq ID" value={String(chainInfo.next_seq_id)} />
         </tbody>
       </table>
+      {chainInfo.validators && chainInfo.validators.length > 0 && (
+        <TrustIndicator
+          validators={chainInfo.validators}
+          blockHeight={chainInfo.block_height}
+        />
+      )}
     </div>
   );
 }

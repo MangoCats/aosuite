@@ -5,22 +5,26 @@ import { AgentTable } from './components/AgentTable';
 import { ChainTable } from './components/ChainTable';
 import { TransactionLog } from './components/TransactionLog';
 import { AgentDetail } from './components/AgentDetail';
+import { MapView } from './components/MapView';
+import { TimeControls } from './components/TimeControls';
 
 export function App() {
-  const { setAgents, addTransactions, setChains, selectedAgent, tab, setTab, selectAgent } = useStore();
-  const wsRef = useRef<WebSocket | null>(null);
+  const { setAgents, addTransactions, setChains, selectedAgent, tab, setTab, selectAgent, paused } = useStore();
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
 
   useEffect(() => {
     const ws = connectWs((msg) => {
+      if (pausedRef.current) return;
       setAgents(msg.agents);
       if (msg.transactions.length > 0) {
         addTransactions(msg.transactions);
       }
     });
-    wsRef.current = ws;
 
     // Also fetch chains periodically (derived from agent state on server)
     const chainPoll = setInterval(async () => {
+      if (pausedRef.current) return;
       try {
         const chains = await fetchChains();
         setChains(chains);
@@ -50,14 +54,17 @@ export function App() {
   return (
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 20px' }}>
       <Header />
+      <TimeControls />
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #dee2e6', marginBottom: 16 }}>
         <TabBtn label="Agents" active={tab === 'agents'} onClick={() => setTab('agents')} />
         <TabBtn label="Chains" active={tab === 'chains'} onClick={() => setTab('chains')} />
         <TabBtn label="Transactions" active={tab === 'transactions'} onClick={() => setTab('transactions')} />
+        <TabBtn label="Map" active={tab === 'map'} onClick={() => setTab('map')} />
       </div>
       {tab === 'agents' && <AgentTable />}
       {tab === 'chains' && <ChainTable />}
       {tab === 'transactions' && <TransactionLog />}
+      {tab === 'map' && <MapView />}
     </div>
   );
 }

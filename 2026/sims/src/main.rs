@@ -1,6 +1,7 @@
 mod agents;
 mod client;
 mod config;
+mod mqtt;
 mod observer;
 mod transfer;
 mod viewer;
@@ -48,8 +49,15 @@ async fn main() -> Result<()> {
     info!("Loaded scenario: {} ({} agents)", scenario.simulation.name, scenario.agents.len());
 
     // Start embedded recorder
-    let recorder_url = start_recorder(scenario.simulation.recorder_port).await;
+    let (recorder_url, recorder_state) = start_recorder(scenario.simulation.recorder_port).await;
     info!("Recorder running at {}", recorder_url);
+
+    // Optionally start MQTT broker for block notifications
+    let mqtt_port = scenario.simulation.mqtt_port;
+    if mqtt_port > 0 {
+        mqtt::start_broker(mqtt_port);
+        mqtt::connect_recorder_publisher(mqtt_port, &recorder_state);
+    }
 
     let client = Arc::new(RecorderClient::new(&recorder_url));
     let directory = Arc::new(RwLock::new(AgentDirectory::new()));
@@ -104,9 +112,14 @@ async fn main() -> Result<()> {
             "exchange" => {
                 let exchange_cfg = agent_cfg.exchange.clone()
                     .unwrap_or_else(|| panic!("exchange {} missing [agent.exchange] config", name));
+                let block_rx = if mqtt_port > 0 {
+                    Some(mqtt::subscribe_blocks(mqtt_port, &format!("exchange-{}", name)).await)
+                } else {
+                    None
+                };
                 tokio::spawn(async move {
                     if let Err(e) = agents::run_exchange(
-                        agent_cfg, exchange_cfg, client, directory, state_tx, mailbox, speed,
+                        agent_cfg, exchange_cfg, client, directory, state_tx, mailbox, speed, block_rx,
                     ).await {
                         tracing::error!("{}: exchange error: {}", name, e);
                     }
@@ -169,11 +182,11 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-/// Start an embedded ao-recorder server. Returns the base URL.
-async fn start_recorder(port: u16) -> String {
+/// Start an embedded ao-recorder server. Returns the base URL and shared state.
+async fn start_recorder(port: u16) -> (String, Arc<AppState>) {
     let blockmaker_key = SigningKey::generate();
     let state = Arc::new(AppState::new_multi(None, blockmaker_key));
-    let app = build_router(state);
+    let app = build_router(state.clone());
 
     let bind_addr = format!("127.0.0.1:{}", port);
     let listener = tokio::net::TcpListener::bind(&bind_addr).await
@@ -184,7 +197,7 @@ async fn start_recorder(port: u16) -> String {
         axum::serve(listener, app).await.unwrap();
     });
 
-    format!("http://{}", actual_addr)
+    (format!("http://{}", actual_addr), state)
 }
 
 /// Start the viewer API server. Returns the base URL.

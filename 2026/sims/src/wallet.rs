@@ -85,12 +85,15 @@ impl Wallet {
     /// Find an unspent UTXO on a given chain (with guaranteed seq_id/amount).
     pub fn find_unspent(&self, chain_id: &str) -> Option<RegisteredUtxo> {
         self.keys.iter()
-            .find(|k| k.chain_id == chain_id && k.seq_id.is_some() && !k.spent)
-            .map(|k| RegisteredUtxo {
-                seed: k.seed,
-                pubkey: k.pubkey,
-                seq_id: k.seq_id.unwrap(),
-                amount: k.amount.clone().unwrap(),
+            .filter(|k| k.chain_id == chain_id && !k.spent)
+            .find_map(|k| match (&k.seq_id, &k.amount) {
+                (Some(seq_id), Some(amount)) => Some(RegisteredUtxo {
+                    seed: k.seed,
+                    pubkey: k.pubkey,
+                    seq_id: *seq_id,
+                    amount: amount.clone(),
+                }),
+                _ => None,
             })
     }
 

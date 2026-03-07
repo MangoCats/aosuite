@@ -110,7 +110,7 @@ Tia runs the small general store on Likiep&mdash;the only one. She stocks rice, 
 
 Tia's nephew Mako works for the IT department on Majuro. He's heard about the Assign Onward pilot in the Caribbean, where beach vendors use independent blockchains to record transactions. He tells Tia: "Aunty, you could run your own chain. Every sale, every credit extension, every repayment&mdash;all on a record that everyone can see. And you could accept those ENRA tokens that everyone has sitting in their wallets."<br/><br/>
 
-Mako sets up a Raspberry Pi in Tia's store, connected to her satellite internet. He creates <b>Tia's General Store</b> (TGS) chain. One TGS credit equals one US dollar of store goods. He also sets up Mako as the exchange agent between the government ENRA chain and Tia's TGS chain, running on the same Pi.<br/><br/>
+Mako sets up a Raspberry Pi in Tia's store, connected to her satellite internet. The hardware costs about US$150 (Pi, SSD, case, small UPS for power outages). Tia already pays for satellite internet to run her store; the Pi adds negligible bandwidth. Mako also arranges a cloud backup VM on Majuro for US$10/month, paid initially out of his own pocket. He creates <b>Tia's General Store</b> (TGS) chain. One TGS credit equals one US dollar of store goods. He also sets up Mako as the exchange agent between the government ENRA chain and Tia's TGS chain, running on the same Pi.<br/><br/>
 
 <h2>The First Transaction</h2>
 
@@ -169,6 +169,27 @@ Every step is transparent. The government can verify that Tia collected and remi
 <li><b>Economic data</b> from previously invisible informal economies. For the first time, the government can see actual commercial activity on outer atolls, enabling better policy decisions about infrastructure investment, supply routes, and public services.</li>
 </ul>
 
+<h2>Infrastructure Costs and Sustainability</h2>
+
+Running the system on Likiep is not free:<br/><br/>
+
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Item</th><th>Cost</th><th>Who Pays</th></tr>
+<tr><td>Raspberry Pi + SSD + UPS</td><td>~US$150 one-time</td><td>Mako (initial investment)</td></tr>
+<tr><td>Cloud backup VM (Majuro)</td><td>~US$10/month</td><td>Recording fees</td></tr>
+<tr><td>Satellite internet (incremental)</td><td>~US$0 (Tia's existing service)</td><td>Tia</td></tr>
+<tr><td>LoRa mesh nodes (if deployed)</td><td>~US$30 each, one-time</td><td>Government grant or Mako</td></tr>
+<tr><td>Mako's remote maintenance time</td><td>Ongoing, volunteer initially</td><td>Mako</td></tr>
+<tr><td>Validator anchoring (if used)</td><td>~US$2-5/month</td><td>Recording fees</td></tr>
+<tr><td><b>Total ongoing</b></td><td><b>~US$15/month</b></td><td></td></tr>
+</table><br/>
+
+On an atoll of 400 people doing perhaps 30-50 transactions per day at Tia's store, recording fees generate enough retired-share value to cover the cloud backup and validator costs. <b>All ongoing infrastructure expenses are covered by users' transaction fees</b> once volume reaches this modest level&mdash;no external subsidy is needed for the recording infrastructure itself.<br/><br/>
+
+What recording fees do <i>not</i> cover: Mako's initial hardware purchase (a one-time cost comparable to a few months of Tia's wholesale restocking trips), Mako's volunteer time for software updates and troubleshooting, and Tia's existing internet service. If the system proves valuable and expands to other atolls, Mako's role grows into a paid IT support position&mdash;but at pilot scale, he's doing this as a family favor and a bet on the future.<br/><br/>
+
+There's also a dependency risk: if Mako loses interest or becomes unavailable, who maintains the Pi? On a remote atoll, there may not be another person with the technical skills to troubleshoot a server. The cloud backup provides continuity if the local hardware fails, but it can't fix a software configuration problem from Majuro without someone on-site who knows what they're doing.<br/><br/>
+
 <h2>The Low-Bandwidth Advantage</h2>
 
 Most blockchain systems assume reliable broadband internet. On Likiep, the satellite link drops out during storms, overloads during school hours when kids are doing homework, and costs more per megabyte than anywhere in the continental US. This is where aosuite's design for wire-format thrift matters in practice.<br/><br/>
@@ -179,7 +200,7 @@ In an emergency&mdash;typhoon, cable cut, satellite failure&mdash;a Meshtastic L
 
 <h2>Replication</h2>
 
-Likiep has 400 people. The Marshall Islands has about 42,000 across 29 atolls. If the Likiep pilot works, the model replicates to every atoll with a store and a Pi. The government doesn't need to build bank branches on every atoll&mdash;it needs one motivated storekeeper, one exchange agent (who might be the same person), and a US$80 computer.<br/><br/>
+Likiep has 400 people. The Marshall Islands has about 42,000 across 29 atolls. If the Likiep pilot works, the model could replicate to other atolls&mdash;but "if" is doing a lot of work in that sentence. Each atoll needs a motivated storekeeper, someone with enough technical ability to keep a Pi running, and a reason to bother with all this instead of just using cash. Not every atoll will have a Mako. The total hardware cost per atoll is modest (US$150 for the Pi, US$10/month for cloud backup, covered by recording fees at steady state), but the human cost&mdash;someone who cares enough to set it up, troubleshoot it, and evangelize it to their neighbors&mdash;is the real constraint.<br/><br/>
 
 Beyond the Marshalls, the same pattern applies wherever governments distribute benefits to dispersed populations with limited banking infrastructure:<br/><br/>
 
@@ -190,9 +211,9 @@ Beyond the Marshalls, the same pattern applies wherever governments distribute b
 <li><b>Vanuatu</b> (83 islands, 15% GDP from remittances)</li>
 </ul>
 
-In each case, the same elements apply: government distribution seeds the economy with tokens, local vendors give the tokens somewhere to go, and tax acceptance creates the demand that closes the loop. The flywheel spins because every participant gets something they didn't have before: Nalu gets usable benefits, Tia gets business records, the government gets tax compliance and economic visibility.<br/><br/>
+In each case, the same elements apply: government distribution seeds the economy with tokens, local vendors give the tokens somewhere to go, and tax acceptance creates the demand that closes the loop. Whether the flywheel actually spins depends on whether each participant finds it easier than the status quo&mdash;which, on islands that have managed with cash and notebooks for generations, is not guaranteed.<br/><br/>
 
-The historical precedent is clear. The Bristol Pound (2012-2021) demonstrated that a local currency accepted for tax payment achieves merchant adoption that purely voluntary currencies do not. El Salvador (2021-2025) demonstrated that top-down mandates without local commerce infrastructure fail. The Assign Onward model combines the insight from both: government distribution for cold start, local vendor chains for utility, and tax acceptance for permanence.<br/><br/>
+The historical precedent is mixed. The Bristol Pound (2012-2021) demonstrated that a local currency accepted for tax payment achieves merchant adoption that purely voluntary currencies do not&mdash;but Bristol Pound also folded after nine years, having never reached the scale needed for long-term viability. El Salvador (2021-2025) demonstrated that top-down mandates without local commerce infrastructure fail. The Assign Onward model attempts to combine the insight from both: government distribution for cold start, local vendor chains for utility, and tax acceptance for permanence. Whether this combination works in practice remains an untested hypothesis. Likiep would be the test.<br/><br/>
 
 </span>
 

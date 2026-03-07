@@ -156,7 +156,7 @@ At sunset, Bob walks over to Charlie with his phone. Bob has accumulated 310 CCC
 <tr><th>Dimension</th><th>Before (Card/Cash)</th><th>After (CCC)</th></tr>
 <tr><td>Transaction fee</td><td>3.2% (card) / 0% (cash)</td><td>~0.1% recording fee</td></tr>
 <tr><td>Exchange cost</td><td>N/A</td><td>~5% to Charlie (negotiable)</td></tr>
-<tr><td>Monthly fixed cost</td><td>EC$50 terminal fee</td><td>None</td></tr>
+<tr><td>Monthly fixed cost</td><td>EC$50 terminal fee</td><td>None to vendor (see infrastructure costs below)</td></tr>
 <tr><td>Settlement time</td><td>3-5 business days</td><td>Instant</td></tr>
 <tr><td>Chargeback risk</td><td>Yes (US$191 avg cost)</td><td>None (transactions final)</td></tr>
 <tr><td>Cash-only vendors included?</td><td>No</td><td>Yes</td></tr>
@@ -165,6 +165,27 @@ At sunset, Bob walks over to Charlie with his phone. Bob has accumulated 310 CCC
 </table><br/>
 
 The per-transaction cost is dramatically lower. The exchange spread is higher than a card fee, but it includes the currency exchange service that tourists would otherwise pay separately at an airport kiosk (at 8-12%). And vendors who couldn't accept cards at all&mdash;Patrice, Lucia, Sharon&mdash;now have access to tourist spending they were previously shut out of.<br/><br/>
+
+Note that the total cost to vendors (recording fee + exchange spread) is not necessarily cheaper than a credit card for every transaction. A vendor cashing out 100 CCC through Charlie at a 5% spread loses EC$5&mdash;comparable to a 3.2% card fee plus monthly terminal cost on the same volume. The advantage is that vendors with no card terminal at all (Patrice, Lucia, Sharon) gain access they didn't have, settlement is instant, there are no chargebacks, and the cost structure has no fixed monthly component that penalizes low-volume vendors.<br/><br/>
+
+<h2>Infrastructure Costs</h2>
+
+The system is not free to run. Someone pays for the recording servers, and those costs need to be covered honestly.<br/><br/>
+
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Item</th><th>Cost</th><th>Who Pays</th></tr>
+<tr><td>Raspberry Pi 5 + SSD + case + UPS</td><td>~US$150 one-time</td><td>Gene (or Charlie, or a sponsor)</td></tr>
+<tr><td>Cloud VPS backup</td><td>~US$10/month</td><td>Recording fees</td></tr>
+<tr><td>Home internet for local Pi</td><td>US$0 incremental (Faythe already has internet)</td><td>Faythe (existing service)</td></tr>
+<tr><td>Domain name for server discovery</td><td>~US$12/year</td><td>Recording fees</td></tr>
+<tr><td>Victor's validator anchor transactions</td><td>~US$2-5/month (low-fee public chain)</td><td>Recording fees</td></tr>
+<tr><td>Gene's time for maintenance and updates</td><td>Ongoing, unpaid initially</td><td>Gene (volunteer / curry goat barter)</td></tr>
+<tr><td><b>Total ongoing</b></td><td><b>~US$15-20/month</b></td><td></td></tr>
+</table><br/>
+
+Recording fees are designed to cover these back-end costs. Every transaction retires a small number of shares, which benefits all remaining shareholders proportionally. At the per-byte fee rate, a chain processing 200 transactions per day generates enough in retired-share value to cover the cloud VPS and validator costs comfortably. The share retirement mechanism means <b>all infrastructure expenses are funded by users' transaction fees</b>&mdash;no external subsidy is needed once transaction volume reaches a modest level.<div class="tooltip"><sup>*</sup><span class="tooltiptext">At low volume (the first few weeks of a pilot), recording fees may not cover costs. Somebody&mdash;Gene, Charlie, a tourism board sponsor&mdash;needs to front the infrastructure costs until volume ramps up. This is analogous to any business that operates at a loss during launch. The original Island Life narrative acknowledged this: Gene agreed to take one plate of curry goat per month for the first year as payment for running the servers.</span></div><br/><br/>
+
+What recording fees do <i>not</i> cover: Charlie's credit card processing fees on the tourist-facing side (Charlie pays those out of his exchange spread), smartphone costs for vendors (they need their own phones), and Gene's volunteer labor for system maintenance. In the early stages, someone is working for free or for curry goat. If the system grows to island-wide scale, Gene's role becomes a paid position funded by recording fees from the larger transaction volume.<br/><br/>
 
 <h2>What the Tourist Gets</h2>
 
@@ -182,9 +203,9 @@ Over a month with 8-10 cruise ship days, Charlie earns US$640-800 from exchange 
 
 Word spreads. The hardware store in town starts accepting CCC because vendors want to spend their credits locally instead of cashing out. The grocery store follows. A second exchange agent, Doreen, sets up at the airport to catch tourists arriving by plane. Eddie starts accepting BCG (Bob's Curry Goat tokens) directly from guests who bought them from Charlie's exchange, bridging the CCC and BCG chains.<br/><br/>
 
-Gene's recording server on the Raspberry Pi in Faythe's closet now hosts a dozen vendor chains. The cloud backup handles peak load when the big ships are in. Victor runs his validator, periodically anchoring rolled-up hashes to a public chain, so anyone can verify that none of the local chains have been tampered with.<br/><br/>
+Gene's recording server on the Raspberry Pi in Faythe's closet now hosts a dozen vendor chains. The cloud backup handles peak load when the big ships are in. Victor runs his validator, periodically anchoring rolled-up hashes to a public chain, so anyone can verify that none of the local chains have been tampered with. At a dozen chains with regular cruise-day traffic, recording fees comfortably cover the cloud VPS, validator anchoring, and domain costs&mdash;Gene stops accepting curry goat and starts drawing a modest maintenance stipend from the accumulated fee pool instead.<br/><br/>
 
-The tourism board takes notice. They propose sponsoring an island-wide rollout for the next cruise season, with a professionally designed AOE app featuring an island map, vendor directory, and event listings. The cold-start problem that seemed insurmountable in theory was solved in practice by one man on a boat handing tourists a laminated QR code.<br/><br/>
+The tourism board might take notice, or it might not. Scaling from a handful of beach vendors to an island-wide system is a much harder step than the initial pilot. It requires a professionally designed AOE app, vendor onboarding support, tourist marketing, and someone to handle the inevitable technical problems. These are real costs. What the pilot demonstrates is whether the economics work at small scale&mdash;whether vendors actually prefer it to cash, whether tourists actually use it, and whether Charlie's exchange margin is sustainable. If it works for 10 vendors on Sandy Ground, there's a basis for a larger conversation. If it doesn't, the total investment lost is a Raspberry Pi and some of Gene's weekends.<br/><br/>
 
 <h2>Regulatory Notes</h2>
 

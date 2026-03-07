@@ -110,7 +110,7 @@ Amara also has no way to get a bank loan. Kenya Commercial Bank will lend to far
 
 Wanjiku is Amara's daughter. She works in Nairobi as a software developer and she's been following the Assign Onward project since she read about the Caribbean tourism pilot. She realizes that the <a href="IslandLife.html">Island Life</a> model&mdash;small independent chains representing real goods from specific producers, joined through exchange agents&mdash;is exactly what her mother's cooperative needs.<br/><br/>
 
-Wanjiku spends a weekend at the cooperative's meeting hall with a Raspberry Pi, a solar battery pack, and a Safaricom SIM card for data. She sets up the Riuki Cooperative recording server and creates three types of chains:<br/><br/>
+Wanjiku spends a weekend at the cooperative's meeting hall with a Raspberry Pi (KES 10,000 / ~US$80), a solar battery pack for power stability (KES 5,000), and a Safaricom SIM card for mobile data (KES 1,000/month for a data bundle). She also sets up a cloud backup VM in Nairobi (KES 500/month). Total startup cost: about KES 16,000 (US$125). Total ongoing cost: about KES 1,500/month (US$12). She sets up the Riuki Cooperative recording server and creates three types of chains:<br/><br/>
 
 <b>1. Individual farmer chains.</b> Each member gets their own chain representing their production. Amara's chain is <b>AFT: Amara's Farm Tomatoes</b>. At the start of the season, Amara issues shares representing her expected harvest&mdash;say, 2,000 kilos of tomatoes. The shares don't promise delivery on a specific date; they represent Amara's production capacity for the season, similar to how Rita's mango credits represent the right to buy mangoes when they're available.<br/><br/>
 
@@ -158,6 +158,23 @@ This is not charity. It's not a gift. It's a documented investment in a verifiab
 
 The Riuki Cooperative is now a federation of 60 individual farmer chains, one cooperative chain, and one exchange chain&mdash;all running on a single Raspberry Pi with a cloud backup on a KES 500/month VM in Nairobi. Each farmer's chain is independent: Amara's tomato chain, Kwame's cabbage chain, Fatuma's spinach chain, Peter's maize chain. The cooperative chain records shared transactions: collective sales, input purchases, transport costs, profit distributions.<br/><br/>
 
+<h2>Infrastructure Costs</h2>
+
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><th>Item</th><th>Cost</th><th>Who Pays</th></tr>
+<tr><td>Raspberry Pi + SSD + case</td><td>KES 10,000 (~US$80) one-time</td><td>Wanjiku (initial) or cooperative fund</td></tr>
+<tr><td>Solar battery pack / UPS</td><td>KES 5,000 (~US$40) one-time</td><td>Same</td></tr>
+<tr><td>Safaricom data bundle</td><td>KES 1,000/month (~US$8)</td><td>Recording fees</td></tr>
+<tr><td>Cloud backup VM (Nairobi)</td><td>KES 500/month (~US$4)</td><td>Recording fees</td></tr>
+<tr><td>Validator anchoring</td><td>KES 300-600/month (~US$2-5)</td><td>Recording fees</td></tr>
+<tr><td>Wanjiku's maintenance time</td><td>Weekend visits, remote troubleshooting</td><td>Wanjiku (volunteer / family)</td></tr>
+<tr><td><b>Total ongoing</b></td><td><b>~KES 2,000/month (US$15)</b></td><td></td></tr>
+</table><br/>
+
+With 60 farmers making several transactions each per week&mdash;deliveries, sales, advances, repayments&mdash;the cooperative generates hundreds of on-chain transactions per month. The recording fees from this volume cover the data bundle, cloud backup, and validator costs. <b>All ongoing infrastructure expenses are paid by users' transaction fees</b>&mdash;the cooperative doesn't need to budget a separate line item for "blockchain costs" once transaction volume reaches steady state.<br/><br/>
+
+What recording fees do <i>not</i> cover: Wanjiku's volunteer labor (she's doing this for family, and because she thinks it could become a business if it works at other cooperatives), smartphone costs for individual members (most already have phones for M-Pesa), and the initial hardware investment (KES 15,000, which the cooperative could fund from its revolving fund or which an NGO partner might provide). If Wanjiku stops volunteering, the cooperative needs another technically capable person&mdash;and rural Kiambu is not Nairobi. This dependency on a single technical champion is the biggest operational risk.<br/><br/>
+
 Victor's role from the Island Life story maps to the cooperative's auditor. Once a month, the validator rolls up all chain hashes and anchors them to a public chain. The county agricultural officer can verify the cooperative's records for compliance purposes. A microfinance institution evaluating the cooperative for a larger loan can audit the entire operation from the on-chain records.<br/><br/>
 
 <h2>What Amara Gets</h2>
@@ -196,7 +213,7 @@ Over time, as farmers build multi-season on-chain histories of both good and bad
 
 <h2>Scaling the Model</h2>
 
-Kenya has over 15,000 registered Saccos. If the Riuki pilot works, the model replicates to any cooperative that has a motivated member with a smartphone, a Raspberry Pi or cheap laptop, and mobile data coverage. The recording server costs less than a bag of fertilizer. The exchange agent role can be filled by the cooperative treasurer, the local M-Pesa agent, or a dedicated community member.<br/><br/>
+Kenya has over 15,000 registered Saccos. If the Riuki pilot works, the model could replicate to other cooperatives&mdash;but each one needs a Wanjiku: someone technically capable and motivated enough to set up and maintain the system. The hardware cost is modest (about KES 15,000 startup, with ongoing costs covered by recording fees at steady state), but the human capital requirement is the real bottleneck. A scalable deployment would need a support organization&mdash;an NGO, a tech company, or a government extension service&mdash;that can train and support local technical champions at multiple cooperatives simultaneously.<br/><br/>
 
 Beyond Kenya, the same pattern applies across Sub-Saharan Africa:<br/><br/>
 
@@ -207,7 +224,7 @@ Beyond Kenya, the same pattern applies across Sub-Saharan Africa:<br/><br/>
 <li><b>Nigeria:</b> The continent's largest agricultural sector and largest crypto market. Cassava, yam, and palm oil cooperatives.</li>
 </ul>
 
-In each case, the value proposition is the same: transparent accounting builds trust, trust retains cooperative members, retained members build bargaining power, bargaining power improves prices, documented prices build credit history, credit history unlocks finance, finance enables investment, and investment grows the harvest. The chain of cause and effect is long, but each link is concrete, and the first link&mdash;transparent accounting&mdash;is exactly what Assign Onward provides.<br/><br/>
+In each case, the value proposition is the same: transparent accounting builds trust, trust retains cooperative members, retained members build bargaining power, bargaining power improves prices, documented prices build credit history, credit history unlocks finance, finance enables investment, and investment grows the harvest. The chain of cause and effect is long, and each link depends on the previous one actually working. If members don't find the transparent ledger easier than Benson's notebook&mdash;because the app is confusing, because the phone battery is dead at the collection point, because Safaricom coverage is spotty that day&mdash;then the first link breaks and everything downstream is moot. The Riuki pilot would test whether the first few links hold under real farming conditions, not whether the entire chain works end-to-end from day one.<br/><br/>
 
 </span>
 

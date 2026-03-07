@@ -1,0 +1,55 @@
+# Minimal scenario: 1 vendor, 1 exchange agent, 1 consumer
+# Tests the basic buy-redeem cycle on a single chain.
+
+[simulation]
+name = "minimal"
+recorder_port = 0       # auto-assign
+speed = 10.0            # 10x accelerated
+duration_secs = 120     # 2 minutes real time
+
+# ── Bob: curry goat vendor ───────────────────────────────────────────
+
+[[agent]]
+name = "Bob"
+role = "vendor"
+lat = 18.2027
+lon = -63.0490
+
+[agent.vendor]
+symbol = "BCG"
+description = "Bob's Curry Goat"
+coins = "1000000000"
+shares = "2^40"
+plate_price = 25
+initial_float = 50
+
+# ── Gene: recorder operator (embedded, no agent loop) ────────────────
+
+[[agent]]
+name = "Gene"
+role = "recorder"
+
+# ── Charlie: exchange agent ──────────────────────────────────────────
+
+[[agent]]
+name = "Charlie"
+role = "exchange"
+lat = 18.2060
+lon = -63.0519
+
+[agent.exchange]
+buy_from = "Bob"
+initial_buy = 50
+
+# ── Alice: tourist consumer ──────────────────────────────────────────
+
+[[agent]]
+name = "Alice"
+role = "consumer"
+lat = 18.2040
+lon = -63.0500
+
+[agent.consumer]
+buy_from = "Charlie"
+redeem_at = "Bob"
+interval_secs = 30

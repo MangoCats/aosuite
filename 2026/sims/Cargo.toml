@@ -1,0 +1,30 @@
+[package]
+name = "ao-sims"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "ao-sims"
+path = "src/main.rs"
+
+[dependencies]
+ao-types = { path = "../src/ao-types" }
+ao-crypto = { path = "../src/ao-crypto" }
+ao-chain = { path = "../src/ao-chain" }
+ao-recorder = { path = "../src/ao-recorder" }
+
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+hex = "0.4"
+num-bigint = "0.4"
+num-rational = "0.4"
+num-traits = "0.2"
+num-integer = "0.1"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }

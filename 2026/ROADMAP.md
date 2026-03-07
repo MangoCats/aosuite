@@ -166,21 +166,61 @@ Two CLI users on different machines transfer shares through a single AOR. 72 hou
 
 ## Phase 3: Vendor and Consumer Apps — AOS + AOE (Weeks 21–28)
 
-React PWA with vendor and consumer views, using the API contract from Phase 0A.
+React PWA with vendor and consumer views, using the API contract from Phase 0A. Divided into sub-phases that front-load protocol-compatibility risk before building UI.
 
-### Deliverables
+### Phase 3A: Protocol Simulation Harness (Week 21)
 
-**Browser key management:** Ed25519 via Web Crypto API. Private keys in IndexedDB, encrypted per Phase 0C. Backup/import. QR code display.
+Rust simulation binary (`ao-sims`) that proves the full assignment flow end-to-end before introducing a language boundary. Spins up an ao-recorder in-process, creates a genesis chain, generates keypairs, builds/signs/submits assignments via HTTP, and verifies block responses. Produces reference request/response JSON fixtures for TypeScript conformance testing.
 
-**AOE (consumer):** Balance dashboard. Chain discovery (URL/QR). Assignment flow with fee review. SSE real-time updates. GPS vendor map.
+**Deliverable:** `sims/` — simulation binary exercising: genesis creation, single assignment, multi-receiver assignment, fee estimation, SSE block notification, error cases (double-spend, expired UTXO, bad signature). JSON fixtures written to `sims/fixtures/`.
 
-**AOS (vendor):** Profile as separable items. Incoming assignment monitor. Share float display with limit warnings. Price card.
+**Acceptance:** All simulated assignments succeed against a live ao-recorder. Fixture files capture every request/response pair.
 
-**Shared:** Transaction history. Settings. Offline queue. Service worker caching.
+### Phase 3B: TypeScript Core Data Layer (Week 22)
 
-### Acceptance Criteria
+Port `ao-types` to TypeScript as a standalone library with zero React dependency. Must pass all conformance vectors from `specs/conformance/vectors.json`.
 
-Two phones complete assignment in <3s. PWA installs on iOS Safari and Android Chrome. Accurate GPS vendor position. Cached balances in airplane mode.
+**Deliverable:** `ao-pwa/src/core/` — VBC codec, DataItem JSON serialization, BigInt/Rational encoding (native JS BigInt), timestamp conversion, recording fee calculation (ceil division), separable item identification. Full conformance test suite in Vitest.
+
+**Acceptance:** All vectors.json test cases pass. JSON round-trip produces identical output to `ao-types::json`.
+
+### Phase 3C: TypeScript Crypto Layer + Wallet (Week 23)
+
+Port `ao-crypto` signing pipeline to TypeScript using Web Crypto API. Encrypt/decrypt private keys with Argon2id (WASM) + XChaCha20-Poly1305.
+
+**Deliverable:** `ao-pwa/src/crypto/` — Ed25519 keygen/sign/verify via Web Crypto API, SHA-256 via `crypto.subtle`, BLAKE3 via WASM, separable-item hash substitution, wallet encryption with Argon2id in Web Worker. IndexedDB storage for encrypted keys.
+
+**Acceptance:** Sign a DataItem in TypeScript, submit to a running ao-recorder, get a 200 back. Encrypt/decrypt round-trip. RFC 8032 test vector passes.
+
+### Phase 3D: API Client + Skeleton React UI (Week 24)
+
+Connect to the recorder and display chain state. Vite + React 19 + TypeScript project scaffold.
+
+**Deliverable:** `ao-pwa/` — Vite project with: fetch wrappers for all recorder endpoints, SSE/WebSocket wrappers, Zustand stores (wallet, chain, offline queue), routing (AOE/AOS mode toggle), key manager (generate, backup, import), chain info display, balance dashboard.
+
+**Acceptance:** App runs in browser, connects to a local ao-recorder, displays chain info and UTXO balances. Key generation and encrypted storage works.
+
+### Phase 3E: Assignment Flow + Vendor/Consumer Views (Weeks 25–27)
+
+Full assignment flow with off-band negotiation, plus AOE consumer and AOS vendor views.
+
+**Deliverables:**
+
+**Assignment flow:** Builder, iterative fee estimator, off-band exchange (recorder-as-relay for MVP, QR as enhancement), sign + submit. Both giver and receiver sign.
+
+**AOE (consumer):** Balance dashboard with SSE updates. Chain discovery (URL entry + QR scan). Assignment flow with fee review. Transaction history.
+
+**AOS (vendor):** Incoming assignment monitor (SSE-driven). Share float display with expiry warnings. Price card. Vendor profile as separable items.
+
+**Shared:** GPS vendor map (Leaflet/OpenStreetMap). Settings. QR scanner component.
+
+**Acceptance:** Two devices complete an assignment in <3s from submit to SSE confirmation.
+
+### Phase 3F: PWA Polish — Offline, Install, Service Worker (Week 28)
+
+**Deliverable:** PWA manifest + icons, service worker via vite-plugin-pwa (Workbox), offline assignment queue with Background Sync, cached balances in IndexedDB, Lighthouse PWA audit.
+
+**Acceptance:** PWA installs on iOS Safari and Android Chrome. Cached balances display in airplane mode. Fully-signed assignments queued offline submit on reconnect.
 
 ---
 

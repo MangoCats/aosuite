@@ -453,7 +453,7 @@ async fn submit_assignment(
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system clock before epoch")
         .as_secs() as i64;
-    let current_ts = Timestamp::try_from_unix_seconds(now)
+    let wall_ts = Timestamp::try_from_unix_seconds(now)
         .ok_or_else(|| RecorderError::Internal("system clock out of AO timestamp range".into()))?
         .raw();
 
@@ -465,6 +465,11 @@ async fn submit_assignment(
         let meta = store.load_chain_meta()
             .map_err(|e| RecorderError::Internal(e.to_string()))?
             .ok_or(RecorderError::ChainNotLoaded)?;
+
+        // Ensure block timestamp is strictly greater than previous block.
+        // Wall clock has second resolution; multiple submissions within the
+        // same second need monotonically increasing timestamps.
+        let current_ts = wall_ts.max(meta.last_block_timestamp + 1);
 
         let validated = validate::validate_assignment(&store, &meta, &authorization, current_ts)
             .map_err(|e| RecorderError::BadRequest(e.to_string()))?;

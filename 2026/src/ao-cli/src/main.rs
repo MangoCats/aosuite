@@ -7,6 +7,7 @@ mod accept;
 mod refute;
 mod history;
 mod export;
+mod caa_status;
 
 use clap::{Parser, Subcommand};
 
@@ -37,6 +38,8 @@ enum Commands {
     History(history::HistoryArgs),
     /// Export blocks as JSON
     Export(export::ExportArgs),
+    /// Query CAA escrow status on a chain
+    CaaStatus(caa_status::CaaStatusArgs),
 }
 
 fn main() {
@@ -51,5 +54,6 @@ fn main() {
         Commands::Refute(args) => refute::run(args),
         Commands::History(args) => history::run(args),
         Commands::Export(args) => export::run(args),
+        Commands::CaaStatus(args) => caa_status::run(args),
     }
 }

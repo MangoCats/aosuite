@@ -52,7 +52,7 @@ struct UtxoInfo {
 }
 
 pub fn run(args: AssignArgs) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     rt.block_on(async { run_async(args).await });
 }
 
@@ -84,7 +84,7 @@ async fn run_async(args: AssignArgs) {
             .unwrap_or_else(|e| { eprintln!("Failed to query UTXO {}: {}", seq_id, e); std::process::exit(1); })
             .json().await
             .unwrap_or_else(|e| { eprintln!("UTXO {} not found: {}", seq_id, e); std::process::exit(1); });
-        let amount: num_bigint::BigInt = utxo.amount.parse().unwrap();
+        let amount: num_bigint::BigInt = utxo.amount.parse().expect("recorder returned invalid amount");
         giver_total += &amount;
         giver_amounts.push((*seq_id, amount));
     }
@@ -103,9 +103,9 @@ async fn run_async(args: AssignArgs) {
     }).collect();
 
     // Build assignment with iterative fee convergence
-    let shares_out: num_bigint::BigInt = info.shares_out.parse().unwrap();
-    let fee_num: num_bigint::BigInt = info.fee_rate_num.parse().unwrap();
-    let fee_den: num_bigint::BigInt = info.fee_rate_den.parse().unwrap();
+    let shares_out: num_bigint::BigInt = info.shares_out.parse().expect("recorder returned invalid shares_out");
+    let fee_num: num_bigint::BigInt = info.fee_rate_num.parse().expect("recorder returned invalid fee_rate_num");
+    let fee_den: num_bigint::BigInt = info.fee_rate_den.parse().expect("recorder returned invalid fee_rate_den");
 
     let receiver_amounts = if let Some(amounts_str) = &args.amounts {
         if amounts_str.len() != receiver_pks.len() {
@@ -145,14 +145,14 @@ async fn run_async(args: AssignArgs) {
         let per_receiver = &remainder / num_bigint::BigInt::from(n);
         let mut amounts = vec![per_receiver.clone(); receiver_pks.len()];
         let distributed: num_bigint::BigInt = &per_receiver * num_bigint::BigInt::from(n);
-        let last = amounts.last_mut().unwrap();
+        let last = amounts.last_mut().expect("receiver list is non-empty");
         *last += &remainder - &distributed;
         amounts
     };
 
     let assignment = build_assignment(&giver_amounts, &receiver_pks, &receiver_amounts, args.deadline);
     let json = ao_json::to_json(&assignment);
-    let json_str = serde_json::to_string_pretty(&json).unwrap();
+    let json_str = serde_json::to_string_pretty(&json).expect("JSON serialization failed");
 
     if let Some(path) = &args.output {
         std::fs::write(path, &json_str).unwrap_or_else(|e| {

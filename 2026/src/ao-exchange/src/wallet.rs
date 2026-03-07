@@ -83,8 +83,8 @@ impl Wallet {
             .map(|k| RegisteredUtxo {
                 seed: k.seed,
                 pubkey: k.pubkey,
-                seq_id: k.seq_id.unwrap(),
-                amount: k.amount.clone().unwrap(),
+                seq_id: k.seq_id.expect("filter guarantees seq_id is Some"),
+                amount: k.amount.clone().expect("registered UTXO has amount"),
             })
     }
 

@@ -33,7 +33,7 @@ struct UtxoInfo {
 }
 
 pub fn run(args: BalanceArgs) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     rt.block_on(async { run_async(args).await });
 }
 
@@ -63,9 +63,9 @@ async fn run_async(args: BalanceArgs) {
         .unwrap_or_else(|e| { eprintln!("UTXO not found or invalid response: {}", e); std::process::exit(1); });
 
     // Compute coin display value: user_coins = shares * total_coins / total_shares
-    let shares: num_bigint::BigInt = utxo.amount.parse().unwrap();
-    let total_coins: num_bigint::BigInt = info.coin_count.parse().unwrap();
-    let total_shares: num_bigint::BigInt = info.shares_out.parse().unwrap();
+    let shares: num_bigint::BigInt = utxo.amount.parse().expect("recorder returned invalid amount");
+    let total_coins: num_bigint::BigInt = info.coin_count.parse().expect("recorder returned invalid coin_count");
+    let total_shares: num_bigint::BigInt = info.shares_out.parse().expect("recorder returned invalid shares_out");
 
     let coin_value = &shares * &total_coins / &total_shares;
 

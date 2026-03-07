@@ -21,7 +21,7 @@ use ao_types::json as ao_json;
 use ao_types::timestamp::Timestamp;
 use ao_crypto::sign::SigningKey;
 use ao_chain::store::ChainStore;
-use ao_chain::{genesis, validate, block};
+use ao_chain::{genesis, validate, block, caa};
 
 pub mod config;
 pub mod mqtt;
@@ -109,6 +109,8 @@ pub struct AppState {
     exchange_agents: RwLock<HashMap<String, Vec<ExchangeAgentEntry>>>,
     /// Cached validator endorsements per chain: chain_id → Vec<ValidatorEndorsement>.
     validator_cache: RwLock<HashMap<String, Vec<ValidatorEndorsement>>>,
+    /// Known recorder public keys for CAA proof verification: chain_id bytes → pubkey bytes.
+    pub known_recorders: std::collections::HashMap<[u8; 32], [u8; 32]>,
 }
 
 /// Cached result from polling a validator's GET /validate/{chain_id}.
@@ -125,7 +127,9 @@ pub struct ValidatorEndorsement {
 impl AppState {
     /// Create from a single chain (backward-compatible constructor).
     pub fn new(store: ChainStore, blockmaker_key: SigningKey) -> Self {
-        let meta = store.load_chain_meta().unwrap().expect("chain must be initialized");
+        let meta = store.load_chain_meta()
+            .expect("failed to query chain metadata")
+            .expect("chain must be initialized before calling AppState::new()");
         let chain_id = hex::encode(meta.chain_id);
         let chain_state = Arc::new(ChainState::new(store, SigningKey::from_seed(blockmaker_key.seed())));
         let mut chains = HashMap::new();
@@ -137,6 +141,7 @@ impl AppState {
             mqtt: std::sync::OnceLock::new(),
             exchange_agents: RwLock::new(HashMap::new()),
             validator_cache: RwLock::new(HashMap::new()),
+            known_recorders: std::collections::HashMap::new(),
         }
     }
 
@@ -149,6 +154,7 @@ impl AppState {
             mqtt: std::sync::OnceLock::new(),
             exchange_agents: RwLock::new(HashMap::new()),
             validator_cache: RwLock::new(HashMap::new()),
+            known_recorders: std::collections::HashMap::new(),
         }
     }
 
@@ -258,6 +264,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/chain/{id}/events", get(sse_events))
         .route("/chain/{id}/ws", get(ws_handler))
         .route("/chain/{id}/exchange-agent", axum::routing::post(register_exchange_agent))
+        .route("/chain/{id}/refute", axum::routing::post(submit_refutation))
+        .route("/chain/{id}/caa/submit", axum::routing::post(caa_submit))
+        .route("/chain/{id}/caa/bind", axum::routing::post(caa_bind))
+        .route("/chain/{id}/caa/{caa_hash}", get(caa_status))
         .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .with_state(state)
 }
@@ -268,7 +278,7 @@ async fn method_not_allowed() -> StatusCode {
 
 /// Initialize chain state: load genesis if needed, return chain_id hex.
 pub fn init_chain(store: &ChainStore, genesis_item: &DataItem) -> String {
-    let meta = match store.load_chain_meta().unwrap() {
+    let meta = match store.load_chain_meta().expect("failed to query chain metadata") {
         Some(m) => m,
         None => genesis::load_genesis(store, genesis_item).expect("failed to load genesis"),
     };
@@ -626,6 +636,430 @@ async fn register_exchange_agent(
     }
 
     Ok(StatusCode::OK)
+}
+
+// ── Refutation ───────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct RefutationRequest {
+    /// SHA2-256 hash of the ASSIGNMENT being refuted (hex).
+    agreement_hash: String,
+}
+
+/// POST /chain/{id}/refute — record a refutation for an agreement.
+///
+/// A refutation prevents late recording of an agreement whose deadline has
+/// passed. It does not affect agreements submitted before their deadline.
+/// Refutations are idempotent — re-submitting the same hash is a no-op.
+async fn submit_refutation(
+    State(state): State<Arc<AppState>>,
+    Path(chain_id_hex): Path<String>,
+    Json(req): Json<RefutationRequest>,
+) -> Result<StatusCode, RecorderError> {
+    let hash_bytes = hex::decode(req.agreement_hash.trim())
+        .map_err(|e| RecorderError::BadRequest(format!("invalid agreement_hash hex: {}", e)))?;
+    if hash_bytes.len() != 32 {
+        return Err(RecorderError::BadRequest("agreement_hash must be 32 bytes".into()));
+    }
+    let mut hash = [0u8; 32];
+    hash.copy_from_slice(&hash_bytes);
+
+    let chain = state.get_chain_or_err(&chain_id_hex)?;
+
+    blocking(move || {
+        let store = lock_store(&chain)?;
+        store.add_refutation(&hash)
+            .map_err(|e| RecorderError::Internal(e.to_string()))?;
+        Ok(StatusCode::OK)
+    }).await
+}
+
+// ── CAA types ────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+struct CaaStatusResponse {
+    caa_hash: String,
+    status: String,
+    chain_order: u64,
+    deadline: i64,
+    block_height: u64,
+    has_proof: bool,
+}
+
+#[derive(Serialize)]
+struct RecordingProofResponse {
+    caa_hash: String,
+    chain_id: String,
+    block_height: u64,
+    block_hash: String,
+    proof_json: serde_json::Value,
+}
+
+// ── CAA Handlers ─────────────────────────────────────────────────────
+
+/// POST /chain/{id}/caa/submit — submit a CAA for escrow recording.
+async fn caa_submit(
+    State(state): State<Arc<AppState>>,
+    Path(chain_id_hex): Path<String>,
+    body: String,
+) -> Result<Json<RecordingProofResponse>, RecorderError> {
+    let json_value: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| RecorderError::BadRequest(format!("invalid JSON: {}", e)))?;
+    let caa_item = ao_json::from_json(&json_value)
+        .map_err(|e| RecorderError::BadRequest(format!("invalid DataItem: {}", e)))?;
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock before epoch")
+        .as_secs() as i64;
+    let wall_ts = Timestamp::try_from_unix_seconds(now)
+        .ok_or_else(|| RecorderError::Internal("system clock out of AO timestamp range".into()))?
+        .raw();
+
+    let chain = state.get_chain_or_err(&chain_id_hex)?;
+    let known_recorders = state.known_recorders.clone();
+
+    let response = blocking(move || {
+        let store = lock_store(&chain)?;
+        let meta = store.load_chain_meta()
+            .map_err(|e| RecorderError::Internal(e.to_string()))?
+            .ok_or(RecorderError::ChainNotLoaded)?;
+
+        let current_ts = wall_ts.max(meta.last_block_timestamp + 1);
+
+        // Check for idempotent re-submission
+        let caa_hash = caa::compute_caa_hash(&caa_item);
+        if let Some(existing) = store.get_caa_escrow(&caa_hash)
+            .map_err(|e| RecorderError::Internal(e.to_string()))?
+        {
+            if let Some(proof_data) = &existing.proof_data {
+                let proof_item = ao_types::dataitem::DataItem::from_bytes(proof_data)
+                    .map_err(|e| RecorderError::Internal(format!("corrupt proof data: {}", e)))?;
+                let proof_json = ao_json::to_json(&proof_item);
+                let bh = store.get_block_hash(existing.block_height)
+                    .map_err(|e| RecorderError::Internal(e.to_string()))?
+                    .unwrap_or([0u8; 32]);
+                return Ok(RecordingProofResponse {
+                    caa_hash: hex::encode(caa_hash),
+                    chain_id: hex::encode(meta.chain_id),
+                    block_height: existing.block_height,
+                    block_hash: hex::encode(bh),
+                    proof_json,
+                });
+            }
+            return Err(RecorderError::BadRequest("CAA already recorded but proof not available".into()));
+        }
+
+        // Validate the CAA
+        let validated = caa::validate_caa_submit(&store, &meta, &caa_item, current_ts, &known_recorders)
+            .map_err(|e| RecorderError::BadRequest(e.to_string()))?;
+
+        // All mutations in a transaction
+        store.begin_transaction()
+            .map_err(|e| RecorderError::Internal(e.to_string()))?;
+
+        let result = (|| -> Result<RecordingProofResponse, RecorderError> {
+            use ao_types::typecode::*;
+            use ao_types::bigint;
+
+            let height = meta.block_height + 1;
+            let mut next_seq = meta.next_seq_id;
+            let first_seq = next_seq;
+
+            // Escrow giver UTXOs
+            for (seq_id, _) in &validated.givers {
+                store.mark_escrowed(*seq_id)
+                    .map_err(|e| RecorderError::Internal(e.to_string()))?;
+            }
+
+            // Create receiver UTXOs as escrowed
+            for (pk, amount) in &validated.receivers {
+                store.insert_utxo(&ao_chain::store::Utxo {
+                    seq_id: next_seq,
+                    pubkey: *pk,
+                    amount: amount.clone(),
+                    block_height: height,
+                    block_timestamp: current_ts,
+                    status: ao_chain::store::UtxoStatus::Escrowed,
+                }).map_err(|e| RecorderError::Internal(e.to_string()))?;
+                store.mark_key_used(pk)
+                    .map_err(|e| RecorderError::Internal(e.to_string()))?;
+                next_seq += 1;
+            }
+            let seq_count = next_seq - first_seq;
+
+            // Record CAA escrow with total_chains
+            store.insert_caa_escrow(
+                &validated.caa_hash,
+                validated.chain_order,
+                validated.escrow_deadline,
+                height,
+                None,
+                validated.total_chains,
+            ).map_err(|e| RecorderError::Internal(e.to_string()))?;
+
+            // Record UTXO associations
+            for (seq_id, _) in &validated.givers {
+                store.insert_caa_utxo(&validated.caa_hash, *seq_id, "giver")
+                    .map_err(|e| RecorderError::Internal(e.to_string()))?;
+            }
+            let mut recv_seq = meta.next_seq_id;
+            for _ in &validated.receivers {
+                store.insert_caa_utxo(&validated.caa_hash, recv_seq, "receiver")
+                    .map_err(|e| RecorderError::Internal(e.to_string()))?;
+                recv_seq += 1;
+            }
+
+            // Construct a real block containing the CAA assignment as a page
+            let fee_deducted_shares = &meta.shares_out - &validated.fee_shares;
+            let mut shares_bytes = Vec::new();
+            bigint::encode_bigint(&fee_deducted_shares, &mut shares_bytes);
+
+            let page = DataItem::container(PAGE, vec![
+                DataItem::vbc_value(PAGE_INDEX, 0),
+                DataItem::container(AUTHORIZATION, vec![validated.assignment.clone()]),
+            ]);
+
+            let block_contents = DataItem::container(BLOCK_CONTENTS, vec![
+                DataItem::bytes(PREV_HASH, meta.prev_hash.to_vec()),
+                DataItem::vbc_value(FIRST_SEQ, first_seq),
+                DataItem::vbc_value(SEQ_COUNT, seq_count),
+                DataItem::vbc_value(LIST_SIZE, 1u64),
+                DataItem::bytes(SHARES_OUT, shares_bytes),
+                page,
+            ]);
+
+            let ts = Timestamp::from_raw(current_ts);
+            let sig = ao_crypto::sign::sign_dataitem(&chain.blockmaker_key, &block_contents, ts);
+            let block_signed = DataItem::container(BLOCK_SIGNED, vec![
+                block_contents,
+                DataItem::container(AUTH_SIG, vec![
+                    DataItem::bytes(ED25519_SIG, sig.to_vec()),
+                    DataItem::bytes(TIMESTAMP, ts.to_bytes().to_vec()),
+                    DataItem::bytes(ED25519_PUB, chain.blockmaker_key.public_key_bytes().to_vec()),
+                ]),
+            ]);
+
+            let block_signed_bytes = block_signed.to_bytes();
+            let block_hash = ao_crypto::hash::sha256(&block_signed_bytes);
+
+            let block = DataItem::container(BLOCK, vec![
+                block_signed,
+                DataItem::bytes(SHA256, block_hash.to_vec()),
+            ]);
+            let block_bytes = block.to_bytes();
+
+            // Store block and advance chain state
+            store.store_block(height, current_ts, &block_hash, &block_bytes)
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
+            store.advance_block(height, current_ts, &block_hash)
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
+            store.update_shares_out(&fee_deducted_shares)
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
+            store.set_next_seq_id(next_seq)
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
+
+            // Build recording proof with real block hash
+            let proof = build_recording_proof(
+                &meta.chain_id,
+                height,
+                &block_hash,
+                &validated.caa_hash,
+                &chain.blockmaker_key,
+                current_ts,
+            );
+            let proof_bytes = proof.to_bytes();
+            let proof_json = ao_json::to_json(&proof);
+
+            store.set_caa_proof(&validated.caa_hash, &proof_bytes)
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
+
+            Ok(RecordingProofResponse {
+                caa_hash: hex::encode(validated.caa_hash),
+                chain_id: hex::encode(meta.chain_id),
+                block_height: height,
+                block_hash: hex::encode(block_hash),
+                proof_json,
+            })
+        })();
+
+        match &result {
+            Ok(_) => store.commit().map_err(|e| RecorderError::Internal(e.to_string()))?,
+            Err(_) => { let _ = store.rollback(); }
+        }
+        result
+    }).await?;
+
+    Ok(Json(response))
+}
+
+/// POST /chain/{id}/caa/bind — submit binding proof to finalize a CAA.
+async fn caa_bind(
+    State(state): State<Arc<AppState>>,
+    Path(chain_id_hex): Path<String>,
+    body: String,
+) -> Result<Json<CaaStatusResponse>, RecorderError> {
+    let json_value: serde_json::Value = serde_json::from_str(&body)
+        .map_err(|e| RecorderError::BadRequest(format!("invalid JSON: {}", e)))?;
+
+    // Parse the binding submission: expect caa_hash and proofs array
+    let caa_hash_hex = json_value.get("caa_hash")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| RecorderError::BadRequest("missing caa_hash".into()))?;
+    let caa_hash_bytes = hex::decode(caa_hash_hex)
+        .map_err(|e| RecorderError::BadRequest(format!("invalid caa_hash hex: {}", e)))?;
+    if caa_hash_bytes.len() != 32 {
+        return Err(RecorderError::BadRequest("caa_hash must be 32 bytes".into()));
+    }
+    let mut caa_hash = [0u8; 32];
+    caa_hash.copy_from_slice(&caa_hash_bytes);
+
+    let proofs_json = json_value.get("proofs")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| RecorderError::BadRequest("missing proofs array".into()))?;
+    let mut proofs = Vec::new();
+    for pj in proofs_json {
+        let proof_item = ao_json::from_json(pj)
+            .map_err(|e| RecorderError::BadRequest(format!("invalid proof DataItem: {}", e)))?;
+        proofs.push(proof_item);
+    }
+
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock before epoch")
+        .as_secs() as i64;
+    let wall_ts = Timestamp::try_from_unix_seconds(now)
+        .ok_or_else(|| RecorderError::Internal("system clock out of AO timestamp range".into()))?
+        .raw();
+
+    let chain = state.get_chain_or_err(&chain_id_hex)?;
+    let known_recorders = state.known_recorders.clone();
+
+    let response = blocking(move || {
+        let store = lock_store(&chain)?;
+
+        let current_ts = wall_ts;
+
+        // Validate the binding
+        caa::validate_caa_bind(&store, &caa_hash, &proofs, current_ts, &known_recorders)
+            .map_err(|e| RecorderError::BadRequest(e.to_string()))?;
+
+        store.begin_transaction()
+            .map_err(|e| RecorderError::Internal(e.to_string()))?;
+
+        let result = (|| -> Result<CaaStatusResponse, RecorderError> {
+            // Transition giver UTXOs from escrowed to spent
+            let giver_ids = store.get_caa_utxo_ids(&caa_hash, "giver")
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
+            for seq_id in &giver_ids {
+                store.mark_escrowed_spent(*seq_id)
+                    .map_err(|e| RecorderError::Internal(e.to_string()))?;
+            }
+
+            // Transition receiver UTXOs from escrowed to unspent (now spendable)
+            let receiver_ids = store.get_caa_utxo_ids(&caa_hash, "receiver")
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
+            for seq_id in &receiver_ids {
+                store.release_escrow(*seq_id)
+                    .map_err(|e| RecorderError::Internal(e.to_string()))?;
+            }
+
+            // Update CAA status to finalized
+            store.update_caa_status(&caa_hash, "finalized")
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
+
+            let escrow = store.get_caa_escrow(&caa_hash)
+                .map_err(|e| RecorderError::Internal(e.to_string()))?
+                .ok_or(RecorderError::Internal("escrow disappeared".into()))?;
+
+            Ok(CaaStatusResponse {
+                caa_hash: hex::encode(caa_hash),
+                status: "finalized".to_string(),
+                chain_order: escrow.chain_order,
+                deadline: escrow.deadline,
+                block_height: escrow.block_height,
+                has_proof: escrow.proof_data.is_some(),
+            })
+        })();
+
+        match &result {
+            Ok(_) => store.commit().map_err(|e| RecorderError::Internal(e.to_string()))?,
+            Err(_) => { let _ = store.rollback(); }
+        }
+        result
+    }).await?;
+
+    Ok(Json(response))
+}
+
+/// GET /chain/{id}/caa/{caa_hash} — query CAA escrow status.
+async fn caa_status(
+    State(state): State<Arc<AppState>>,
+    Path((chain_id_hex, caa_hash_hex)): Path<(String, String)>,
+) -> Result<Json<CaaStatusResponse>, RecorderError> {
+    let caa_hash_bytes = hex::decode(&caa_hash_hex)
+        .map_err(|e| RecorderError::BadRequest(format!("invalid caa_hash hex: {}", e)))?;
+    if caa_hash_bytes.len() != 32 {
+        return Err(RecorderError::BadRequest("caa_hash must be 32 bytes".into()));
+    }
+    let mut caa_hash = [0u8; 32];
+    caa_hash.copy_from_slice(&caa_hash_bytes);
+
+    let chain = state.get_chain_or_err(&chain_id_hex)?;
+
+    let response = blocking(move || {
+        let store = lock_store(&chain)?;
+        let escrow = store.get_caa_escrow(&caa_hash)
+            .map_err(|e| RecorderError::Internal(e.to_string()))?
+            .ok_or_else(|| RecorderError::NotFound("CAA not found".into()))?;
+
+        Ok(CaaStatusResponse {
+            caa_hash: hex::encode(caa_hash),
+            status: escrow.status,
+            chain_order: escrow.chain_order,
+            deadline: escrow.deadline,
+            block_height: escrow.block_height,
+            has_proof: escrow.proof_data.is_some(),
+        })
+    }).await?;
+
+    Ok(Json(response))
+}
+
+/// Build a RECORDING_PROOF DataItem signed by the recorder.
+fn build_recording_proof(
+    chain_id: &[u8; 32],
+    block_height: u64,
+    block_hash: &[u8; 32],
+    caa_hash: &[u8; 32],
+    blockmaker_key: &SigningKey,
+    timestamp: i64,
+) -> DataItem {
+    use ao_types::typecode::*;
+    use ao_crypto::sign;
+
+    let proof_content = vec![
+        DataItem::bytes(CHAIN_REF, chain_id.to_vec()),
+        DataItem::container(BLOCK_REF, vec![
+            DataItem::bytes(CHAIN_REF, chain_id.to_vec()),
+            DataItem::vbc_value(BLOCK_HEIGHT, block_height),
+            DataItem::bytes(SHA256, block_hash.to_vec()),
+        ]),
+        DataItem::bytes(CAA_HASH, caa_hash.to_vec()),
+    ];
+
+    let proof_to_sign = DataItem::container(RECORDING_PROOF, proof_content.clone());
+    let ts = Timestamp::from_raw(timestamp);
+    let sig = sign::sign_dataitem(blockmaker_key, &proof_to_sign, ts);
+
+    let mut all_children = proof_content;
+    all_children.push(DataItem::container(AUTH_SIG, vec![
+        DataItem::bytes(ED25519_SIG, sig.to_vec()),
+        DataItem::bytes(TIMESTAMP, ts.to_bytes().to_vec()),
+        DataItem::bytes(ED25519_PUB, blockmaker_key.public_key_bytes().to_vec()),
+    ]));
+
+    DataItem::container(RECORDING_PROOF, all_children)
 }
 
 /// Background task: poll configured validators and update the endorsement cache.

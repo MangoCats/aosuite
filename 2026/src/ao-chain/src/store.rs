@@ -10,6 +10,7 @@ pub enum UtxoStatus {
     Unspent,
     Spent,
     Expired,
+    Escrowed,
 }
 
 impl UtxoStatus {
@@ -18,6 +19,7 @@ impl UtxoStatus {
             UtxoStatus::Unspent => "unspent",
             UtxoStatus::Spent => "spent",
             UtxoStatus::Expired => "expired",
+            UtxoStatus::Escrowed => "escrowed",
         }
     }
 
@@ -26,6 +28,7 @@ impl UtxoStatus {
             "unspent" => Some(UtxoStatus::Unspent),
             "spent" => Some(UtxoStatus::Spent),
             "expired" => Some(UtxoStatus::Expired),
+            "escrowed" => Some(UtxoStatus::Escrowed),
             _ => None,
         }
     }
@@ -40,6 +43,18 @@ pub struct Utxo {
     pub block_height: u64,
     pub block_timestamp: i64,
     pub status: UtxoStatus,
+}
+
+/// A CAA escrow record.
+#[derive(Debug, Clone)]
+pub struct CaaEscrow {
+    pub caa_hash: [u8; 32],
+    pub chain_order: u64,
+    pub deadline: i64,
+    pub status: String,
+    pub block_height: u64,
+    pub proof_data: Option<Vec<u8>>,
+    pub total_chains: u64,
 }
 
 /// Chain metadata stored in the database.
@@ -108,6 +123,21 @@ impl ChainStore {
             );
             CREATE TABLE IF NOT EXISTS used_keys (
                 pubkey BLOB PRIMARY KEY
+            );
+            CREATE TABLE IF NOT EXISTS caa_escrows (
+                caa_hash BLOB PRIMARY KEY,
+                chain_order INTEGER NOT NULL,
+                deadline INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'escrowed',
+                block_height INTEGER NOT NULL,
+                proof_data BLOB,
+                total_chains INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE IF NOT EXISTS caa_utxos (
+                caa_hash BLOB NOT NULL,
+                seq_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                PRIMARY KEY (caa_hash, seq_id)
             );"
         )?;
         Ok(())
@@ -304,7 +334,7 @@ impl ChainStore {
         }
     }
 
-    /// Mark a UTXO as spent.
+    /// Mark a UTXO as spent (from unspent).
     pub fn mark_spent(&self, seq_id: u64) -> Result<()> {
         let updated = self.conn.execute(
             "UPDATE utxos SET status = 'spent' WHERE seq_id = ?1 AND status = 'unspent'",
@@ -312,6 +342,44 @@ impl ChainStore {
         )?;
         if updated == 0 {
             return Err(ChainError::UtxoAlreadySpent(seq_id));
+        }
+        Ok(())
+    }
+
+    /// Mark a UTXO as escrowed (from unspent, for CAA).
+    pub fn mark_escrowed(&self, seq_id: u64) -> Result<()> {
+        let updated = self.conn.execute(
+            "UPDATE utxos SET status = 'escrowed' WHERE seq_id = ?1 AND status = 'unspent'",
+            params![seq_id as i64],
+        )?;
+        if updated == 0 {
+            return Err(ChainError::UtxoAlreadySpent(seq_id));
+        }
+        Ok(())
+    }
+
+    /// Mark an escrowed UTXO as spent (CAA binding finalized).
+    pub fn mark_escrowed_spent(&self, seq_id: u64) -> Result<()> {
+        let updated = self.conn.execute(
+            "UPDATE utxos SET status = 'spent' WHERE seq_id = ?1 AND status = 'escrowed'",
+            params![seq_id as i64],
+        )?;
+        if updated == 0 {
+            return Err(ChainError::InvalidAssignment(
+                format!("UTXO {} is not in escrowed state", seq_id)));
+        }
+        Ok(())
+    }
+
+    /// Release an escrowed UTXO back to unspent (CAA timeout/expired).
+    pub fn release_escrow(&self, seq_id: u64) -> Result<()> {
+        let updated = self.conn.execute(
+            "UPDATE utxos SET status = 'unspent' WHERE seq_id = ?1 AND status = 'escrowed'",
+            params![seq_id as i64],
+        )?;
+        if updated == 0 {
+            return Err(ChainError::InvalidAssignment(
+                format!("UTXO {} is not in escrowed state", seq_id)));
         }
         Ok(())
     }
@@ -387,6 +455,149 @@ impl ChainStore {
         let mut stmt = self.conn.prepare("SELECT 1 FROM refutations WHERE agreement_hash = ?1")?;
         let mut rows = stmt.query(params![&agreement_hash[..]])?;
         Ok(rows.next()?.is_some())
+    }
+
+    // --- CAA escrow operations ---
+
+    /// Record a CAA escrow entry.
+    pub fn insert_caa_escrow(
+        &self,
+        caa_hash: &[u8; 32],
+        chain_order: u64,
+        deadline: i64,
+        block_height: u64,
+        proof_data: Option<&[u8]>,
+        total_chains: u64,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO caa_escrows (caa_hash, chain_order, deadline, status, block_height, proof_data, total_chains)
+             VALUES (?1, ?2, ?3, 'escrowed', ?4, ?5, ?6)",
+            params![
+                &caa_hash[..],
+                chain_order as i64,
+                deadline,
+                block_height as i64,
+                proof_data,
+                total_chains as i64,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Record a UTXO's association with a CAA escrow.
+    pub fn insert_caa_utxo(&self, caa_hash: &[u8; 32], seq_id: u64, role: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO caa_utxos (caa_hash, seq_id, role) VALUES (?1, ?2, ?3)",
+            params![&caa_hash[..], seq_id as i64, role],
+        )?;
+        Ok(())
+    }
+
+    /// Get CAA escrow status by hash.
+    pub fn get_caa_escrow(&self, caa_hash: &[u8; 32]) -> Result<Option<CaaEscrow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT caa_hash, chain_order, deadline, status, block_height, proof_data, total_chains
+             FROM caa_escrows WHERE caa_hash = ?1"
+        )?;
+        let mut rows = stmt.query(params![&caa_hash[..]])?;
+        match rows.next()? {
+            Some(row) => {
+                let hash_bytes: Vec<u8> = row.get(0)?;
+                let mut hash = [0u8; 32];
+                if hash_bytes.len() == 32 { hash.copy_from_slice(&hash_bytes); }
+                Ok(Some(CaaEscrow {
+                    caa_hash: hash,
+                    chain_order: row.get::<_, i64>(1)? as u64,
+                    deadline: row.get(2)?,
+                    status: row.get(3)?,
+                    block_height: row.get::<_, i64>(4)? as u64,
+                    proof_data: row.get(5)?,
+                    total_chains: row.get::<_, i64>(6)? as u64,
+                }))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Update CAA escrow status.
+    pub fn update_caa_status(&self, caa_hash: &[u8; 32], new_status: &str) -> Result<()> {
+        let updated = self.conn.execute(
+            "UPDATE caa_escrows SET status = ?2 WHERE caa_hash = ?1",
+            params![&caa_hash[..], new_status],
+        )?;
+        if updated == 0 {
+            return Err(ChainError::CaaNotFound);
+        }
+        Ok(())
+    }
+
+    /// Store recording proof data for a CAA.
+    pub fn set_caa_proof(&self, caa_hash: &[u8; 32], proof_data: &[u8]) -> Result<()> {
+        let updated = self.conn.execute(
+            "UPDATE caa_escrows SET proof_data = ?2 WHERE caa_hash = ?1",
+            params![&caa_hash[..], proof_data],
+        )?;
+        if updated == 0 {
+            return Err(ChainError::CaaNotFound);
+        }
+        Ok(())
+    }
+
+    /// Find all expired escrows (deadline < current_timestamp, status = 'escrowed').
+    pub fn find_expired_escrows(&self, current_timestamp: i64) -> Result<Vec<CaaEscrow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT caa_hash, chain_order, deadline, status, block_height, proof_data, total_chains
+             FROM caa_escrows WHERE status = 'escrowed' AND deadline < ?1"
+        )?;
+        let mut escrows = Vec::new();
+        let mut rows = stmt.query(params![current_timestamp])?;
+        while let Some(row) = rows.next()? {
+            let hash_bytes: Vec<u8> = row.get(0)?;
+            let mut hash = [0u8; 32];
+            if hash_bytes.len() == 32 { hash.copy_from_slice(&hash_bytes); }
+            escrows.push(CaaEscrow {
+                caa_hash: hash,
+                chain_order: row.get::<_, i64>(1)? as u64,
+                deadline: row.get(2)?,
+                status: row.get(3)?,
+                block_height: row.get::<_, i64>(4)? as u64,
+                proof_data: row.get(5)?,
+                total_chains: row.get::<_, i64>(6)? as u64,
+            });
+        }
+        Ok(escrows)
+    }
+
+    /// Delete a UTXO by sequence ID (for CAA timeout cleanup of phantom receiver UTXOs).
+    pub fn delete_utxo(&self, seq_id: u64) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM utxos WHERE seq_id = ?1",
+            params![seq_id as i64],
+        )?;
+        Ok(())
+    }
+
+    /// Remove a public key from the used_keys table (for CAA timeout cleanup).
+    pub fn remove_key_used(&self, pubkey: &[u8; 32]) -> Result<()> {
+        self.conn.execute(
+            "DELETE FROM used_keys WHERE pubkey = ?1",
+            params![&pubkey[..]],
+        )?;
+        Ok(())
+    }
+
+    /// Get all UTXO seq_ids for a given CAA escrow, filtered by role.
+    pub fn get_caa_utxo_ids(&self, caa_hash: &[u8; 32], role: &str) -> Result<Vec<u64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT seq_id FROM caa_utxos WHERE caa_hash = ?1 AND role = ?2"
+        )?;
+        let mut ids = Vec::new();
+        let mut rows = stmt.query(params![&caa_hash[..], role])?;
+        while let Some(row) = rows.next()? {
+            let sid: i64 = row.get(0)?;
+            ids.push(sid as u64);
+        }
+        Ok(ids)
     }
 
     // --- Block storage ---

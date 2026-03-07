@@ -879,3 +879,374 @@ async fn test_exchange_agent_registration() {
         .send().await.unwrap();
     assert_eq!(resp.status(), 404);
 }
+
+// ============ CAA escrow tests ============
+
+/// Start a server with known_recorders configured.
+/// Returns (base_url, chain_id_hex, chain_id_bytes).
+async fn start_caa_server(
+    issuer_key: &SigningKey,
+    blockmaker_key: &SigningKey,
+    known_recorders: std::collections::HashMap<[u8; 32], [u8; 32]>,
+) -> (String, String, [u8; 32]) {
+    let store = ChainStore::open_memory().unwrap();
+    let genesis_item = build_genesis(issuer_key);
+    let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+    let chain_id_hex = hex::encode(meta.chain_id);
+    let chain_id_bytes = meta.chain_id;
+
+    let mut state = AppState::new(store, SigningKey::from_seed(blockmaker_key.seed()));
+    state.known_recorders = known_recorders;
+    let state = Arc::new(state);
+
+    let app = build_router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base_url = format!("http://{}", addr);
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    (base_url, chain_id_hex, chain_id_bytes)
+}
+
+/// Build a CAA DataItem for a two-chain atomic exchange.
+fn build_caa_for_test(
+    chain_a_id: &[u8; 32],
+    chain_b_id: &[u8; 32],
+    giver_a_key: &SigningKey,
+    giver_a_seq: u64,
+    giver_a_amount: &BigInt,
+    receiver_a_key: &SigningKey,
+    giver_b_key: &SigningKey,
+    giver_b_seq: u64,
+    giver_b_amount: &BigInt,
+    receiver_b_key: &SigningKey,
+    fee_rate_num: &BigInt,
+    fee_rate_den: &BigInt,
+    shares_out: &BigInt,
+    escrow_deadline: Timestamp,
+) -> (DataItem, BigInt, BigInt) {
+    let bid = num_rational::BigRational::new(BigInt::from(1), BigInt::from(1_000_000));
+    let mut bid_bytes = Vec::new();
+    bigint::encode_rational(&bid, &mut bid_bytes);
+
+    let assignment_deadline = Timestamp::from_unix_seconds(1_772_611_200 + 86400);
+
+    // Placeholder AUTH_SIGs for fee calculation (same size as real ones)
+    let placeholder_sigs = vec![
+        DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, vec![0u8; 64]),
+            DataItem::bytes(TIMESTAMP, vec![0u8; 8]),
+            DataItem::vbc_value(PAGE_INDEX, 0),
+        ]),
+        DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, vec![0u8; 64]),
+            DataItem::bytes(TIMESTAMP, vec![0u8; 8]),
+            DataItem::vbc_value(PAGE_INDEX, 1),
+        ]),
+    ];
+
+    // Calculate receiver amounts including AUTH_SIG sizes in fee
+    let mut recv_a_amount = giver_a_amount.clone();
+    for _ in 0..3 {
+        let assignment_a = build_caa_assignment(
+            giver_a_seq, giver_a_amount, &recv_a_amount, receiver_a_key,
+            &bid_bytes, assignment_deadline,
+        );
+        let mut auth_children = vec![assignment_a];
+        auth_children.extend(placeholder_sigs.clone());
+        let page = DataItem::container(PAGE, vec![
+            DataItem::vbc_value(PAGE_INDEX, 0),
+            DataItem::container(AUTHORIZATION, auth_children),
+        ]);
+        let page_bytes = page.to_bytes().len() as u64;
+        let fee = fees::recording_fee(page_bytes, fee_rate_num, fee_rate_den, shares_out);
+        recv_a_amount = giver_a_amount - &fee;
+    }
+
+    let mut recv_b_amount = giver_b_amount.clone();
+    for _ in 0..3 {
+        let assignment_b = build_caa_assignment(
+            giver_b_seq, giver_b_amount, &recv_b_amount, receiver_b_key,
+            &bid_bytes, assignment_deadline,
+        );
+        let mut auth_children = vec![assignment_b];
+        auth_children.extend(placeholder_sigs.clone());
+        let page = DataItem::container(PAGE, vec![
+            DataItem::vbc_value(PAGE_INDEX, 0),
+            DataItem::container(AUTHORIZATION, auth_children),
+        ]);
+        let page_bytes = page.to_bytes().len() as u64;
+        let fee = fees::recording_fee(page_bytes, fee_rate_num, fee_rate_den, shares_out);
+        recv_b_amount = giver_b_amount - &fee;
+    }
+
+    let assignment_a = build_caa_assignment(
+        giver_a_seq, giver_a_amount, &recv_a_amount, receiver_a_key,
+        &bid_bytes, assignment_deadline,
+    );
+    let assignment_b = build_caa_assignment(
+        giver_b_seq, giver_b_amount, &recv_b_amount, receiver_b_key,
+        &bid_bytes, assignment_deadline,
+    );
+
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+
+    // Sign component A: giver_a + receiver_a sign the assignment
+    let giver_a_ts = Timestamp::from_raw(genesis_ts.raw() + 1_000_000);
+    let recv_a_ts = Timestamp::from_raw(genesis_ts.raw() + 3_000_000);
+    let giver_a_sig = sign::sign_dataitem(giver_a_key, &assignment_a, giver_a_ts);
+    let recv_a_sig = sign::sign_dataitem(receiver_a_key, &assignment_a, recv_a_ts);
+
+    // Sign component B: giver_b + receiver_b sign the assignment
+    let giver_b_ts = Timestamp::from_raw(genesis_ts.raw() + 2_000_000);
+    let recv_b_ts = Timestamp::from_raw(genesis_ts.raw() + 4_000_000);
+    let giver_b_sig = sign::sign_dataitem(giver_b_key, &assignment_b, giver_b_ts);
+    let recv_b_sig = sign::sign_dataitem(receiver_b_key, &assignment_b, recv_b_ts);
+
+    // Build CAA components
+    let comp_a = DataItem::container(CAA_COMPONENT, vec![
+        DataItem::bytes(CHAIN_REF, chain_a_id.to_vec()),
+        DataItem::vbc_value(CHAIN_ORDER, 0),
+        assignment_a,
+        DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, giver_a_sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, giver_a_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(PAGE_INDEX, 0),
+        ]),
+        DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, recv_a_sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, recv_a_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(PAGE_INDEX, 1),
+        ]),
+    ]);
+
+    let comp_b = DataItem::container(CAA_COMPONENT, vec![
+        DataItem::bytes(CHAIN_REF, chain_b_id.to_vec()),
+        DataItem::vbc_value(CHAIN_ORDER, 1),
+        assignment_b,
+        DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, giver_b_sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, giver_b_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(PAGE_INDEX, 0),
+        ]),
+        DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, recv_b_sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, recv_b_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(PAGE_INDEX, 1),
+        ]),
+    ]);
+
+    // Build canonical CAA (for overall signing)
+    let canonical_children = vec![
+        DataItem::bytes(ESCROW_DEADLINE, escrow_deadline.to_bytes().to_vec()),
+        DataItem::vbc_value(LIST_SIZE, 2u64),
+        comp_a.clone(),
+        comp_b.clone(),
+    ];
+    let canonical = DataItem::container(CAA, canonical_children.clone());
+
+    // Overall signatures: all 4 participants sign the canonical CAA
+    let overall_ts_base = Timestamp::from_raw(genesis_ts.raw() + 10_000_000);
+    let mut overall_sigs = Vec::new();
+    for (i, key) in [giver_a_key, receiver_a_key, giver_b_key, receiver_b_key].iter().enumerate() {
+        let ts = Timestamp::from_raw(overall_ts_base.raw() + i as i64);
+        let sig = sign::sign_dataitem(key, &canonical, ts);
+        overall_sigs.push(DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, ts.to_bytes().to_vec()),
+            DataItem::bytes(ED25519_PUB, key.public_key_bytes().to_vec()),
+        ]));
+    }
+
+    let mut caa_children = canonical_children;
+    caa_children.extend(overall_sigs);
+
+    (DataItem::container(CAA, caa_children), recv_a_amount, recv_b_amount)
+}
+
+fn build_caa_assignment(
+    giver_seq: u64,
+    giver_amount: &BigInt,
+    receiver_amount: &BigInt,
+    receiver_key: &SigningKey,
+    bid_bytes: &[u8],
+    deadline: Timestamp,
+) -> DataItem {
+    let mut giver_amount_bytes = Vec::new();
+    bigint::encode_bigint(giver_amount, &mut giver_amount_bytes);
+    let mut recv_amount_bytes = Vec::new();
+    bigint::encode_bigint(receiver_amount, &mut recv_amount_bytes);
+
+    DataItem::container(ASSIGNMENT, vec![
+        DataItem::vbc_value(LIST_SIZE, 2),
+        DataItem::container(PARTICIPANT, vec![
+            DataItem::vbc_value(SEQ_ID, giver_seq),
+            DataItem::bytes(AMOUNT, giver_amount_bytes),
+        ]),
+        DataItem::container(PARTICIPANT, vec![
+            DataItem::bytes(ED25519_PUB, receiver_key.public_key_bytes().to_vec()),
+            DataItem::bytes(AMOUNT, recv_amount_bytes),
+        ]),
+        DataItem::bytes(RECORDING_BID, bid_bytes.to_vec()),
+        DataItem::bytes(DEADLINE, deadline.to_bytes().to_vec()),
+    ])
+}
+
+#[tokio::test]
+async fn test_caa_submit_and_status() {
+    // Two independent chains, same recorder
+    let issuer_a = SigningKey::from_seed(&[0x50; 32]);
+    let issuer_b = SigningKey::from_seed(&[0x51; 32]);
+    let blockmaker = SigningKey::from_seed(&[0x52; 32]);
+    let receiver_a = SigningKey::generate();
+    let receiver_b = SigningKey::generate();
+
+    // Start chain A
+    let (base_a, chain_a_hex, chain_a_bytes) =
+        start_caa_server(&issuer_a, &blockmaker, std::collections::HashMap::new()).await;
+
+    // Get chain A info
+    let client = reqwest::Client::new();
+    let info_a: serde_json::Value = client
+        .get(format!("{}/chain/{}/info", base_a, chain_a_hex))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let shares_out: BigInt = info_a["shares_out"].as_str().unwrap().parse().unwrap();
+    let fee_num: BigInt = info_a["fee_rate_num"].as_str().unwrap().parse().unwrap();
+    let fee_den: BigInt = info_a["fee_rate_den"].as_str().unwrap().parse().unwrap();
+    let giver_a_amount: BigInt = {
+        let utxo: serde_json::Value = client
+            .get(format!("{}/chain/{}/utxo/1", base_a, chain_a_hex))
+            .send().await.unwrap()
+            .json().await.unwrap();
+        utxo["amount"].as_str().unwrap().parse().unwrap()
+    };
+
+    // Start chain B — needs to know chain A's recorder pubkey
+    let mut known_b = std::collections::HashMap::new();
+    known_b.insert(chain_a_bytes, {
+        let mut pk = [0u8; 32];
+        pk.copy_from_slice(blockmaker.public_key_bytes());
+        pk
+    });
+    let (base_b, chain_b_hex, chain_b_bytes) =
+        start_caa_server(&issuer_b, &blockmaker, known_b).await;
+
+    let _info_b: serde_json::Value = client
+        .get(format!("{}/chain/{}/info", base_b, chain_b_hex))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let giver_b_amount: BigInt = {
+        let utxo: serde_json::Value = client
+            .get(format!("{}/chain/{}/utxo/1", base_b, chain_b_hex))
+            .send().await.unwrap()
+            .json().await.unwrap();
+        utxo["amount"].as_str().unwrap().parse().unwrap()
+    };
+
+    // Build CAA
+    let escrow_deadline = Timestamp::from_unix_seconds(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap()
+            .as_secs() as i64 + 300
+    );
+    let (caa, _recv_a_amount, _recv_b_amount) = build_caa_for_test(
+        &chain_a_bytes, &chain_b_bytes,
+        &issuer_a, 1, &giver_a_amount, &receiver_a,
+        &issuer_b, 1, &giver_b_amount, &receiver_b,
+        &fee_num, &fee_den, &shares_out,
+        escrow_deadline,
+    );
+    let caa_json = ao_json::to_json(&caa);
+
+    // Step 1: Submit to chain A (order 0, no prior proofs needed)
+    let resp_a = client
+        .post(format!("{}/chain/{}/caa/submit", base_a, chain_a_hex))
+        .json(&caa_json)
+        .send().await.unwrap();
+
+    assert_eq!(resp_a.status(), 200, "caa_submit chain A failed: {}",
+        resp_a.text().await.unwrap_or_default());
+
+    // Re-read: need the actual response
+    let resp_a = client
+        .post(format!("{}/chain/{}/caa/submit", base_a, chain_a_hex))
+        .json(&caa_json)
+        .send().await.unwrap();
+    assert_eq!(resp_a.status(), 200); // idempotent re-submit
+    let proof_a: serde_json::Value = resp_a.json().await.unwrap();
+    let caa_hash_hex = proof_a["caa_hash"].as_str().unwrap().to_string();
+
+    // Check escrow status on chain A
+    let status_a: serde_json::Value = client
+        .get(format!("{}/chain/{}/caa/{}", base_a, chain_a_hex, caa_hash_hex))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert_eq!(status_a["status"], "escrowed");
+    assert_eq!(status_a["chain_order"], 0);
+
+    // Verify giver UTXO on chain A is now escrowed
+    let utxo_a: serde_json::Value = client
+        .get(format!("{}/chain/{}/utxo/1", base_a, chain_a_hex))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert_eq!(utxo_a["status"], "Escrowed");
+}
+
+#[tokio::test]
+async fn test_refutation_endpoint() {
+    let issuer_key = SigningKey::from_seed(&[0x42u8; 32]);
+    let blockmaker_key = SigningKey::from_seed(&[0x99u8; 32]);
+    let (base_url, chain_id) = start_test_server(&issuer_key, &blockmaker_key).await;
+
+    // Build an assignment that we will refute (not submit — just hash)
+    let receiver_key = SigningKey::from_seed(&[0xABu8; 32]);
+    let giver_amount = BigInt::from(1u64 << 40);
+    let giver_ts = Timestamp::from_unix_seconds(1_772_611_200 + 100);
+    let recv_ts = Timestamp::from_unix_seconds(1_772_611_200 + 101);
+    let auth = build_authorization(
+        &issuer_key, 1, &giver_amount,
+        &receiver_key,
+        &BigInt::from(1), &BigInt::from(1_000_000),
+        &giver_amount,
+        giver_ts, recv_ts,
+    );
+
+    // Compute the agreement hash (hash of the ASSIGNMENT, not AUTHORIZATION)
+    let assignment = auth.find_child(ASSIGNMENT).unwrap();
+    let agreement_hash = hash::sha256(&assignment.to_bytes());
+    let hash_hex = hex::encode(agreement_hash);
+
+    let client = reqwest::Client::new();
+
+    // Submit refutation
+    let resp = client
+        .post(format!("{}/chain/{}/refute", base_url, chain_id))
+        .json(&serde_json::json!({ "agreement_hash": hash_hex }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 200, "refutation failed: {}", resp.text().await.unwrap_or_default());
+
+    // Idempotent: re-submit should also succeed
+    let resp2 = client
+        .post(format!("{}/chain/{}/refute", base_url, chain_id))
+        .json(&serde_json::json!({ "agreement_hash": hash_hex }))
+        .send().await.unwrap();
+    assert_eq!(resp2.status(), 200);
+
+    // Bad hex should fail
+    let resp3 = client
+        .post(format!("{}/chain/{}/refute", base_url, chain_id))
+        .json(&serde_json::json!({ "agreement_hash": "not-hex" }))
+        .send().await.unwrap();
+    assert_eq!(resp3.status(), 400);
+
+    // Wrong length should fail
+    let resp4 = client
+        .post(format!("{}/chain/{}/refute", base_url, chain_id))
+        .json(&serde_json::json!({ "agreement_hash": "aabb" }))
+        .send().await.unwrap();
+    assert_eq!(resp4.status(), 400);
+}

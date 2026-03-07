@@ -48,6 +48,10 @@ pub struct Config {
     /// Optional validator endpoints for trust indicators in chain info.
     #[serde(default)]
     pub validators: Vec<ValidatorEndpoint>,
+    /// Known recorder public keys for CAA recording proof verification.
+    /// Maps chain_id hex → recorder pubkey hex.
+    #[serde(default)]
+    pub known_recorders: std::collections::HashMap<String, String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -71,6 +75,7 @@ impl Default for Config {
             chains: Vec::new(),
             mqtt: None,
             validators: Vec::new(),
+            known_recorders: std::collections::HashMap::new(),
         }
     }
 }

@@ -20,7 +20,7 @@ pub struct HistoryArgs {
 }
 
 pub fn run(args: HistoryArgs) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     rt.block_on(async { run_async(args).await });
 }
 

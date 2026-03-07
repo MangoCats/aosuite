@@ -40,7 +40,7 @@ pub fn run(args: InspectArgs) {
     match args.format.as_str() {
         "json" => {
             let json = to_json(&item);
-            println!("{}", serde_json::to_string_pretty(&json).unwrap());
+            println!("{}", serde_json::to_string_pretty(&json).expect("JSON serialization failed"));
         }
         "hex" => {
             let hex: String = data.iter().map(|b| format!("{:02x}", b)).collect();

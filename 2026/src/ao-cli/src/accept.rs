@@ -32,7 +32,7 @@ pub struct AcceptArgs {
 }
 
 pub fn run(args: AcceptArgs) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     rt.block_on(async { run_async(args).await });
 }
 
@@ -82,7 +82,7 @@ async fn run_async(args: AcceptArgs) {
     // Current timestamp
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .expect("system clock before epoch")
         .as_secs() as i64;
     let ts = Timestamp::from_unix_seconds(now);
 

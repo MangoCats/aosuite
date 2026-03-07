@@ -68,9 +68,10 @@ The C++ code is useful as a reference for the binary wire format and the `byteCo
 
 | Layer | Choice | Notes |
 |-------|--------|-------|
-| Language | Rust (stable, `no_std` for core crates) | Memory safety for crypto, cross-compile to ARM |
-| Signatures | Ed25519 via `ed25519-dalek` 2.x | Replaces ECDSA brainpool-256 and RSA-3072 |
+| Language | Rust (edition 2024) | Memory safety for crypto, cross-compile to ARM |
+| Signatures | Ed25519 via `ring` 0.17 | Replaces ECDSA brainpool-256 and RSA-3072 |
 | Hashes | SHA2-256 + BLAKE3 | SHA3-512 dropped entirely |
+| Type codes | 44 codes (1–39, -1, -2, 64–68) | Compact registry, extensible via type-code dispatch |
 | Big integers | `num-bigint` + `num-rational` | Pure Rust, replaces GMP |
 | Serialization | `serde` with custom binary + JSON | Preserves VBC binary on-chain format |
 | HTTP server | Axum 0.8+ | Async, lightweight, tokio ecosystem |
@@ -103,7 +104,7 @@ Phase 0 resolves the numerous ambiguities in the 2018 documents (VBC negative en
 - `rumqttc` has sporadic maintenance (18-month gap between releases). `rumqttd` embedded broker is the hedge.
 - `cross-rs` is stale on crates.io. GitHub Actions aarch64 runners are the better cross-compilation path from Windows.
 - Pi 5 needs SSD (not SD card) and active cooling for reliable server operation.
-- `ed25519-dalek` had a batch verification vulnerability (RUSTSEC-2024-0387), fixed in 2.1.0+.
+- `ed25519-dalek` was replaced by `ring` 0.17 early in Phase 1 — see [lessons/wrong-test-vector.md](lessons/wrong-test-vector.md).
 
 **Non-technical (the real hard problems):**
 - **Cold start.** The system only delivers value when vendors, consumers, and exchange agents are all using it in the same area simultaneously. Classic two-sided marketplace problem.

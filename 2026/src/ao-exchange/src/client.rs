@@ -96,4 +96,62 @@ impl RecorderClient {
         }
         resp.json().await.context("submit parse failed")
     }
+
+    /// Submit a CAA for escrow recording. Returns recording proof JSON.
+    pub async fn caa_submit(&self, chain_id: &str, caa_json: &serde_json::Value) -> Result<CaaProofResult> {
+        let url = format!("{}/chain/{}/caa/submit", self.base_url, chain_id);
+        let resp = self.http.post(&url)
+            .json(caa_json)
+            .send().await
+            .context("caa_submit request failed")?;
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("caa_submit failed: {}", body);
+        }
+        resp.json().await.context("caa_submit parse failed")
+    }
+
+    /// Submit binding proof to finalize a CAA on a chain.
+    pub async fn caa_bind(&self, chain_id: &str, bind_json: &serde_json::Value) -> Result<CaaStatusResult> {
+        let url = format!("{}/chain/{}/caa/bind", self.base_url, chain_id);
+        let resp = self.http.post(&url)
+            .json(bind_json)
+            .send().await
+            .context("caa_bind request failed")?;
+        if !resp.status().is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            anyhow::bail!("caa_bind failed: {}", body);
+        }
+        resp.json().await.context("caa_bind parse failed")
+    }
+
+    /// Query CAA escrow status.
+    pub async fn caa_status(&self, chain_id: &str, caa_hash: &str) -> Result<CaaStatusResult> {
+        let url = format!("{}/chain/{}/caa/{}", self.base_url, chain_id, caa_hash);
+        let resp = self.http.get(&url).send().await
+            .context("caa_status request failed")?;
+        if !resp.status().is_success() {
+            anyhow::bail!("caa_status failed: {}", resp.status());
+        }
+        resp.json().await.context("caa_status parse failed")
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct CaaProofResult {
+    pub caa_hash: String,
+    pub chain_id: String,
+    pub block_height: u64,
+    pub block_hash: String,
+    pub proof_json: serde_json::Value,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct CaaStatusResult {
+    pub caa_hash: String,
+    pub status: String,
+    pub chain_order: u64,
+    pub deadline: i64,
+    pub block_height: u64,
+    pub has_proof: bool,
 }

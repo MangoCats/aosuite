@@ -20,6 +20,21 @@ pub enum ChainError {
     #[error("UTXO {0} expired")]
     UtxoExpired(u64),
 
+    #[error("UTXO {0} is escrowed in a CAA")]
+    UtxoEscrowed(u64),
+
+    #[error("invalid CAA: {0}")]
+    InvalidCaa(String),
+
+    #[error("CAA not found")]
+    CaaNotFound,
+
+    #[error("CAA already exists")]
+    CaaAlreadyExists,
+
+    #[error("CAA expired")]
+    CaaExpired,
+
     #[error("public key already used on this chain")]
     KeyReuse,
 

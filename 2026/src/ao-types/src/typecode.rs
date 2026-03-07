@@ -56,6 +56,17 @@ pub const ROLLED_HASH: i64 = 66;
 pub const ANCHOR_REF: i64 = 67;
 pub const ANCHOR_TIMESTAMP: i64 = 68;
 
+/// CAA (Conditional Assignment Agreement) types — Phase 6, inseparable band (|code| 69–77)
+pub const CAA: i64 = 69;
+pub const CAA_COMPONENT: i64 = 70;
+pub const CHAIN_REF: i64 = 71;
+pub const ESCROW_DEADLINE: i64 = 72;
+pub const CHAIN_ORDER: i64 = 73;
+pub const RECORDING_PROOF: i64 = 74;
+pub const CAA_HASH: i64 = 75;
+pub const BLOCK_REF: i64 = 76;
+pub const BLOCK_HEIGHT: i64 = 77;
+
 /// How the data portion of a DataItem is sized.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SizeCategory {
@@ -84,6 +95,9 @@ pub fn size_category(code: i64) -> Option<SizeCategory> {
 
         ROLLED_HASH => Some(SizeCategory::Fixed(32)),
         ANCHOR_TIMESTAMP => Some(SizeCategory::Fixed(8)),
+        CHAIN_REF => Some(SizeCategory::Fixed(32)),
+        ESCROW_DEADLINE => Some(SizeCategory::Fixed(8)),
+        CAA_HASH => Some(SizeCategory::Fixed(32)),
 
         AMOUNT | RECORDING_BID | COIN_COUNT | FEE_RATE |
         CHAIN_SYMBOL | SHARES_OUT | REFERRAL_FEE |
@@ -92,13 +106,15 @@ pub fn size_category(code: i64) -> Option<SizeCategory> {
 
         SEQ_ID | PROTOCOL_VER | FIRST_SEQ | SEQ_COUNT |
         LIST_SIZE | PAGE_INDEX | EXPIRY_MODE |
-        VALIDATED_HEIGHT => Some(SizeCategory::VbcValue),
+        VALIDATED_HEIGHT |
+        CHAIN_ORDER | BLOCK_HEIGHT => Some(SizeCategory::VbcValue),
 
         ASSIGNMENT | AUTHORIZATION | PARTICIPANT |
         BLOCK | BLOCK_SIGNED | BLOCK_CONTENTS |
         PAGE | GENESIS | REFUTATION | AUTH_SIG |
         TAX_PARAMS | VENDOR_PROFILE | EXCHANGE_LISTING |
-        CREDENTIAL_REF | VALIDATOR_ATTESTATION => Some(SizeCategory::Container),
+        CREDENTIAL_REF | VALIDATOR_ATTESTATION |
+        CAA | CAA_COMPONENT | RECORDING_PROOF | BLOCK_REF => Some(SizeCategory::Container),
 
         _ => None,
     }
@@ -158,6 +174,15 @@ pub fn type_name(code: i64) -> Option<&'static str> {
         ROLLED_HASH => Some("ROLLED_HASH"),
         ANCHOR_REF => Some("ANCHOR_REF"),
         ANCHOR_TIMESTAMP => Some("ANCHOR_TIMESTAMP"),
+        CAA => Some("CAA"),
+        CAA_COMPONENT => Some("CAA_COMPONENT"),
+        CHAIN_REF => Some("CHAIN_REF"),
+        ESCROW_DEADLINE => Some("ESCROW_DEADLINE"),
+        CHAIN_ORDER => Some("CHAIN_ORDER"),
+        RECORDING_PROOF => Some("RECORDING_PROOF"),
+        CAA_HASH => Some("CAA_HASH"),
+        BLOCK_REF => Some("BLOCK_REF"),
+        BLOCK_HEIGHT => Some("BLOCK_HEIGHT"),
         _ => None,
     }
 }
@@ -187,12 +212,21 @@ mod tests {
         assert!(is_separable(CREDENTIAL_REF)); // 38
         assert!(is_separable(CREDENTIAL_URL)); // 39
 
-        // Next inseparable band: 64-95 (validator types)
+        // Next inseparable band: 64-95 (validator + CAA types)
         assert!(!is_separable(VALIDATOR_ATTESTATION)); // 64
         assert!(!is_separable(VALIDATED_HEIGHT));       // 65
         assert!(!is_separable(ROLLED_HASH));             // 66
         assert!(!is_separable(ANCHOR_REF));              // 67
         assert!(!is_separable(ANCHOR_TIMESTAMP));        // 68
+        assert!(!is_separable(CAA));                     // 69
+        assert!(!is_separable(CAA_COMPONENT));           // 70
+        assert!(!is_separable(CHAIN_REF));               // 71
+        assert!(!is_separable(ESCROW_DEADLINE));         // 72
+        assert!(!is_separable(CHAIN_ORDER));             // 73
+        assert!(!is_separable(RECORDING_PROOF));         // 74
+        assert!(!is_separable(CAA_HASH));                // 75
+        assert!(!is_separable(BLOCK_REF));               // 76
+        assert!(!is_separable(BLOCK_HEIGHT));            // 77
         assert!(!is_separable(95));
 
         // Next separable band: 96-127
@@ -214,6 +248,8 @@ mod tests {
             EXCHANGE_LISTING, CREDENTIAL_REF, CREDENTIAL_URL,
             VALIDATOR_ATTESTATION, VALIDATED_HEIGHT, ROLLED_HASH,
             ANCHOR_REF, ANCHOR_TIMESTAMP,
+            CAA, CAA_COMPONENT, CHAIN_REF, ESCROW_DEADLINE,
+            CHAIN_ORDER, RECORDING_PROOF, CAA_HASH, BLOCK_REF, BLOCK_HEIGHT,
         ];
         for code in all_codes {
             assert!(

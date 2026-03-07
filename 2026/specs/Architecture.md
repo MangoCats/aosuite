@@ -181,18 +181,36 @@ A share holder assigns all shares from their current key to a fresh key they con
 
 ## 4. Recorder API (A1)
 
+### 4.1 Endpoints
+
 | Method | Endpoint | Request | Response |
 |--------|----------|---------|----------|
-| GET | `/chain/{id}/info` | — | Chain metadata: name, coin label, genesis hash, current height, total shares, total coins, fee rate, expiration parameters |
-| GET | `/chain/{id}/blocks?from={height}&to={height}` | — | Array of blocks (binary or JSON per Accept header) |
-| GET | `/chain/{id}/utxo/{seq_id}` | — | UTXO status: key, share amount, block recorded, spent/unspent |
-| POST | `/chain/{id}/submit` | Signed assignment agreement (binary or JSON) | Block containing the assignment, or error |
+| GET | `/chains` | — | Array of hosted chains: chain_id, symbol, height, exchange_agents |
+| POST | `/chains` | Genesis JSON + optional blockmaker_seed | Chain info (201 Created) |
+| GET | `/chain/{id}/info` | — | Chain metadata: name, coin label, genesis hash, current height, total shares, total coins, fee rate, expiration parameters, validator endorsements |
+| GET | `/chain/{id}/blocks?from={height}&to={height}` | — | Array of blocks in JSON. Paginated (max 1000 per request). |
+| GET | `/chain/{id}/utxo/{seq_id}` | — | UTXO status: key, share amount, block recorded, spent/unspent/escrowed/expired |
+| POST | `/chain/{id}/submit` | Signed AUTHORIZATION JSON | Block info: height, hash, timestamp, shares_out, first_seq, seq_count |
+| POST | `/chain/{id}/refute` | `{"agreement_hash": "<hex>"}` | 200 OK (idempotent) |
 | GET | `/chain/{id}/events` | — | SSE stream of new block notifications |
 | GET | `/chain/{id}/ws` | — | WebSocket upgrade for bidirectional block notifications |
+| POST | `/chain/{id}/exchange-agent` | Exchange agent registration JSON | 200 OK |
+
+Phase 6 adds CAA endpoints — see [AtomicExchange.md](AtomicExchange.md) §4.3.
 
 `{id}` is the hex-encoded SHA2-256 hash of the genesis block (64 characters).
 
-All responses include `Content-Type: application/octet-stream` (binary) or `application/json` based on the `Accept` request header. Binary is the canonical on-chain format; JSON is for debugging and web clients.
+All responses use `Content-Type: application/json`. The body limit is 256 KB.
+
+### 4.2 Error Response Format
+
+All error responses return a JSON object with an `error` field:
+
+```json
+{"error": "human-readable error description"}
+```
+
+HTTP status codes: 400 (bad request / validation failure), 404 (chain or resource not found), 409 (conflict, e.g., chain already hosted), 500 (internal error).
 
 ---
 
@@ -252,9 +270,11 @@ A compromised Recorder could theoretically record conflicting assignments, but t
 
 ## 7. Cryptographic Agility
 
-Algorithm agility is a core architectural requirement, not an afterthought. The type-code system ([WireFormat.md](WireFormat.md) §3) is the mechanism:
+Algorithm agility is a core architectural requirement, not an afterthought. The type-code system ([WireFormat.md](WireFormat.md) §3) is the mechanism.
 
-**How it works:** Every cryptographic output on-chain (signature, hash) is a DataItem with a type code that identifies the algorithm. Verification code dispatches on the type code to select the implementation. This means:
+### 7.1 Type-Code Dispatch
+
+Every cryptographic output on-chain (signature, hash, public key) is a DataItem with a type code identifying the algorithm. Verification code MUST dispatch on the type code to select the implementation. This means:
 
 - A block can contain Ed25519 signatures alongside a future Ed448 or post-quantum signature — the verifier handles both via type-code dispatch.
 - SHA2-256 hashes and BLAKE3 hashes can coexist in the same chain, each identified by its type code.
@@ -262,7 +282,9 @@ Algorithm agility is a core architectural requirement, not an afterthought. The 
 
 **Implementation rule:** All protocol code MUST treat algorithm selection as a type-code lookup. No function should hard-code `Ed25519_Verify(...)` — it should dispatch on the type code: `verify_signature(type_code, key, data, sig)`. This applies to signing, hashing, and key generation.
 
-**Initial algorithm set:**
+**Current status:** The initial implementation uses only Ed25519 and SHA2-256, with a single code path per function. This is acceptable as a starting point — but the interfaces must be structured so that adding a second algorithm is a dispatch addition, not a rewrite.
+
+### 7.2 Initial Algorithm Set
 
 | Function | Primary | First Alternate | Future Candidates |
 |----------|---------|-----------------|-------------------|
@@ -270,6 +292,25 @@ Algorithm agility is a core architectural requirement, not an afterthought. The 
 | Chain integrity | SHA2-256 (type 3) | BLAKE3 (type 4) | SHA2-384, SHA2-512 |
 
 BLAKE3 is identified as the first alternate hash: structurally different from SHA2 (ChaCha-based ARX vs Merkle-Damgård), providing a hedge if the SHA2 family is ever compromised. See [CryptoChoices.md](CryptoChoices.md) §3 for the full rationale.
+
+### 7.3 Backward Compatibility
+
+Adding a new algorithm MUST NOT invalidate existing transaction logs. Specifically:
+
+1. **Existing blocks remain valid.** A chain that used Ed25519 for blocks 0–10,000 continues to verify identically after Ed448 support is added. The verifier dispatches on the type code found in each block.
+2. **No forced migration.** Participants are not required to adopt new algorithms. A giver with an Ed25519 key can sign an assignment even after the Recorder begins accepting Ed448 signatures.
+3. **Genesis parameters unchanged.** Algorithm availability is a software capability, not a genesis parameter. A chain created before Ed448 support was added benefits from it automatically when the Recorder software is upgraded.
+4. **Chain replay determinism.** Replaying a chain from genesis produces identical results regardless of which algorithms the replaying software supports, as long as it supports all algorithms actually used in the chain.
+
+### 7.4 Interoperability and Algorithm Selection
+
+When multiple algorithms are available, participants and recorders must agree on which to use. The selection rules:
+
+1. **Signer's choice.** The signer selects the signature algorithm. The resulting `AUTH_SIG` contains a type-coded `ED25519_SIG` (or future `ED448_SIG`, etc.). The verifier accepts any algorithm it supports.
+2. **Recorder acceptance policy.** The Recorder maintains a set of accepted signature and hash algorithms. It rejects submissions using algorithms outside this set. The accepted set is a software configuration, not an on-chain parameter. A Recorder SHOULD accept all algorithms it can verify; it MUST accept at least one signature algorithm and SHA2-256 for chain integrity.
+3. **Overlap requirement for transactions.** A transaction is valid if every signature in it uses an algorithm the Recorder accepts. For cross-chain CAA transactions, each chain's Recorder independently verifies the signatures relevant to its component — there is no requirement that all chains accept the same algorithm set.
+4. **Hash algorithm for chain integrity.** The block hash chain (`PREV_HASH` → `SHA256` in `BLOCK`) uses the hash algorithm established in the chain's first block. Changing the chain integrity hash requires a chain migration (new genesis). Content-addressing hashes (separable item substitution) can use any supported hash algorithm, identified by type code.
+5. **Algorithm deprecation.** A Recorder MAY stop accepting new signatures with a deprecated algorithm while continuing to verify existing blocks that used it. This is a one-way ratchet: once deprecated, an algorithm is not re-enabled. Deprecation is announced via Recorder configuration and SHOULD be communicated to clients via the chain info endpoint.
 
 ---
 

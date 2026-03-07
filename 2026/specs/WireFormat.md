@@ -154,6 +154,7 @@ Type codes are signed VBC integers. The sign distinguishes code variants (not da
 | 28 | `REFUTATION` | container | Explicit refutation of a prior agreement |
 | 29 | `PAGE_INDEX` | vbc-value | Page number within block (0-based) |
 | 30 | `AUTH_SIG` | container | Signature container (children vary by context, see §6) |
+| 31 | `REFERRAL_FEE` | variable | Referral fee fraction (rational, Phase 4) |
 | −1 | `EXPIRY_MODE` | vbc-value | Expiration mode (1=hard cutoff, 2=age tax) |
 | −2 | `TAX_PARAMS` | container | Age tax parameters (start age, doubling period) |
 
@@ -184,7 +185,23 @@ Second inseparable band. See [ValidationAndTrust.md](ValidationAndTrust.md) §4.
 | 67 | `ANCHOR_REF` | variable | External anchor reference string (UTF-8) |
 | 68 | `ANCHOR_TIMESTAMP` | 8 | Anchor publication timestamp |
 
-### 3.4 Separability Rule
+### 3.4 CAA Types (Inseparable, |code| 69–77)
+
+Conditional Assignment Agreement types. See [AtomicExchange.md](AtomicExchange.md).
+
+| Code | Name | Size | Description |
+|---:|:---|:---|:---|
+| 69 | `CAA` | container | Conditional Assignment Agreement (top-level) |
+| 70 | `CAA_COMPONENT` | container | Per-chain component: chain ref + assignment + signatures |
+| 71 | `CHAIN_REF` | 32 | SHA2-256 chain ID reference |
+| 72 | `ESCROW_DEADLINE` | 8 | Escrow expiration timestamp |
+| 73 | `CHAIN_ORDER` | vbc-value | 0-based ouroboros sequence position |
+| 74 | `RECORDING_PROOF` | container | Proof of CAA recording on a chain |
+| 75 | `CAA_HASH` | 32 | SHA2-256 hash of a CAA |
+| 76 | `BLOCK_REF` | container | Block reference: chain ID + height + hash |
+| 77 | `BLOCK_HEIGHT` | vbc-value | Block height within a BLOCK_REF |
+
+### 3.5 Separability Rule
 
 To determine if a DataItem is separable, check bit 5 of the type code's absolute value:
 

@@ -50,7 +50,7 @@ pub async fn execute_transfer(
 
     let now_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .expect("system clock before epoch")
         .as_secs() as i64;
 
     // Iterative fee convergence (3 rounds)
@@ -74,7 +74,7 @@ pub async fn execute_transfer(
                 giver_total, fee, other_total
             );
         }
-        receivers.last_mut().unwrap().amount = last_amount;
+        receivers.last_mut().expect("receivers is non-empty").amount = last_amount;
     }
 
     let auth = build_authorization(givers, receivers, now_secs, &fee_rate);

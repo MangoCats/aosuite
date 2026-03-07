@@ -24,7 +24,7 @@ pub struct ExportArgs {
 }
 
 pub fn run(args: ExportArgs) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     rt.block_on(async { run_async(args).await });
 }
 
@@ -49,7 +49,7 @@ async fn run_async(args: ExportArgs) {
     let blocks: Vec<serde_json::Value> = response.json().await
         .unwrap_or_else(|e| { eprintln!("Invalid response: {}", e); std::process::exit(1); });
 
-    let json_str = serde_json::to_string_pretty(&blocks).unwrap();
+    let json_str = serde_json::to_string_pretty(&blocks).expect("JSON serialization failed");
 
     if let Some(path) = &args.output {
         std::fs::write(path, &json_str).unwrap_or_else(|e| {

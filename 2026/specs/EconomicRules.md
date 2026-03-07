@@ -176,7 +176,9 @@ effective_shares = original_shares - taxed_shares
 
 Taxed shares are retired from `SHARES_OUT`.
 
-**Deterministic computation:** The exponential `2^(-x)` must be computed using rational approximation or a lookup table with interpolation, specified to produce identical results on all implementations. The exact method is TBD during Phase 1 implementation — the spec will be updated with the chosen algorithm and test vectors.
+**Deterministic computation:** The exponential `2^(-x)` must be computed using rational approximation or a lookup table with interpolation, specified to produce identical results on all implementations. The exact method is TBD — the spec will be updated with the chosen algorithm and test vectors when mode 2 is implemented.
+
+**Implementation status:** Mode 2 is not yet implemented. Genesis creation rejects `EXPIRY_MODE = 2` with a clear error. The type codes and data structures are defined and forward-compatible — implementing mode 2 requires only the deterministic `2^(-x)` algorithm, test vectors, and the expiry sweep logic. No wire format or schema changes are needed.
 
 **Worked Example** (5-year expiration, doubling every 4 months):
 - `TAX_START_AGE` = 0 (tax begins immediately)

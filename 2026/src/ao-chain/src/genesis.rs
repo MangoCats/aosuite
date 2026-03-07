@@ -61,6 +61,14 @@ pub fn load_genesis(store: &ChainStore, genesis: &DataItem) -> Result<ChainMeta>
     let expiry_period = i64::from_be_bytes(expiry_period_bytes.try_into().expect("length validated above"));
 
     // Tax params (optional, required for mode 2)
+    // Mode 2 (age tax) is not yet implemented — the deterministic rational
+    // approximation algorithm for 2^(-x) has not been specified (see
+    // EconomicRules.md §4.2). Accepting a mode 2 genesis would create a chain
+    // that silently skips all age tax, so we reject it at creation time.
+    if expiry_mode == 2 {
+        return Err(ChainError::InvalidGenesis(
+            "expiry mode 2 (age tax) is not yet implemented; use mode 1 (hard cutoff)".into()));
+    }
     let (tax_start_age, tax_doubling_period) = if expiry_mode == 2 {
         let tax_params = genesis.find_child(TAX_PARAMS)
             .ok_or_else(|| ChainError::InvalidGenesis("mode 2 requires TAX_PARAMS".into()))?;
@@ -341,5 +349,73 @@ mod tests {
         let store = ChainStore::open_memory().unwrap();
         store.init_schema().unwrap();
         assert!(load_genesis(&store, &item).is_err());
+    }
+
+    #[test]
+    fn test_mode2_rejected() {
+        // Mode 2 (age tax) is not implemented; genesis should reject it.
+        let seed = [0x42u8; 32];
+        let key = SigningKey::from_seed(&seed);
+        let pubkey = key.public_key_bytes().to_vec();
+
+        let shares_out_val = BigInt::from(1u64 << 20);
+        let mut shares_bytes = Vec::new();
+        bigint::encode_bigint(&shares_out_val, &mut shares_bytes);
+
+        let coin_count_val = BigInt::from(1_000_000u64);
+        let mut coin_bytes = Vec::new();
+        bigint::encode_bigint(&coin_count_val, &mut coin_bytes);
+
+        let fee_rate = num_rational::BigRational::new(BigInt::from(1), BigInt::from(1000));
+        let mut fee_bytes = Vec::new();
+        bigint::encode_rational(&fee_rate, &mut fee_bytes);
+
+        let expiry_ts = Timestamp::from_unix_seconds(31_536_000);
+        let ts = Timestamp::from_unix_seconds(1_772_611_200);
+
+        let tax_start = Timestamp::from_unix_seconds(0);
+        let tax_doubling = Timestamp::from_unix_seconds(10_368_000); // ~4 months
+
+        let signable_children = vec![
+            DataItem::vbc_value(PROTOCOL_VER, 1),
+            DataItem::bytes(CHAIN_SYMBOL, b"TST".to_vec()),
+            DataItem::bytes(COIN_COUNT, coin_bytes),
+            DataItem::bytes(SHARES_OUT, shares_bytes.clone()),
+            DataItem::bytes(FEE_RATE, fee_bytes),
+            DataItem::bytes(EXPIRY_PERIOD, expiry_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(EXPIRY_MODE, 2),
+            DataItem::container(TAX_PARAMS, vec![
+                DataItem::bytes(TIMESTAMP, tax_start.to_bytes().to_vec()),
+                DataItem::bytes(TIMESTAMP, tax_doubling.to_bytes().to_vec()),
+            ]),
+            DataItem::container(PARTICIPANT, vec![
+                DataItem::bytes(ED25519_PUB, pubkey),
+                DataItem::bytes(AMOUNT, shares_bytes),
+            ]),
+        ];
+        let signable = DataItem::container(GENESIS, signable_children.clone());
+        let sig = sign::sign_dataitem(&key, &signable, ts);
+
+        let mut all_children = signable_children;
+        all_children.push(DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, ts.to_bytes().to_vec()),
+        ]));
+
+        let mut content_bytes = Vec::new();
+        for child in &all_children {
+            child.encode(&mut content_bytes);
+        }
+        let chain_hash = hash::sha256(&content_bytes);
+        all_children.push(DataItem::bytes(SHA256, chain_hash.to_vec()));
+
+        let genesis = DataItem::container(GENESIS, all_children);
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        let result = load_genesis(&store, &genesis);
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("mode 2"), "Expected mode 2 error, got: {}", err);
     }
 }

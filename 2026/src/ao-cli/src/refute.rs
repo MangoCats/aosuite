@@ -1,11 +1,6 @@
 use clap::Args;
 
-use ao_types::dataitem::DataItem;
-use ao_types::typecode::*;
 use ao_types::json as ao_json;
-use ao_types::timestamp::Timestamp;
-use ao_crypto::sign::SigningKey;
-use ao_crypto::sign;
 use ao_crypto::hash;
 
 #[derive(Args)]
@@ -21,13 +16,14 @@ pub struct RefuteArgs {
     /// Path to the ASSIGNMENT JSON file being refuted
     #[arg(short, long)]
     assignment: String,
-
-    /// Signing seed (hex, 32 bytes) — the refuting participant's key
-    #[arg(short, long)]
-    seed: String,
 }
 
 pub fn run(args: RefuteArgs) {
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    rt.block_on(async { run_async(args).await });
+}
+
+async fn run_async(args: RefuteArgs) {
     // Read assignment JSON
     let json_str = std::fs::read_to_string(&args.assignment).unwrap_or_else(|e| {
         eprintln!("Failed to read {}: {}", args.assignment, e);
@@ -45,39 +41,27 @@ pub fn run(args: RefuteArgs) {
     // Compute agreement hash
     let assignment_bytes = assignment.to_bytes();
     let agreement_hash = hash::sha256(&assignment_bytes);
+    let agreement_hash_hex = hex::encode(agreement_hash);
 
-    // Parse signing key
-    let seed_bytes = hex::decode(args.seed.trim()).unwrap_or_else(|e| {
-        eprintln!("Invalid seed hex: {}", e);
+    eprintln!("Agreement hash: {}", agreement_hash_hex);
+
+    // Submit refutation to recorder
+    let url = format!("{}/chain/{}/refute", args.recorder.trim_end_matches('/'), args.chain);
+    let client = reqwest::Client::new();
+    let body = serde_json::json!({ "agreement_hash": agreement_hash_hex });
+
+    let resp = client.post(&url)
+        .json(&body)
+        .send()
+        .await
+        .unwrap_or_else(|e| { eprintln!("Request failed: {}", e); std::process::exit(1); });
+
+    if resp.status().is_success() {
+        eprintln!("Refutation recorded successfully.");
+    } else {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        eprintln!("Refutation failed ({}): {}", status, text);
         std::process::exit(1);
-    });
-    let seed: [u8; 32] = seed_bytes.try_into().unwrap_or_else(|_| {
-        eprintln!("Seed must be 32 bytes");
-        std::process::exit(1);
-    });
-    let key = SigningKey::from_seed(&seed);
-
-    // Current timestamp
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64;
-    let ts = Timestamp::from_unix_seconds(now);
-
-    // Build REFUTATION DataItem
-    let refutation = DataItem::container(REFUTATION, vec![
-        DataItem::bytes(SHA256, agreement_hash.to_vec()),
-        DataItem::container(AUTH_SIG, vec![
-            DataItem::bytes(ED25519_SIG, sign::sign_dataitem(&key, &assignment, ts).to_vec()),
-            DataItem::bytes(TIMESTAMP, ts.to_bytes().to_vec()),
-            DataItem::bytes(ED25519_PUB, key.public_key_bytes().to_vec()),
-        ]),
-    ]);
-
-    let json = ao_json::to_json(&refutation);
-    let json_str = serde_json::to_string_pretty(&json).unwrap();
-
-    println!("{}", json_str);
-    eprintln!("Agreement hash: {}", hex::encode(agreement_hash));
-    eprintln!("Refutation built. Submit to recorder when refutation endpoint is available.");
+    }
 }

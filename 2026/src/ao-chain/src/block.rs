@@ -80,6 +80,12 @@ fn construct_block_inner(
     let expired_shares = expiry::run_expiry_sweep(store, meta, block_timestamp)?;
     shares_out -= &expired_shares;
 
+    // Run escrow sweep — release expired CAA escrows back to unspent.
+    // Non-fatal: sweep failure should not prevent block production.
+    if let Ok((_, fee_restore)) = crate::caa::run_escrow_sweep(store, block_timestamp) {
+        shares_out += fee_restore;
+    }
+
     // Total fees across all assignments
     let mut total_fees = BigInt::zero();
     let mut pages = Vec::new();

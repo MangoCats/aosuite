@@ -153,6 +153,7 @@ fn validate_utxos(
             UtxoStatus::Unspent => {}
             UtxoStatus::Spent => return Err(ChainError::UtxoAlreadySpent(*seq_id)),
             UtxoStatus::Expired => return Err(ChainError::UtxoExpired(*seq_id)),
+            UtxoStatus::Escrowed => return Err(ChainError::UtxoEscrowed(*seq_id)),
         }
 
         if current_timestamp > utxo.block_timestamp.saturating_add(meta.expiry_period) {

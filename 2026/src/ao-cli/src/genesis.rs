@@ -93,7 +93,7 @@ pub fn run(args: GenesisArgs) {
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
+        .expect("system clock before epoch")
         .as_secs() as i64;
     let signing_ts = Timestamp::from_unix_seconds(now);
 
@@ -177,7 +177,7 @@ pub fn run(args: GenesisArgs) {
 
     if args.json {
         let json = ao_types::json::to_json(&genesis_block);
-        println!("{}", serde_json::to_string_pretty(&json).unwrap());
+        println!("{}", serde_json::to_string_pretty(&json).expect("JSON serialization failed"));
     }
 }
 

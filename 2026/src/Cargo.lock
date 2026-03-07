@@ -64,6 +64,7 @@ version = "0.1.0"
 dependencies = [
  "ao-crypto",
  "ao-types",
+ "hex",
  "num-bigint",
  "num-integer",
  "num-rational",

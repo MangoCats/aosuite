@@ -39,17 +39,13 @@ impl Default for Config {
     }
 }
 
-pub fn load_config(path: &str) -> Config {
-    match std::fs::read_to_string(path) {
-        Ok(content) => {
-            toml::from_str(&content).unwrap_or_else(|e| {
-                eprintln!("Warning: failed to parse {}: {}. Using defaults.", path, e);
-                Config::default()
-            })
-        }
-        Err(_) => {
-            eprintln!("Warning: config file {} not found. Using defaults.", path);
-            Config::default()
-        }
+pub fn load_config(path: &str) -> anyhow::Result<Config> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| anyhow::anyhow!("failed to read config file {}: {}", path, e))?;
+    let config: Config = toml::from_str(&content)
+        .map_err(|e| anyhow::anyhow!("failed to parse {}: {}", path, e))?;
+    if config.blockmaker_seed.is_empty() {
+        anyhow::bail!("blockmaker_seed is required in {}", path);
     }
+    Ok(config)
 }

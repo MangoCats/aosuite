@@ -5,6 +5,7 @@ use ao_types::dataitem::DataItem;
 use ao_types::typecode::*;
 use ao_types::bigint;
 use ao_types::json as ao_json;
+use ao_types::timestamp::Timestamp;
 
 #[derive(Args)]
 pub struct AssignArgs {
@@ -199,7 +200,9 @@ fn build_assignment(
     }
 
     if let Some(dl) = deadline {
-        children.push(DataItem::bytes(DEADLINE, dl.to_be_bytes().to_vec()));
+        // --deadline is Unix seconds; DEADLINE field must be AO timestamp
+        let ao_ts = Timestamp::from_unix_seconds(dl);
+        children.push(DataItem::bytes(DEADLINE, ao_ts.to_bytes().to_vec()));
     }
 
     DataItem::container(ASSIGNMENT, children)

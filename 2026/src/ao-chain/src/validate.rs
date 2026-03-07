@@ -241,6 +241,8 @@ fn verify_signatures(
             format!("expected {} AUTH_SIG items, got {}", expected_sig_count, auth_sigs.len())));
     }
 
+    let mut seen_indices = std::collections::HashSet::new();
+
     for auth_sig in &auth_sigs {
         let sig_bytes = auth_sig.find_child(ED25519_SIG)
             .and_then(|c| c.as_bytes())
@@ -251,6 +253,11 @@ fn verify_signatures(
         let page_index = auth_sig.find_child(PAGE_INDEX)
             .and_then(|c| c.as_vbc_value())
             .ok_or_else(|| ChainError::SignatureFailure("missing PAGE_INDEX in AUTH_SIG".into()))?;
+
+        if !seen_indices.insert(page_index) {
+            return Err(ChainError::SignatureFailure(
+                format!("duplicate PAGE_INDEX {} in AUTH_SIG", page_index)));
+        }
 
         if sig_bytes.len() != 64 {
             return Err(ChainError::SignatureFailure("signature must be 64 bytes".into()));

@@ -249,9 +249,11 @@ Rational = TotalSize(unsigned VBC) + NumSize(unsigned VBC) + Numerator(big-endia
 
 ## 5. Timestamp Encoding
 
-Timestamps encode UTC time as `Unix_seconds × 189,000,000` in an **8-byte big-endian signed integer**.
+Timestamps encode UTC time as `Unix_seconds × 189,000,000` in an **8-byte big-endian signed integer** (`i64`).
 
 The multiplier 189,000,000 = 2⁶ × 3³ × 5⁶ × 7 provides ~5.29 ns resolution and clean division by any integer 2–10.
+
+**Signed integer rationale:** Signed `i64` supports pre-epoch dates (birthdates, historical events) and overflows only at ~year 3517 (`i64::MAX / 189,000,000 ≈ 48.8 billion` Unix seconds). This is well beyond the project's **2126 design horizon** — all implementations must correctly handle timestamps through at least 2126-12-31.
 
 ### 5.1 Timestamp Test Vectors
 

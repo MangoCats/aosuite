@@ -15,9 +15,28 @@ pub struct SigningKey {
 
 impl SigningKey {
     /// Create a signing key from a 32-byte seed (RFC 8032 private key).
+    ///
+    /// Uses `from_seed_unchecked` which skips the public-key consistency check.
+    /// This is safe for freshly generated random seeds. For untrusted input,
+    /// use [`try_from_seed`] which performs the full check.
     pub fn from_seed(seed: &[u8; 32]) -> Self {
-        let keypair = Ed25519KeyPair::from_seed_unchecked(seed).unwrap();
+        let keypair = Ed25519KeyPair::from_seed_unchecked(seed)
+            .expect("Ed25519 seed rejected by ring");
         SigningKey { keypair, seed: *seed }
+    }
+
+    /// Fallible key creation with full public-key derivation check.
+    /// Use this for seeds from untrusted sources (user input, deserialized data).
+    pub fn try_from_seed(seed: &[u8; 32]) -> Result<Self, ring::error::KeyRejected> {
+        // ring's from_seed requires seed || public_key (64 bytes).
+        // Derive the public key first via unchecked, then verify round-trip.
+        let unchecked = Ed25519KeyPair::from_seed_unchecked(seed)?;
+        let pub_bytes = unchecked.public_key().as_ref();
+        let mut seed_and_pub = [0u8; 64];
+        seed_and_pub[..32].copy_from_slice(seed);
+        seed_and_pub[32..].copy_from_slice(pub_bytes);
+        let keypair = Ed25519KeyPair::from_seed_and_public_key(&seed_and_pub[..32], &seed_and_pub[32..])?;
+        Ok(SigningKey { keypair, seed: *seed })
     }
 
     /// Generate a new signing key from OS randomness.

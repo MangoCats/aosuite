@@ -55,7 +55,11 @@ pub fn construct_block(
     let result = construct_block_inner(store, meta, blockmaker_key, assignments, block_timestamp);
     match &result {
         Ok(_) => store.commit()?,
-        Err(_) => store.rollback()?,
+        Err(_) => {
+            // Rollback best-effort: if rollback fails, the original error is more
+            // informative than the rollback error, so we keep it.
+            let _ = store.rollback();
+        }
     }
     result
 }

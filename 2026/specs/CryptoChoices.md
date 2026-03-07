@@ -10,7 +10,7 @@ Related specs: [Architecture.md](Architecture.md) (0A), [WireFormat.md](WireForm
 
 | Function | Algorithm | Output Size | Crate / API | Notes |
 |----------|-----------|-------------|-------------|-------|
-| Signatures | Ed25519 (RFC 8032) | 64 bytes | `ed25519-dalek` 2.2+ (Rust), Web Crypto API (browser) | Replaces 2018 ECDSA-256 + RSA-3072 |
+| Signatures | Ed25519 (RFC 8032) | 64 bytes | `ring` 0.17 (Rust), Web Crypto API (browser) | Replaces 2018 ECDSA-256 + RSA-3072 |
 | Chain integrity hash | SHA2-256 | 32 bytes | `sha2` (Rust), Web Crypto API (browser) | Block hashing, separable item substitution |
 | Content-addressing | BLAKE3 | 32 bytes | `blake3` (Rust), JS via WASM | Fast chain replay, large separable items |
 | Wallet encryption | XChaCha20-Poly1305 | — | `chacha20poly1305` (Rust) | Encrypts private key seeds |
@@ -66,13 +66,13 @@ Given an assignment agreement and a signing timestamp:
 | Verify speed | ~150 μs | ~200 μs | ~50 μs |
 | Deterministic | Yes (no random nonce) | Requires RFC 6979 | Yes |
 | Web Crypto API | Yes (Chrome, Edge, Firefox, Safari 17+) | Yes | Yes |
-| Rust `no_std` | `ed25519-dalek` | `p256` | `rsa` (needs alloc) |
+| Rust support | `ring` 0.17 | `p256` | `rsa` (needs alloc) |
 
 Ed25519 wins on compactness (critical for wire format thrift), determinism (no nonce-reuse vulnerability), and simplicity. RSA-3072 is dropped entirely — 384-byte signatures are unacceptable for LoRa mesh transport.
 
-### 2.7 Crate Pinning
+### 2.7 Crate Selection
 
-Pin `ed25519-dalek` to ≥ 2.2.0. Versions prior to 2.1.0 have RUSTSEC-2024-0387 (batch verification vulnerability). Do **not** use batch verification until the fix is confirmed audited.
+Ed25519 is implemented via `ring` 0.17. The original plan used `ed25519-dalek`, but it was replaced during Phase 1 due to an RFC 8032 test vector discrepancy — see [lessons/wrong-test-vector.md](../lessons/wrong-test-vector.md). `ring` passes all RFC 8032 test vectors and is widely deployed (used by rustls, webpki).
 
 ---
 
@@ -179,13 +179,13 @@ A public key used to receive shares on a chain MUST NOT be used to receive share
 
 ### 5.2 Key-Never-Reuse Tracking
 
-The `ao-crypto` crate maintains a set of public keys that have been used for signing in the current session. If a key is presented for reuse, the crate returns an error. This is a defense-in-depth measure — the Recorder also enforces uniqueness.
+Key-never-reuse is enforced by the Recorder's UTXO layer (`ao-chain`), which maintains a persistent `used_keys` table in SQLite. Any assignment with a receiver public key already present in the table is rejected. This was originally planned as a stateless check in `ao-crypto`, but was moved to `ao-chain` during Phase 2 because enforcement requires persistent state across sessions.
 
 ### 5.3 Key Generation
 
 Ed25519 key pairs are generated from 32 bytes of cryptographically secure randomness:
 
-- **Rust:** `OsRng` from `rand` crate (or `getrandom` for `no_std`).
+- **Rust:** `SystemRandom` from `ring` crate.
 - **Browser:** `crypto.getRandomValues(new Uint8Array(32))`.
 
 No deterministic key derivation (BIP-32, etc.) is used. Each key is independently random. This simplifies the security model at the cost of requiring explicit backup of each key.

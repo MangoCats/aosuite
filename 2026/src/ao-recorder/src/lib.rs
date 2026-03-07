@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, RwLock};
 
 use axum::{
     Router,
-    extract::{Path, State, WebSocketUpgrade, ws},
+    extract::{DefaultBodyLimit, Path, State, WebSocketUpgrade, ws},
     http::StatusCode,
     response::{IntoResponse, Json, Sse, sse},
     routing::get,
@@ -185,6 +185,13 @@ struct CreateChainRequest {
 
 // ── Router ──────────────────────────────────────────────────────────
 
+/// Maximum request body size (256 KB). Assignments are compact wire-format
+/// structures; anything larger is almost certainly malicious.
+const MAX_BODY_SIZE: usize = 256 * 1024;
+
+/// Maximum number of blocks returned by a single GET /blocks request.
+const MAX_BLOCK_RANGE: u64 = 1000;
+
 /// Build the Axum router for a recorder with the given state.
 pub fn build_router(state: Arc<AppState>) -> Router {
     Router::new()
@@ -195,6 +202,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/chain/{id}/submit", get(method_not_allowed).post(submit_assignment))
         .route("/chain/{id}/events", get(sse_events))
         .route("/chain/{id}/ws", get(ws_handler))
+        .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .with_state(state)
 }
 
@@ -213,31 +221,46 @@ pub fn init_chain(store: &ChainStore, genesis_item: &DataItem) -> String {
 
 // ── Handlers ────────────────────────────────────────────────────────
 
+/// Run a blocking closure on the tokio blocking thread pool.
+/// Wraps `spawn_blocking` with RecorderError handling.
+async fn blocking<F, T>(f: F) -> Result<T, RecorderError>
+where
+    F: FnOnce() -> Result<T, RecorderError> + Send + 'static,
+    T: Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| RecorderError::Internal(format!("blocking task failed: {}", e)))?
+}
+
 /// GET /chains — list all hosted chains.
 async fn list_chains(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<ChainListEntry>>, RecorderError> {
-    // Phase 1: collect chain refs under read lock, then drop it
+    // Collect chain refs under read lock (fast, non-blocking)
     let chain_refs: Vec<(String, Arc<ChainState>)> = {
         let chains = state.chains.read()
             .map_err(|e| RecorderError::LockPoisoned(format!("chains read: {}", e)))?;
         chains.iter().map(|(id, cs)| (id.clone(), Arc::clone(cs))).collect()
     };
 
-    // Phase 2: query each store individually (no nested locks)
-    let mut entries = Vec::new();
-    for (id, cs) in chain_refs {
-        let store = lock_store(&cs)?;
-        let meta = store.load_chain_meta()
-            .map_err(|e| RecorderError::Internal(e.to_string()))?
-            .ok_or(RecorderError::ChainNotLoaded)?;
-        entries.push(ChainListEntry {
-            chain_id: id,
-            symbol: meta.symbol,
-            block_height: meta.block_height,
-        });
-    }
-    entries.sort_by(|a, b| a.chain_id.cmp(&b.chain_id));
+    // Query each store on the blocking pool
+    let entries = blocking(move || {
+        let mut entries = Vec::new();
+        for (id, cs) in chain_refs {
+            let store = lock_store(&cs)?;
+            let meta = store.load_chain_meta()
+                .map_err(|e| RecorderError::Internal(e.to_string()))?
+                .ok_or(RecorderError::ChainNotLoaded)?;
+            entries.push(ChainListEntry {
+                chain_id: id,
+                symbol: meta.symbol,
+                block_height: meta.block_height,
+            });
+        }
+        entries.sort_by(|a, b| a.chain_id.cmp(&b.chain_id));
+        Ok(entries)
+    }).await?;
     Ok(Json(entries))
 }
 
@@ -246,6 +269,7 @@ async fn create_chain(
     State(state): State<Arc<AppState>>,
     Json(req): Json<CreateChainRequest>,
 ) -> Result<(StatusCode, Json<ChainInfo>), RecorderError> {
+    // Parse and validate inputs on the async side
     let genesis_item = ao_json::from_json(&req.genesis)
         .map_err(|e| RecorderError::BadRequest(format!("invalid genesis: {}", e)))?;
 
@@ -254,61 +278,62 @@ async fn create_chain(
             .map_err(|e| RecorderError::BadRequest(format!("invalid seed hex: {}", e)))?;
         let seed: [u8; 32] = seed_bytes.try_into()
             .map_err(|_| RecorderError::BadRequest("seed must be 32 bytes".into()))?;
-        SigningKey::from_seed(&seed)
+        SigningKey::try_from_seed(&seed)
+            .map_err(|e| RecorderError::BadRequest(format!("invalid Ed25519 seed: {}", e)))?
     } else {
         SigningKey::from_seed(state.default_blockmaker_key.seed())
     };
 
-    // Open store (file-backed if data_dir is set, otherwise in-memory)
-    let store = if let Some(dir) = &state.data_dir {
-        let tmp_store = ChainStore::open_memory()
-            .map_err(|e| RecorderError::Internal(e.to_string()))?;
-        tmp_store.init_schema()
-            .map_err(|e| RecorderError::Internal(e.to_string()))?;
-        genesis::load_genesis(&tmp_store, &genesis_item)
-            .map_err(|e| RecorderError::BadRequest(format!("genesis error: {}", e)))?;
-        let tmp_meta = tmp_store.load_chain_meta()
+    let data_dir = state.data_dir.clone();
+
+    // SQLite work on the blocking pool
+    let (store, info, chain_id_hex) = blocking(move || {
+        let store = if let Some(dir) = &data_dir {
+            // Extract chain ID directly from genesis DataItem (no temp store needed)
+            let chain_id = genesis::compute_chain_id(&genesis_item)
+                .map_err(|e| RecorderError::BadRequest(format!("genesis error: {}", e)))?;
+            let chain_id_hex = hex::encode(chain_id);
+
+            let db_path = dir.join(format!("{}.db", chain_id_hex));
+            let db_str = db_path.to_str()
+                .ok_or_else(|| RecorderError::Internal("non-UTF-8 database path".into()))?;
+            let file_store = ChainStore::open(db_str)
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
+            file_store.init_schema()
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
+            genesis::load_genesis(&file_store, &genesis_item)
+                .map_err(|e| RecorderError::BadRequest(format!("genesis error: {}", e)))?;
+            file_store
+        } else {
+            let store = ChainStore::open_memory()
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
+            store.init_schema()
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
+            genesis::load_genesis(&store, &genesis_item)
+                .map_err(|e| RecorderError::BadRequest(format!("genesis error: {}", e)))?;
+            store
+        };
+
+        let meta = store.load_chain_meta()
             .map_err(|e| RecorderError::Internal(e.to_string()))?
             .ok_or(RecorderError::ChainNotLoaded)?;
-        let chain_id_hex = hex::encode(tmp_meta.chain_id);
+        let chain_id_hex = hex::encode(meta.chain_id);
 
-        let db_path = dir.join(format!("{}.db", chain_id_hex));
-        let db_str = db_path.to_str()
-            .ok_or_else(|| RecorderError::Internal("non-UTF-8 database path".into()))?;
-        let file_store = ChainStore::open(db_str)
-            .map_err(|e| RecorderError::Internal(e.to_string()))?;
-        file_store.init_schema()
-            .map_err(|e| RecorderError::Internal(e.to_string()))?;
-        genesis::load_genesis(&file_store, &genesis_item)
-            .map_err(|e| RecorderError::Internal(e.to_string()))?;
-        file_store
-    } else {
-        let store = ChainStore::open_memory()
-            .map_err(|e| RecorderError::Internal(e.to_string()))?;
-        store.init_schema()
-            .map_err(|e| RecorderError::Internal(e.to_string()))?;
-        genesis::load_genesis(&store, &genesis_item)
-            .map_err(|e| RecorderError::BadRequest(format!("genesis error: {}", e)))?;
-        store
-    };
+        let info = ChainInfo {
+            chain_id: chain_id_hex.clone(),
+            symbol: meta.symbol,
+            block_height: meta.block_height,
+            shares_out: meta.shares_out.to_string(),
+            coin_count: meta.coin_count.to_string(),
+            fee_rate_num: meta.fee_rate_num.to_string(),
+            fee_rate_den: meta.fee_rate_den.to_string(),
+            expiry_period: meta.expiry_period,
+            expiry_mode: meta.expiry_mode,
+            next_seq_id: meta.next_seq_id,
+        };
 
-    let meta = store.load_chain_meta()
-        .map_err(|e| RecorderError::Internal(e.to_string()))?
-        .ok_or(RecorderError::ChainNotLoaded)?;
-    let chain_id_hex = hex::encode(meta.chain_id);
-
-    let info = ChainInfo {
-        chain_id: chain_id_hex.clone(),
-        symbol: meta.symbol,
-        block_height: meta.block_height,
-        shares_out: meta.shares_out.to_string(),
-        coin_count: meta.coin_count.to_string(),
-        fee_rate_num: meta.fee_rate_num.to_string(),
-        fee_rate_den: meta.fee_rate_den.to_string(),
-        expiry_period: meta.expiry_period,
-        expiry_mode: meta.expiry_mode,
-        next_seq_id: meta.next_seq_id,
-    };
+        Ok((store, info, chain_id_hex))
+    }).await?;
 
     // Atomic check-and-insert under a single write lock
     let chain_state = Arc::new(ChainState::new(store, blockmaker_key));
@@ -329,23 +354,25 @@ async fn chain_info(
     Path(chain_id_hex): Path<String>,
 ) -> Result<Json<ChainInfo>, RecorderError> {
     let chain = state.get_chain_or_err(&chain_id_hex)?;
-    let store = lock_store(&chain)?;
-    let meta = store.load_chain_meta()
-        .map_err(|e| RecorderError::Internal(e.to_string()))?
-        .ok_or(RecorderError::ChainNotLoaded)?;
-
-    Ok(Json(ChainInfo {
-        chain_id: hex::encode(meta.chain_id),
-        symbol: meta.symbol,
-        block_height: meta.block_height,
-        shares_out: meta.shares_out.to_string(),
-        coin_count: meta.coin_count.to_string(),
-        fee_rate_num: meta.fee_rate_num.to_string(),
-        fee_rate_den: meta.fee_rate_den.to_string(),
-        expiry_period: meta.expiry_period,
-        expiry_mode: meta.expiry_mode,
-        next_seq_id: meta.next_seq_id,
-    }))
+    let info = blocking(move || {
+        let store = lock_store(&chain)?;
+        let meta = store.load_chain_meta()
+            .map_err(|e| RecorderError::Internal(e.to_string()))?
+            .ok_or(RecorderError::ChainNotLoaded)?;
+        Ok(ChainInfo {
+            chain_id: hex::encode(meta.chain_id),
+            symbol: meta.symbol,
+            block_height: meta.block_height,
+            shares_out: meta.shares_out.to_string(),
+            coin_count: meta.coin_count.to_string(),
+            fee_rate_num: meta.fee_rate_num.to_string(),
+            fee_rate_den: meta.fee_rate_den.to_string(),
+            expiry_period: meta.expiry_period,
+            expiry_mode: meta.expiry_mode,
+            next_seq_id: meta.next_seq_id,
+        })
+    }).await?;
+    Ok(Json(info))
 }
 
 /// GET /chain/{id}/utxo/{seq_id}
@@ -354,19 +381,21 @@ async fn get_utxo(
     Path((chain_id_hex, seq_id)): Path<(String, u64)>,
 ) -> Result<Json<UtxoInfo>, RecorderError> {
     let chain = state.get_chain_or_err(&chain_id_hex)?;
-    let store = lock_store(&chain)?;
-    let utxo = store.get_utxo(seq_id)
-        .map_err(|e| RecorderError::Internal(e.to_string()))?
-        .ok_or_else(|| RecorderError::NotFound("UTXO not found".into()))?;
-
-    Ok(Json(UtxoInfo {
-        seq_id: utxo.seq_id,
-        pubkey: hex::encode(utxo.pubkey),
-        amount: utxo.amount.to_string(),
-        block_height: utxo.block_height,
-        block_timestamp: utxo.block_timestamp,
-        status: format!("{:?}", utxo.status),
-    }))
+    let info = blocking(move || {
+        let store = lock_store(&chain)?;
+        let utxo = store.get_utxo(seq_id)
+            .map_err(|e| RecorderError::Internal(e.to_string()))?
+            .ok_or_else(|| RecorderError::NotFound("UTXO not found".into()))?;
+        Ok(UtxoInfo {
+            seq_id: utxo.seq_id,
+            pubkey: hex::encode(utxo.pubkey),
+            amount: utxo.amount.to_string(),
+            block_height: utxo.block_height,
+            block_timestamp: utxo.block_timestamp,
+            status: format!("{:?}", utxo.status),
+        })
+    }).await?;
+    Ok(Json(info))
 }
 
 /// GET /chain/{id}/blocks?from={height}&to={height}
@@ -376,27 +405,34 @@ async fn get_blocks(
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<Vec<serde_json::Value>>, RecorderError> {
     let chain = state.get_chain_or_err(&chain_id_hex)?;
-    let store = lock_store(&chain)?;
-    let meta = store.load_chain_meta()
-        .map_err(|e| RecorderError::Internal(e.to_string()))?
-        .ok_or(RecorderError::ChainNotLoaded)?;
-
     let from: u64 = params.get("from").and_then(|s| s.parse().ok()).unwrap_or(0);
-    let to: u64 = params.get("to").and_then(|s| s.parse().ok()).unwrap_or(meta.block_height);
+    let requested_to: Option<u64> = params.get("to").and_then(|s| s.parse().ok());
 
-    let mut blocks = Vec::new();
-    for h in from..=to {
-        if let Some(data) = store.get_block(h)
+    let blocks = blocking(move || {
+        let store = lock_store(&chain)?;
+        let meta = store.load_chain_meta()
             .map_err(|e| RecorderError::Internal(e.to_string()))?
-        {
-            match DataItem::from_bytes(&data) {
-                Ok(item) => blocks.push(ao_json::to_json(&item)),
-                Err(e) => return Err(RecorderError::Internal(
-                    format!("decode error at height {}: {}", h, e),
-                )),
+            .ok_or(RecorderError::ChainNotLoaded)?;
+
+        let to = requested_to.unwrap_or(meta.block_height);
+        // Cap range to prevent loading entire chain into memory
+        let to = to.min(from.saturating_add(MAX_BLOCK_RANGE - 1));
+
+        let mut blocks = Vec::new();
+        for h in from..=to {
+            if let Some(data) = store.get_block(h)
+                .map_err(|e| RecorderError::Internal(e.to_string()))?
+            {
+                match DataItem::from_bytes(&data) {
+                    Ok(item) => blocks.push(ao_json::to_json(&item)),
+                    Err(e) => return Err(RecorderError::Internal(
+                        format!("decode error at height {}: {}", h, e),
+                    )),
+                }
             }
         }
-    }
+        Ok(blocks)
+    }).await?;
 
     Ok(Json(blocks))
 }
@@ -407,43 +443,50 @@ async fn submit_assignment(
     Path(chain_id_hex): Path<String>,
     body: String,
 ) -> Result<Json<BlockInfo>, RecorderError> {
+    // Parse JSON on the async side (CPU-only, no blocking I/O)
     let json_value: serde_json::Value = serde_json::from_str(&body)
         .map_err(|e| RecorderError::BadRequest(format!("invalid JSON: {}", e)))?;
-
     let authorization = ao_json::from_json(&json_value)
         .map_err(|e| RecorderError::BadRequest(format!("invalid DataItem: {}", e)))?;
-
-    let chain = state.get_chain_or_err(&chain_id_hex)?;
-    let store = lock_store(&chain)?;
-    let meta = store.load_chain_meta()
-        .map_err(|e| RecorderError::Internal(e.to_string()))?
-        .ok_or(RecorderError::ChainNotLoaded)?;
 
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .expect("system clock before epoch")
         .as_secs() as i64;
-    let current_ts = Timestamp::from_unix_seconds(now).raw();
+    let current_ts = Timestamp::try_from_unix_seconds(now)
+        .ok_or_else(|| RecorderError::Internal("system clock out of AO timestamp range".into()))?
+        .raw();
 
-    let validated = validate::validate_assignment(&store, &meta, &authorization, current_ts)
-        .map_err(|e| RecorderError::BadRequest(e.to_string()))?;
+    let chain = state.get_chain_or_err(&chain_id_hex)?;
 
-    let constructed = block::construct_block(
-        &store, &meta, &chain.blockmaker_key,
-        vec![validated],
-        current_ts,
-    ).map_err(|e| RecorderError::Internal(e.to_string()))?;
+    // All SQLite work runs on the blocking pool
+    let info = blocking(move || {
+        let store = lock_store(&chain)?;
+        let meta = store.load_chain_meta()
+            .map_err(|e| RecorderError::Internal(e.to_string()))?
+            .ok_or(RecorderError::ChainNotLoaded)?;
 
-    let info = BlockInfo {
-        height: constructed.height,
-        hash: hex::encode(constructed.block_hash),
-        timestamp: constructed.timestamp,
-        shares_out: constructed.new_shares_out.to_string(),
-        first_seq: constructed.first_seq,
-        seq_count: constructed.seq_count,
-    };
+        let validated = validate::validate_assignment(&store, &meta, &authorization, current_ts)
+            .map_err(|e| RecorderError::BadRequest(e.to_string()))?;
 
-    let _ = chain.block_tx.send(info.clone());
+        let constructed = block::construct_block(
+            &store, &meta, &chain.blockmaker_key,
+            vec![validated],
+            current_ts,
+        ).map_err(|e| RecorderError::Internal(e.to_string()))?;
+
+        let info = BlockInfo {
+            height: constructed.height,
+            hash: hex::encode(constructed.block_hash),
+            timestamp: constructed.timestamp,
+            shares_out: constructed.new_shares_out.to_string(),
+            first_seq: constructed.first_seq,
+            seq_count: constructed.seq_count,
+        };
+
+        let _ = chain.block_tx.send(info.clone());
+        Ok(info)
+    }).await?;
 
     Ok(Json(info))
 }

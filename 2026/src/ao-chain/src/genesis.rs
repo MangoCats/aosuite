@@ -10,6 +10,25 @@ use ao_crypto::sign;
 use crate::error::{ChainError, Result};
 use crate::store::{ChainMeta, ChainStore, Utxo, UtxoStatus};
 
+/// Extract chain ID (SHA256 hash) from a genesis DataItem without touching the store.
+/// Returns the 32-byte chain ID, or an error if the genesis is malformed.
+pub fn compute_chain_id(genesis: &DataItem) -> Result<[u8; 32]> {
+    if genesis.type_code != GENESIS {
+        return Err(ChainError::InvalidGenesis(
+            format!("expected GENESIS ({}), got {}", GENESIS, genesis.type_code)));
+    }
+    let chain_hash_item = genesis.find_child(SHA256)
+        .ok_or_else(|| ChainError::InvalidGenesis("missing SHA256 (chain ID)".into()))?;
+    let chain_hash_bytes = chain_hash_item.as_bytes()
+        .ok_or_else(|| ChainError::InvalidGenesis("SHA256 has no bytes".into()))?;
+    if chain_hash_bytes.len() != 32 {
+        return Err(ChainError::InvalidGenesis("chain ID hash must be 32 bytes".into()));
+    }
+    let mut chain_id = [0u8; 32];
+    chain_id.copy_from_slice(chain_hash_bytes);
+    Ok(chain_id)
+}
+
 /// Parse a genesis block DataItem and initialize the chain store.
 pub fn load_genesis(store: &ChainStore, genesis: &DataItem) -> Result<ChainMeta> {
     if genesis.type_code != GENESIS {

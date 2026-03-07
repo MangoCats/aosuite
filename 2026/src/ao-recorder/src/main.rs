@@ -15,7 +15,8 @@ fn load_blockmaker_key(seed_hex: &str) -> Result<SigningKey> {
         .context("invalid blockmaker seed hex")?;
     let seed: [u8; 32] = seed_bytes.try_into()
         .map_err(|v: Vec<u8>| anyhow::anyhow!("blockmaker seed must be 32 bytes, got {}", v.len()))?;
-    Ok(SigningKey::from_seed(&seed))
+    SigningKey::try_from_seed(&seed)
+        .map_err(|e| anyhow::anyhow!("invalid Ed25519 seed: {}", e))
 }
 
 fn load_chain(db_path: &str, genesis_path: &str, blockmaker_key: &SigningKey) -> Result<(String, ChainStore)> {
@@ -52,7 +53,7 @@ async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let config_path = args.get(1).map(|s| s.as_str()).unwrap_or("recorder.toml");
 
-    let cfg = config::load_config(config_path);
+    let cfg = config::load_config(config_path)?;
 
     let default_key = load_blockmaker_key(&cfg.blockmaker_seed)?;
 

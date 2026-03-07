@@ -8,7 +8,7 @@ use ao_types::dataitem::DataItem;
 use ao_crypto::sign::SigningKey;
 use ao_chain::store::ChainStore;
 
-use ao_recorder::{AppState, ChainState, build_router, config};
+use ao_recorder::{AppState, ChainState, build_router, config, mqtt};
 
 fn load_blockmaker_key(seed_hex: &str) -> Result<SigningKey> {
     let seed_bytes: Vec<u8> = hex::decode(seed_hex.trim())
@@ -82,6 +82,16 @@ async fn main() -> Result<()> {
         let chain_state = Arc::new(ChainState::new(store, bm_key));
         info!(chain_id = %chain_id, "Registered chain");
         state.add_chain(chain_id, chain_state);
+    }
+
+    // Initialize MQTT if configured
+    if let Some(mqtt_cfg) = &cfg.mqtt {
+        if let Some(publisher) = mqtt::MqttPublisher::connect(mqtt_cfg) {
+            state.set_mqtt(publisher);
+            info!("MQTT block publishing enabled");
+        } else {
+            tracing::warn!("MQTT configured but connection failed — continuing without MQTT");
+        }
     }
 
     let chain_count = state.chains.read()

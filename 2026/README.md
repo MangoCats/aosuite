@@ -84,6 +84,15 @@ The goal is to build a searchable record of debugging patterns so the same class
 - **Target size: under 250 lines.** Break up when a document exceeds ~250 lines and has identifiable conceptual partitions. Hard maximum: 2000 lines.
 - **Markdown format** for all new documents in `2026/`.
 
+### Boundary: 2026 vs. sims
+
+The `2026/` tree and the `sims/` tree are **independent development domains** maintained by separate teams. Neither team modifies code in the other's domain.
+
+- **All ROADMAP work stays in `2026/`** (and its subfolders, excluding `sims/`). No ROADMAP deliverable touches the sims folder.
+- **`sims/` is fully removable.** The 2026 implementation has zero dependencies on anything in `sims/`. Deleting the entire `sims/` folder must have no impact on building, testing, or running any 2026 code.
+- **Sims are consumers, not components.** Simulations use the 2026 products (crates, APIs, formats) as external dependencies. They are not part of the implementation.
+- **Sims developers own their own updates.** As 2026 APIs or data formats evolve, the sims team is responsible for updating their code to match. 2026 developers do not maintain sims compatibility.
+
 ### Folder Organization
 
 As Phase 0 deliverables and later code are produced, the folder will grow:
@@ -93,20 +102,25 @@ As Phase 0 deliverables and later code are produced, the folder will grow:
 ├── README.md              # This file
 ├── ProjectSummary.md      # Project context
 ├── ROADMAP.md             # Development roadmap
+├── lessons/               # Debugging post-mortems
 ├── specs/                 # Phase 0 deliverables
-│   ├── Architecture.md    # 0A: System architecture
-│   ├── WireFormat.md      # 0B: Wire format specification
-│   ├── CryptoChoices.md   # 0C: Cryptographic decisions
-│   ├── EconomicRules.md   # 0D: Deterministic arithmetic
-│   └── conformance/       # 0E: Test vectors
-│       └── vectors.json
-└── src/                   # Rust workspace (Phase 1+)
-    ├── Cargo.toml
-    ├── ao-types/
-    ├── ao-crypto/
-    ├── ao-chain/
-    ├── ao-recorder/
-    ├── ao-validator/
-    ├── ao-cli/
-    └── ao-web/
+│   ├── Architecture.md
+│   ├── WireFormat.md
+│   ├── CryptoChoices.md
+│   ├── EconomicRules.md
+│   └── conformance/       # Test vectors
+├── src/                   # Rust workspace (Phase 1+)
+│   ├── Cargo.toml
+│   ├── ao-types/
+│   ├── ao-crypto/
+│   ├── ao-chain/
+│   ├── ao-recorder/
+│   ├── ao-exchange/
+│   ├── ao-cli/
+│   └── ao-pwa/            # React PWA (Phase 3)
+└── sims/                  # Independent simulation suite
+    ├── scenarios/         # TOML scenario configs
+    ├── src/               # Sim Rust source
+    ├── viewer/            # Viewer PWA
+    └── docs/
 ```

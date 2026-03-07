@@ -31,6 +31,7 @@ export const LIST_SIZE = 27n;
 export const REFUTATION = 28n;
 export const PAGE_INDEX = 29n;
 export const AUTH_SIG = 30n;
+export const REFERRAL_FEE = 31n;
 
 // Negative type codes
 export const EXPIRY_MODE = -1n;
@@ -42,6 +43,7 @@ export const DATA_BLOB = 33n;
 export const DESCRIPTION = 34n;
 export const ICON = 35n;
 export const VENDOR_PROFILE = 36n;
+export const EXCHANGE_LISTING = 37n;
 
 export type SizeCategory =
   | { kind: 'fixed'; size: number }
@@ -66,6 +68,7 @@ const SIZE_CATEGORIES = new Map<bigint, SizeCategory>([
 
   [AMOUNT, variable], [RECORDING_BID, variable], [COIN_COUNT, variable],
   [FEE_RATE, variable], [CHAIN_SYMBOL, variable], [SHARES_OUT, variable],
+  [REFERRAL_FEE, variable],
   [NOTE, variable], [DATA_BLOB, variable], [DESCRIPTION, variable], [ICON, variable],
 
   [SEQ_ID, vbcValue], [PROTOCOL_VER, vbcValue], [FIRST_SEQ, vbcValue],
@@ -75,7 +78,8 @@ const SIZE_CATEGORIES = new Map<bigint, SizeCategory>([
   [ASSIGNMENT, container], [AUTHORIZATION, container], [PARTICIPANT, container],
   [BLOCK, container], [BLOCK_SIGNED, container], [BLOCK_CONTENTS, container],
   [PAGE, container], [GENESIS, container], [REFUTATION, container],
-  [AUTH_SIG, container], [TAX_PARAMS, container], [VENDOR_PROFILE, container],
+  [AUTH_SIG, container], [TAX_PARAMS, container],
+  [VENDOR_PROFILE, container], [EXCHANGE_LISTING, container],
 ]);
 
 export function sizeCategory(code: bigint): SizeCategory | undefined {
@@ -102,10 +106,11 @@ const TYPE_NAMES = new Map<bigint, string>([
   [PREV_HASH, 'PREV_HASH'], [FIRST_SEQ, 'FIRST_SEQ'],
   [SEQ_COUNT, 'SEQ_COUNT'], [LIST_SIZE, 'LIST_SIZE'],
   [REFUTATION, 'REFUTATION'], [PAGE_INDEX, 'PAGE_INDEX'],
-  [AUTH_SIG, 'AUTH_SIG'], [EXPIRY_MODE, 'EXPIRY_MODE'],
+  [AUTH_SIG, 'AUTH_SIG'], [REFERRAL_FEE, 'REFERRAL_FEE'],
+  [EXPIRY_MODE, 'EXPIRY_MODE'],
   [TAX_PARAMS, 'TAX_PARAMS'], [NOTE, 'NOTE'], [DATA_BLOB, 'DATA_BLOB'],
   [DESCRIPTION, 'DESCRIPTION'], [ICON, 'ICON'],
-  [VENDOR_PROFILE, 'VENDOR_PROFILE'],
+  [VENDOR_PROFILE, 'VENDOR_PROFILE'], [EXCHANGE_LISTING, 'EXCHANGE_LISTING'],
 ]);
 
 export function typeName(code: bigint): string | undefined {

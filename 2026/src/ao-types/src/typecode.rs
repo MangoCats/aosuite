@@ -36,12 +36,16 @@ pub const AUTH_SIG: i64 = 30;
 pub const EXPIRY_MODE: i64 = -1;
 pub const TAX_PARAMS: i64 = -2;
 
+/// Inseparable types (continued, |code| 31)
+pub const REFERRAL_FEE: i64 = 31;
+
 /// Separable types (|code| 32–63)
 pub const NOTE: i64 = 32;
 pub const DATA_BLOB: i64 = 33;
 pub const DESCRIPTION: i64 = 34;
 pub const ICON: i64 = 35;
 pub const VENDOR_PROFILE: i64 = 36;
+pub const EXCHANGE_LISTING: i64 = 37;
 
 /// How the data portion of a DataItem is sized.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,7 +74,7 @@ pub fn size_category(code: i64) -> Option<SizeCategory> {
         PREV_HASH => Some(SizeCategory::Fixed(32)),
 
         AMOUNT | RECORDING_BID | COIN_COUNT | FEE_RATE |
-        CHAIN_SYMBOL | SHARES_OUT |
+        CHAIN_SYMBOL | SHARES_OUT | REFERRAL_FEE |
         NOTE | DATA_BLOB | DESCRIPTION | ICON => Some(SizeCategory::Variable),
 
         SEQ_ID | PROTOCOL_VER | FIRST_SEQ | SEQ_COUNT |
@@ -79,7 +83,7 @@ pub fn size_category(code: i64) -> Option<SizeCategory> {
         ASSIGNMENT | AUTHORIZATION | PARTICIPANT |
         BLOCK | BLOCK_SIGNED | BLOCK_CONTENTS |
         PAGE | GENESIS | REFUTATION | AUTH_SIG |
-        TAX_PARAMS | VENDOR_PROFILE => Some(SizeCategory::Container),
+        TAX_PARAMS | VENDOR_PROFILE | EXCHANGE_LISTING => Some(SizeCategory::Container),
 
         _ => None,
     }
@@ -123,6 +127,7 @@ pub fn type_name(code: i64) -> Option<&'static str> {
         REFUTATION => Some("REFUTATION"),
         PAGE_INDEX => Some("PAGE_INDEX"),
         AUTH_SIG => Some("AUTH_SIG"),
+        REFERRAL_FEE => Some("REFERRAL_FEE"),
         EXPIRY_MODE => Some("EXPIRY_MODE"),
         TAX_PARAMS => Some("TAX_PARAMS"),
         NOTE => Some("NOTE"),
@@ -130,6 +135,7 @@ pub fn type_name(code: i64) -> Option<&'static str> {
         DESCRIPTION => Some("DESCRIPTION"),
         ICON => Some("ICON"),
         VENDOR_PROFILE => Some("VENDOR_PROFILE"),
+        EXCHANGE_LISTING => Some("EXCHANGE_LISTING"),
         _ => None,
     }
 }
@@ -173,8 +179,9 @@ mod tests {
             RECORDING_BID, DEADLINE, COIN_COUNT, FEE_RATE, EXPIRY_PERIOD,
             CHAIN_SYMBOL, PROTOCOL_VER, SHARES_OUT, PREV_HASH,
             FIRST_SEQ, SEQ_COUNT, LIST_SIZE, REFUTATION, PAGE_INDEX,
-            AUTH_SIG, EXPIRY_MODE, TAX_PARAMS,
+            AUTH_SIG, REFERRAL_FEE, EXPIRY_MODE, TAX_PARAMS,
             NOTE, DATA_BLOB, DESCRIPTION, ICON, VENDOR_PROFILE,
+            EXCHANGE_LISTING,
         ];
         for code in all_codes {
             assert!(

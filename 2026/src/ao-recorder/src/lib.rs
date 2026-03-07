@@ -24,6 +24,7 @@ use ao_chain::store::ChainStore;
 use ao_chain::{genesis, validate, block};
 
 pub mod config;
+pub mod mqtt;
 
 // ── Error type ──────────────────────────────────────────────────────
 
@@ -82,11 +83,30 @@ impl ChainState {
     }
 }
 
+/// A registered exchange agent advertising trading pairs on a chain.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ExchangeAgentEntry {
+    pub name: String,
+    pub pairs: Vec<ExchangePairEntry>,
+}
+
+/// A trading pair offered by an exchange agent.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct ExchangePairEntry {
+    pub sell_symbol: String,
+    pub buy_symbol: String,
+    pub rate: f64,
+}
+
 /// Shared application state — holds all hosted chains.
 pub struct AppState {
     pub chains: RwLock<HashMap<String, Arc<ChainState>>>,
     pub data_dir: Option<PathBuf>,
     pub default_blockmaker_key: SigningKey,
+    /// Optional MQTT publisher for block notifications.
+    mqtt: std::sync::OnceLock<mqtt::MqttPublisher>,
+    /// Exchange agents registered per chain: chain_id → Vec<ExchangeAgentEntry>.
+    exchange_agents: RwLock<HashMap<String, Vec<ExchangeAgentEntry>>>,
 }
 
 impl AppState {
@@ -101,6 +121,8 @@ impl AppState {
             chains: RwLock::new(chains),
             data_dir: None,
             default_blockmaker_key: blockmaker_key,
+            mqtt: std::sync::OnceLock::new(),
+            exchange_agents: RwLock::new(HashMap::new()),
         }
     }
 
@@ -110,7 +132,14 @@ impl AppState {
             chains: RwLock::new(HashMap::new()),
             data_dir,
             default_blockmaker_key: blockmaker_key,
+            mqtt: std::sync::OnceLock::new(),
+            exchange_agents: RwLock::new(HashMap::new()),
         }
+    }
+
+    /// Set the MQTT publisher. Must be called before serving requests.
+    pub fn set_mqtt(&self, publisher: mqtt::MqttPublisher) {
+        let _ = self.mqtt.set(publisher);
     }
 
     /// Register a chain.
@@ -164,6 +193,8 @@ struct ChainListEntry {
     chain_id: String,
     symbol: String,
     block_height: u64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    exchange_agents: Vec<ExchangeAgentEntry>,
 }
 
 #[derive(Serialize)]
@@ -202,6 +233,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/chain/{id}/submit", get(method_not_allowed).post(submit_assignment))
         .route("/chain/{id}/events", get(sse_events))
         .route("/chain/{id}/ws", get(ws_handler))
+        .route("/chain/{id}/exchange-agent", axum::routing::post(register_exchange_agent))
         .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .with_state(state)
 }
@@ -244,6 +276,13 @@ async fn list_chains(
         chains.iter().map(|(id, cs)| (id.clone(), Arc::clone(cs))).collect()
     };
 
+    // Snapshot exchange agent registry
+    let agents_snapshot: HashMap<String, Vec<ExchangeAgentEntry>> = {
+        let agents = state.exchange_agents.read()
+            .map_err(|e| RecorderError::LockPoisoned(format!("agents read: {}", e)))?;
+        agents.clone()
+    };
+
     // Query each store on the blocking pool
     let entries = blocking(move || {
         let mut entries = Vec::new();
@@ -252,10 +291,12 @@ async fn list_chains(
             let meta = store.load_chain_meta()
                 .map_err(|e| RecorderError::Internal(e.to_string()))?
                 .ok_or(RecorderError::ChainNotLoaded)?;
+            let agents = agents_snapshot.get(&id).cloned().unwrap_or_default();
             entries.push(ChainListEntry {
                 chain_id: id,
                 symbol: meta.symbol,
                 block_height: meta.block_height,
+                exchange_agents: agents,
             });
         }
         entries.sort_by(|a, b| a.chain_id.cmp(&b.chain_id));
@@ -493,6 +534,11 @@ async fn submit_assignment(
         Ok(info)
     }).await?;
 
+    // MQTT publish (non-blocking, fire-and-forget)
+    if let Some(mqtt) = state.mqtt.get() {
+        mqtt.publish_block(&chain_id_hex, &info).await;
+    }
+
     Ok(Json(info))
 }
 
@@ -523,6 +569,29 @@ async fn ws_handler(
 ) -> Result<axum::response::Response, RecorderError> {
     let chain = state.get_chain_or_err(&chain_id_hex)?;
     Ok(ws.on_upgrade(move |socket| ws_connection(socket, chain)))
+}
+
+/// POST /chain/{id}/exchange-agent — register an exchange agent for a chain.
+async fn register_exchange_agent(
+    State(state): State<Arc<AppState>>,
+    Path(chain_id_hex): Path<String>,
+    Json(entry): Json<ExchangeAgentEntry>,
+) -> Result<StatusCode, RecorderError> {
+    // Verify chain exists
+    let _chain = state.get_chain_or_err(&chain_id_hex)?;
+
+    let mut agents = state.exchange_agents.write()
+        .map_err(|e| RecorderError::LockPoisoned(format!("agents write: {}", e)))?;
+    let chain_agents = agents.entry(chain_id_hex).or_default();
+
+    // Replace existing entry with same name, or add new
+    if let Some(existing) = chain_agents.iter_mut().find(|a| a.name == entry.name) {
+        *existing = entry;
+    } else {
+        chain_agents.push(entry);
+    }
+
+    Ok(StatusCode::OK)
 }
 
 async fn ws_connection(mut socket: ws::WebSocket, chain: Arc<ChainState>) {

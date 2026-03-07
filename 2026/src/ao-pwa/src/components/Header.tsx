@@ -20,6 +20,12 @@ export function Header() {
           >
             Vendor
           </button>
+          <button
+            onClick={() => setView('investor')}
+            style={{ fontWeight: view === 'investor' ? 'bold' : 'normal' }}
+          >
+            Investor
+          </button>
         </nav>
       </div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 13 }}>

@@ -798,3 +798,84 @@ async fn test_multi_chain_independent_operations() {
         .json().await.unwrap();
     assert_eq!(info_b3["block_height"], 0);
 }
+
+// ============ Exchange agent registration tests ============
+
+#[tokio::test]
+async fn test_exchange_agent_registration() {
+    let issuer = SigningKey::from_seed(&[0x40; 32]);
+    let blockmaker = SigningKey::from_seed(&[0x41; 32]);
+    let (base, chain_id) = start_test_server(&issuer, &blockmaker).await;
+
+    let client = reqwest::Client::new();
+
+    // Register an exchange agent
+    let resp = client
+        .post(format!("{}/chain/{}/exchange-agent", base, chain_id))
+        .json(&serde_json::json!({
+            "name": "Charlie",
+            "pairs": [
+                { "sell_symbol": "TST", "buy_symbol": "CCC", "rate": 3.0 }
+            ]
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // List chains should include the exchange agent
+    let chains: Vec<serde_json::Value> = client
+        .get(format!("{}/chains", base))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    assert_eq!(chains.len(), 1);
+    let agents = chains[0]["exchange_agents"].as_array().unwrap();
+    assert_eq!(agents.len(), 1);
+    assert_eq!(agents[0]["name"], "Charlie");
+    assert_eq!(agents[0]["pairs"][0]["sell_symbol"], "TST");
+    assert_eq!(agents[0]["pairs"][0]["rate"], 3.0);
+
+    // Re-register same agent with updated rate — should replace
+    let resp = client
+        .post(format!("{}/chain/{}/exchange-agent", base, chain_id))
+        .json(&serde_json::json!({
+            "name": "Charlie",
+            "pairs": [
+                { "sell_symbol": "TST", "buy_symbol": "CCC", "rate": 4.0 }
+            ]
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let chains: Vec<serde_json::Value> = client
+        .get(format!("{}/chains", base))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let agents = chains[0]["exchange_agents"].as_array().unwrap();
+    assert_eq!(agents.len(), 1); // still 1, not 2
+    assert_eq!(agents[0]["pairs"][0]["rate"], 4.0);
+
+    // Register a second agent
+    let resp = client
+        .post(format!("{}/chain/{}/exchange-agent", base, chain_id))
+        .json(&serde_json::json!({
+            "name": "Eve",
+            "pairs": [
+                { "sell_symbol": "TST", "buy_symbol": "MFF", "rate": 2.0 }
+            ]
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    let chains: Vec<serde_json::Value> = client
+        .get(format!("{}/chains", base))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let agents = chains[0]["exchange_agents"].as_array().unwrap();
+    assert_eq!(agents.len(), 2);
+
+    // Non-existent chain should fail
+    let resp = client
+        .post(format!("{}/chain/{}/exchange-agent", base, "deadbeef"))
+        .json(&serde_json::json!({ "name": "X", "pairs": [] }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 404);
+}

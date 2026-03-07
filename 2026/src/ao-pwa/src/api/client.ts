@@ -2,10 +2,22 @@
 
 import type { DataItemJson } from '../core/dataitem.ts';
 
+export interface ExchangePairEntry {
+  sell_symbol: string;
+  buy_symbol: string;
+  rate: number;
+}
+
+export interface ExchangeAgentEntry {
+  name: string;
+  pairs: ExchangePairEntry[];
+}
+
 export interface ChainListEntry {
   chain_id: string;
   symbol: string;
   block_height: number;
+  exchange_agents?: ExchangeAgentEntry[];
 }
 
 export interface ChainInfo {

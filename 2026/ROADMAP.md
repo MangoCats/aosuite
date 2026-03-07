@@ -240,8 +240,6 @@ Add MQTT support to ao-recorder for efficient real-time block event delivery to 
 
 **Graceful degradation:** If MQTT broker is unavailable or not configured, recorder runs normally (SSE/WebSocket still work). Log warning on connection failure, retry with exponential backoff.
 
-**MQTT subscriber in sims:** Exchange agent can optionally subscribe via MQTT instead of polling for faster event delivery.
-
 **Acceptance:** MQTT-connected exchange agent receives block notifications within 100ms. 100 msg/s sustained on localhost.
 
 ### Phase 4B: Standalone Exchange Agent (Weeks 31–32)

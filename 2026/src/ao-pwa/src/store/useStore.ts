@@ -24,9 +24,13 @@ export interface AppState {
   setWallet: (label: string, publicKeyHex: string) => void;
   clearWallet: () => void;
 
+  // Multi-recorder connections for investor view
+  recorderUrls: string[];
+  setRecorderUrls: (urls: string[]) => void;
+
   // UI
-  view: 'vendor' | 'consumer';
-  setView: (view: 'vendor' | 'consumer') => void;
+  view: 'vendor' | 'consumer' | 'investor';
+  setView: (view: 'vendor' | 'consumer' | 'investor') => void;
   error: string | null;
   setError: (error: string | null) => void;
 }
@@ -48,6 +52,9 @@ export const useStore = create<AppState>((set) => ({
   publicKeyHex: null,
   setWallet: (walletLabel, publicKeyHex) => set({ walletLabel, publicKeyHex }),
   clearWallet: () => set({ walletLabel: null, publicKeyHex: null }),
+
+  recorderUrls: [],
+  setRecorderUrls: (recorderUrls) => set({ recorderUrls }),
 
   view: 'consumer',
   setView: (view) => set({ view }),

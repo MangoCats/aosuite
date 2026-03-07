@@ -1,5 +1,9 @@
+use std::collections::HashMap;
+
 use ao_crypto::sign::SigningKey;
 use num_bigint::BigInt;
+use num_traits::Zero;
+use serde::Serialize;
 
 /// A single key entry in an agent's wallet.
 #[derive(Clone)]
@@ -12,6 +16,19 @@ pub struct KeyEntry {
     /// Share amount held (if UTXO exists).
     pub amount: Option<BigInt>,
     pub spent: bool,
+    /// When this key was generated (milliseconds since epoch).
+    pub created_ms: u64,
+}
+
+/// Per-chain key inventory summary for the viewer.
+#[derive(Debug, Clone, Serialize)]
+pub struct WalletChainSummary {
+    pub chain_id: String,
+    pub total_keys: usize,
+    pub unspent_keys: usize,
+    pub spent_keys: usize,
+    pub total_unspent_amount: String,
+    pub oldest_unspent_ms: Option<u64>,
 }
 
 impl KeyEntry {
@@ -52,6 +69,7 @@ impl Wallet {
             seq_id: None,
             amount: None,
             spent: false,
+            created_ms: now_ms(),
         };
         self.keys.push(entry.clone());
         entry
@@ -69,6 +87,7 @@ impl Wallet {
             seq_id: None,
             amount: None,
             spent: false,
+            created_ms: now_ms(),
         };
         self.keys.push(entry.clone());
         entry
@@ -124,4 +143,45 @@ impl Wallet {
             .filter_map(|k| k.amount.as_ref())
             .sum()
     }
+
+    /// Per-chain key inventory summary.
+    pub fn chain_summaries(&self) -> Vec<WalletChainSummary> {
+        let mut by_chain: HashMap<String, Vec<&KeyEntry>> = HashMap::new();
+        for k in &self.keys {
+            by_chain.entry(k.chain_id.clone()).or_default().push(k);
+        }
+
+        let mut result: Vec<WalletChainSummary> = by_chain.into_iter().map(|(chain_id, keys)| {
+            let total_keys = keys.len();
+            let spent_keys = keys.iter().filter(|k| k.spent).count();
+            let unspent: Vec<&&KeyEntry> = keys.iter()
+                .filter(|k| !k.spent && k.seq_id.is_some())
+                .collect();
+            let unspent_keys = unspent.len();
+            let total_unspent_amount: BigInt = unspent.iter()
+                .filter_map(|k| k.amount.as_ref())
+                .fold(BigInt::zero(), |acc, v| acc + v);
+            let oldest_unspent_ms = unspent.iter()
+                .map(|k| k.created_ms)
+                .min();
+
+            WalletChainSummary {
+                chain_id,
+                total_keys,
+                unspent_keys,
+                spent_keys,
+                total_unspent_amount: total_unspent_amount.to_string(),
+                oldest_unspent_ms,
+            }
+        }).collect();
+        result.sort_by(|a, b| a.chain_id.cmp(&b.chain_id));
+        result
+    }
+}
+
+pub(crate) fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
 }

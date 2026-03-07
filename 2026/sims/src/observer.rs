@@ -43,6 +43,15 @@ pub async fn run_observer(
     print_dashboard(&states);
 }
 
+/// Print a line inside the dashboard box, truncating if longer than width.
+fn print_line(w: usize, line: &str) {
+    if line.len() > w {
+        println!("║{}║", &line[..w]);
+    } else {
+        println!("║{:w$}║", line);
+    }
+}
+
 fn format_shares(shares: &num_bigint::BigInt) -> String {
     let s = shares.to_string();
     if s.len() <= 12 {
@@ -76,7 +85,9 @@ fn print_dashboard(states: &HashMap<String, AgentState>) {
         "vendor" => 0,
         "exchange" => 1,
         "consumer" => 2,
-        _ => 3,
+        "validator" => 3,
+        "attacker" => 4,
+        _ => 5,
     });
 
     for state in &sorted {
@@ -108,7 +119,26 @@ fn print_dashboard(states: &HashMap<String, AgentState>) {
     for (chain_id, (symbol, utxos)) in &chain_map {
         let short_id = if chain_id.len() > 12 { &chain_id[..12] } else { chain_id };
         let line = format!(" Chain: {} ({}) — {} active UTXOs", symbol, short_id, utxos);
-        println!("║{:W$}║", line);
+        print_line(W, &line);
+    }
+
+    // Validator summaries
+    for state in &sorted {
+        if let Some(ref vs) = state.validator_status {
+            let line = format!(" {} — {} chains, {} verified, {} alerts",
+                state.name, vs.monitored_chains.len(), vs.total_blocks_verified, vs.alerts.len());
+            print_line(W, &line);
+        }
+    }
+
+    // Attacker summaries
+    for state in &sorted {
+        if let Some(ref atk) = state.attacker_status {
+            let status = if atk.unexpected_accepts > 0 { "FAIL" } else { "ok" };
+            let line = format!(" {} [{}] — {}/{} rejected, {} bad [{}]",
+                state.name, atk.attack_type, atk.rejections, atk.attempts, atk.unexpected_accepts, status);
+            print_line(W, &line);
+        }
     }
 
     let total_txns: u64 = sorted.iter().map(|s| s.transactions).sum();

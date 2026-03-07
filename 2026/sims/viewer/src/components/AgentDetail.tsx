@@ -1,8 +1,11 @@
 import { useStore } from '../store';
 import type { AgentState, TransactionEvent } from '../api';
+import { pauseAgent, resumeAgent } from '../api';
+import { sharesToCoins } from '../utils';
+import { AppScreenPanel } from './AppScreenPanel';
 
 export function AgentDetail({ name }: { name: string }) {
-  const { agents, transactions } = useStore();
+  const { agents, transactions, setAgentPaused } = useStore();
 
   const agent = agents.find((a) => a.name === name);
   if (!agent) {
@@ -15,19 +18,21 @@ export function AgentDetail({ name }: { name: string }) {
 
   return (
     <div>
-      <AgentHeader agent={agent} />
+      <AgentHeader agent={agent} onTogglePause={setAgentPaused} />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20 }}>
         <WalletPanel agent={agent} />
-        <StatsPanel agent={agent} txnCount={agentTxns.length} />
+        <AppScreenPanel agent={agent} transactions={agentTxns} />
       </div>
+      <KeyInventoryPanel agent={agent} />
       <TransactionHistory txns={agentTxns} agentName={name} />
     </div>
   );
 }
 
-function AgentHeader({ agent }: { agent: AgentState }) {
+function AgentHeader({ agent, onTogglePause }: { agent: AgentState; onTogglePause: (name: string, paused: boolean) => void }) {
   const roleColors: Record<string, string> = {
     vendor: '#2b8a3e', exchange: '#e67700', consumer: '#1971c2', recorder: '#862e9c',
+    validator: '#862e9c', attacker: '#e03131',
   };
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
@@ -39,12 +44,29 @@ function AgentHeader({ agent }: { agent: AgentState }) {
       }}>
         {agent.name[0]}
       </div>
-      <div>
+      <div style={{ flex: 1 }}>
         <h2 style={{ fontSize: 18, fontWeight: 600, margin: 0 }}>{agent.name}</h2>
         <span style={{ fontSize: 13, color: '#666' }}>
-          {agent.role} — {agent.status}
+          {agent.role} — {agent.paused ? 'paused' : agent.status}
         </span>
       </div>
+      {agent.role !== 'recorder' && (
+        <button
+          onClick={() => {
+            const next = !agent.paused;
+            onTogglePause(agent.name, next);
+            (next ? pauseAgent(agent.name) : resumeAgent(agent.name));
+          }}
+          style={{
+            padding: '6px 14px', fontSize: 13, fontWeight: 600,
+            border: '1px solid #dee2e6', borderRadius: 6, cursor: 'pointer',
+            background: agent.paused ? '#2b8a3e' : '#e03131',
+            color: '#fff',
+          }}
+        >
+          {agent.paused ? 'Resume' : 'Pause'}
+        </button>
+      )}
     </div>
   );
 }
@@ -60,6 +82,7 @@ function WalletPanel({ agent }: { agent: AgentState }) {
           <thead>
             <tr>
               <th style={miniTh}>Chain</th>
+              <th style={{ ...miniTh, textAlign: 'right' }}>Coins</th>
               <th style={{ ...miniTh, textAlign: 'right' }}>Shares</th>
               <th style={{ ...miniTh, textAlign: 'right' }}>UTXOs</th>
             </tr>
@@ -73,7 +96,10 @@ function WalletPanel({ agent }: { agent: AgentState }) {
                     ({c.chain_id.slice(0, 8)}...)
                   </span>
                 </td>
-                <td style={{ ...miniTd, textAlign: 'right', fontFamily: 'monospace' }}>
+                <td style={{ ...miniTd, textAlign: 'right', fontWeight: 600 }}>
+                  {sharesToCoins(c.shares, c.total_shares, c.coin_count)}
+                </td>
+                <td style={{ ...miniTd, textAlign: 'right', fontFamily: 'monospace', fontSize: 12, color: '#666' }}>
                   {formatShares(c.shares)}
                 </td>
                 <td style={{ ...miniTd, textAlign: 'right' }}>{c.unspent_utxos}</td>
@@ -86,31 +112,66 @@ function WalletPanel({ agent }: { agent: AgentState }) {
   );
 }
 
-function StatsPanel({ agent, txnCount }: { agent: AgentState; txnCount: number }) {
-  const totalUtxos = agent.chains.reduce((s, c) => s + c.unspent_utxos, 0);
+function KeyInventoryPanel({ agent }: { agent: AgentState }) {
+  if (agent.key_summary.length === 0) return null;
+
+  const now = Date.now();
+  const STALE_MS = 5 * 60 * 1000; // 5 minutes — keys older than this get a warning
+
   return (
-    <div style={panelStyle}>
-      <h3 style={panelTitle}>Stats</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <StatCard label="Transactions" value={agent.transactions} />
-        <StatCard label="Events" value={txnCount} />
-        <StatCard label="Chains" value={agent.chains.length} />
-        <StatCard label="Active UTXOs" value={totalUtxos} />
-      </div>
-      <div style={{ marginTop: 12, fontSize: 12, color: '#666' }}>
-        Last action: {agent.last_action}
-      </div>
+    <div style={{ ...panelStyle, marginBottom: 20 }}>
+      <h3 style={panelTitle}>Key Inventory</h3>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <thead>
+          <tr>
+            <th style={miniTh}>Chain</th>
+            <th style={{ ...miniTh, textAlign: 'right' }}>Total</th>
+            <th style={{ ...miniTh, textAlign: 'right' }}>Unspent</th>
+            <th style={{ ...miniTh, textAlign: 'right' }}>Spent</th>
+            <th style={{ ...miniTh, textAlign: 'right' }}>Unspent Amount</th>
+            <th style={miniTh}>Age</th>
+          </tr>
+        </thead>
+        <tbody>
+          {agent.key_summary.map((ks) => {
+            const chainHolding = agent.chains.find((c) => c.chain_id === ks.chain_id);
+            const symbol = chainHolding?.symbol || ks.chain_id.slice(0, 8);
+            const coinAmount = chainHolding
+              ? sharesToCoins(ks.total_unspent_amount, chainHolding.total_shares, chainHolding.coin_count)
+              : ks.total_unspent_amount;
+            const isStale = ks.oldest_unspent_ms != null && (now - ks.oldest_unspent_ms) > STALE_MS;
+
+            return (
+              <tr key={ks.chain_id}>
+                <td style={miniTd}><strong>{symbol}</strong></td>
+                <td style={{ ...miniTd, textAlign: 'right' }}>{ks.total_keys}</td>
+                <td style={{ ...miniTd, textAlign: 'right', fontWeight: 600 }}>{ks.unspent_keys}</td>
+                <td style={{ ...miniTd, textAlign: 'right', color: '#868e96' }}>{ks.spent_keys}</td>
+                <td style={{ ...miniTd, textAlign: 'right' }}>{coinAmount}</td>
+                <td style={miniTd}>
+                  {ks.oldest_unspent_ms != null ? (
+                    <span style={{ color: isStale ? '#e03131' : '#868e96', fontWeight: isStale ? 600 : 400 }}>
+                      {formatAge(now - ks.oldest_unspent_ms)}
+                      {isStale ? ' ⚠' : ''}
+                    </span>
+                  ) : '-'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
-  return (
-    <div style={{ background: '#f8f9fa', borderRadius: 6, padding: '8px 12px' }}>
-      <div style={{ fontSize: 20, fontWeight: 700 }}>{value}</div>
-      <div style={{ fontSize: 11, color: '#868e96', textTransform: 'uppercase' }}>{label}</div>
-    </div>
-  );
+function formatAge(ms: number): string {
+  if (ms < 1000) return '<1s';
+  const secs = Math.floor(ms / 1000);
+  if (secs < 60) return `${secs}s`;
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ${secs % 60}s`;
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
 }
 
 function TransactionHistory({ txns, agentName }: { txns: TransactionEvent[]; agentName: string }) {

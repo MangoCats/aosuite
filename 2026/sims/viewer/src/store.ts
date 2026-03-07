@@ -31,6 +31,21 @@ export interface ViewerStore {
   setPaused: (p: boolean) => void;
   timeFilter: number | null;  // null = live (show all), number = max timestamp_ms
   setTimeFilter: (t: number | null) => void;
+
+  // Speed
+  speed: number;
+  setSpeed: (s: number) => void;
+
+  // Map overlays
+  showHeatMap: boolean;
+  toggleHeatMap: () => void;
+  showCoverage: boolean;
+  toggleCoverage: () => void;
+  showAuditOverlay: boolean;
+  toggleAuditOverlay: () => void;
+
+  // Agent control
+  setAgentPaused: (name: string, paused: boolean) => void;
 }
 
 export const useStore = create<ViewerStore>((set) => ({
@@ -72,4 +87,18 @@ export const useStore = create<ViewerStore>((set) => ({
   setPaused: (paused) => set({ paused }),
   timeFilter: null,
   setTimeFilter: (timeFilter) => set({ timeFilter }),
+
+  speed: 1,
+  setSpeed: (speed) => set({ speed }),
+
+  showHeatMap: false,
+  toggleHeatMap: () => set((s) => ({ showHeatMap: !s.showHeatMap })),
+  showCoverage: false,
+  toggleCoverage: () => set((s) => ({ showCoverage: !s.showCoverage })),
+  showAuditOverlay: false,
+  toggleAuditOverlay: () => set((s) => ({ showAuditOverlay: !s.showAuditOverlay })),
+
+  setAgentPaused: (name, paused) => set((s) => ({
+    agents: s.agents.map((a) => a.name === name ? { ...a, paused } : a),
+  })),
 }));

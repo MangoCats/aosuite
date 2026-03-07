@@ -96,6 +96,7 @@ version = "0.1.0"
 dependencies = [
  "ao-crypto",
  "ao-types",
+ "hex",
  "num-bigint",
  "num-integer",
  "num-rational",
@@ -148,6 +149,7 @@ dependencies = [
  "ao-crypto",
  "ao-recorder",
  "ao-types",
+ "ao-validator",
  "axum 0.8.8",
  "clap",
  "hex",
@@ -176,6 +178,27 @@ dependencies = [
  "num-rational",
  "num-traits",
  "serde_json",
+]
+
+[[package]]
+name = "ao-validator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ao-crypto",
+ "ao-types",
+ "axum 0.8.8",
+ "clap",
+ "hex",
+ "reqwest",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "toml 0.8.23",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

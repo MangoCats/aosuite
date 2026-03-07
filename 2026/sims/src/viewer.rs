@@ -10,17 +10,20 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tower_http::cors::{Any, CorsLayer};
 
-use crate::agents::ViewerState;
+use crate::agents::{SharedSpeed, ViewerState};
+use crate::PauseFlags;
 
 #[derive(Clone)]
 pub struct ViewerAppState {
     pub viewer: Arc<ViewerState>,
+    pub speed: SharedSpeed,
+    pub pause_flags: PauseFlags,
 }
 
 pub fn build_viewer_router(state: ViewerAppState) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
-        .allow_methods([Method::GET])
+        .allow_methods([Method::GET, Method::POST])
         .allow_headers(Any);
 
     Router::new()
@@ -29,6 +32,9 @@ pub fn build_viewer_router(state: ViewerAppState) -> Router {
         .route("/api/chains", get(list_chains))
         .route("/api/transactions", get(list_transactions))
         .route("/api/agents/{name}/transactions", get(agent_transactions))
+        .route("/api/speed", get(get_speed).post(set_speed))
+        .route("/api/agents/{name}/pause", axum::routing::post(pause_agent))
+        .route("/api/agents/{name}/resume", axum::routing::post(resume_agent))
         .route("/api/ws", get(ws_handler))
         .layer(cors)
         .with_state(state)
@@ -108,6 +114,54 @@ async fn agent_transactions(
     Path(name): Path<String>,
 ) -> Json<Vec<crate::agents::TransactionEvent>> {
     Json(state.viewer.get_agent_transactions(&name).await)
+}
+
+async fn get_speed(
+    State(state): State<ViewerAppState>,
+) -> Json<serde_json::Value> {
+    Json(serde_json::json!({ "speed": crate::agents::read_speed(&state.speed) }))
+}
+
+#[derive(Deserialize)]
+struct SpeedRequest {
+    speed: f64,
+}
+
+async fn set_speed(
+    State(state): State<ViewerAppState>,
+    Json(req): Json<SpeedRequest>,
+) -> Json<serde_json::Value> {
+    let clamped = req.speed.clamp(0.1, 100.0);
+    crate::agents::write_speed(&state.speed, clamped);
+    Json(serde_json::json!({ "speed": clamped }))
+}
+
+async fn pause_agent(
+    State(state): State<ViewerAppState>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let flags = state.pause_flags.read().await;
+    match flags.get(&name) {
+        Some(flag) => {
+            flag.store(true, std::sync::atomic::Ordering::Relaxed);
+            Json(serde_json::json!({ "name": name, "paused": true })).into_response()
+        }
+        None => (axum::http::StatusCode::NOT_FOUND, "agent not found").into_response(),
+    }
+}
+
+async fn resume_agent(
+    State(state): State<ViewerAppState>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let flags = state.pause_flags.read().await;
+    match flags.get(&name) {
+        Some(flag) => {
+            flag.store(false, std::sync::atomic::Ordering::Relaxed);
+            Json(serde_json::json!({ "name": name, "paused": false })).into_response()
+        }
+        None => (axum::http::StatusCode::NOT_FOUND, "agent not found").into_response(),
+    }
 }
 
 async fn ws_handler(

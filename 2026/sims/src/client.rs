@@ -97,4 +97,40 @@ impl RecorderClient {
         }
         resp.json().await.context("invalid submit response")
     }
+
+    /// GET /chains — list all chains on the recorder.
+    pub async fn list_chains(&self) -> Result<Vec<ChainListEntry>> {
+        let resp = self.client
+            .get(format!("{}/chains", self.base_url))
+            .send()
+            .await
+            .context("failed to connect to recorder")?;
+
+        if !resp.status().is_success() {
+            bail!("list_chains failed: {}", resp.status());
+        }
+        resp.json().await.context("invalid list_chains response")
+    }
+
+    /// GET /chain/{id}/blocks?from=&to= — fetch blocks as JSON array.
+    pub async fn get_blocks(&self, chain_id: &str, from: u64, to: u64) -> Result<Vec<serde_json::Value>> {
+        let resp = self.client
+            .get(format!("{}/chain/{}/blocks?from={}&to={}", self.base_url, chain_id, from, to))
+            .send()
+            .await
+            .context("failed to connect to recorder")?;
+
+        if !resp.status().is_success() {
+            bail!("get_blocks failed: {}", resp.status());
+        }
+        resp.json().await.context("invalid get_blocks response")
+    }
+}
+
+#[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
+pub struct ChainListEntry {
+    pub chain_id: String,
+    pub symbol: String,
+    pub block_height: u64,
 }

@@ -45,6 +45,12 @@ pub struct AgentConfig {
     /// Consumer-specific config.
     #[serde(default)]
     pub consumer: Option<ConsumerConfig>,
+    /// Validator-specific config.
+    #[serde(default)]
+    pub validator: Option<ValidatorConfig>,
+    /// Attacker-specific config.
+    #[serde(default)]
+    pub attacker: Option<AttackerConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -71,7 +77,12 @@ pub struct VendorConfig {
     /// Number of plates to sell to exchange agents initially.
     #[serde(default = "default_initial_float")]
     pub initial_float: u64,
+    /// Coverage radius in meters for map overlay (default 500).
+    #[serde(default = "default_coverage_radius")]
+    pub coverage_radius_m: f64,
 }
+
+fn default_coverage_radius() -> f64 { 500.0 }
 
 fn default_description() -> String { String::new() }
 fn default_coins() -> String { "1000000000".to_string() }
@@ -111,7 +122,15 @@ pub struct ExchangeConfig {
     /// Rebalance threshold: restock when inventory drops below this fraction of initial (0.0–1.0).
     #[serde(default = "default_rebalance_threshold")]
     pub rebalance_threshold: f64,
+    /// Enable dynamic price discovery (adjust rates based on competitor rates).
+    #[serde(default)]
+    pub price_discovery: bool,
+    /// How often (in seconds) to adjust rates when price_discovery is enabled.
+    #[serde(default = "default_adjust_interval")]
+    pub adjust_interval_secs: u64,
 }
+
+fn default_adjust_interval() -> u64 { 30 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct TradingPairConfig {
@@ -161,6 +180,32 @@ pub struct ConsumerConfig {
 }
 
 fn default_interval() -> u64 { 30 }
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct ValidatorConfig {
+    /// Poll interval in seconds (sim time).
+    #[serde(default = "default_poll_interval")]
+    pub poll_interval_secs: u64,
+    /// Max blocks to fetch per poll batch.
+    #[serde(default = "default_batch_size")]
+    pub batch_size: u64,
+}
+
+fn default_poll_interval() -> u64 { 10 }
+fn default_batch_size() -> u64 { 100 }
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct AttackerConfig {
+    /// Attack type: "double_spend", "expired_utxo", "key_reuse".
+    pub attack: String,
+    /// Target vendor name to interact with.
+    pub target_vendor: String,
+    /// Seconds between attack attempts (sim time).
+    #[serde(default = "default_attack_interval")]
+    pub attack_interval_secs: u64,
+}
+
+fn default_attack_interval() -> u64 { 15 }
 
 pub fn parse_bigint(s: &str) -> num_bigint::BigInt {
     use num_traits::One;

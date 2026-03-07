@@ -1,0 +1,122 @@
+# Sim-D: Auditor view + adversarial agents
+# Tests chain integrity validation and attack rejection.
+
+[simulation]
+name = "audit-adversarial"
+recorder_port = 0
+speed = 10.0
+duration_secs = 180     # 3 minutes real time
+
+# ── Bob: curry goat vendor ───────────────────────────────────────────
+
+[[agent]]
+name = "Bob"
+role = "vendor"
+lat = 18.2027
+lon = -63.0490
+
+[agent.vendor]
+symbol = "BCG"
+description = "Bob's Curry Goat"
+coins = "1000000000"
+shares = "2^40"
+plate_price = 25
+initial_float = 50
+
+# ── Carol: coconut cream vendor ─────────────────────────────────────
+
+[[agent]]
+name = "Carol"
+role = "vendor"
+lat = 18.2070
+lon = -63.0460
+
+[agent.vendor]
+symbol = "CCC"
+description = "Carol's Coconut Cream"
+coins = "500000000"
+shares = "2^38"
+plate_price = 15
+initial_float = 40
+
+# ── Gene: recorder operator (embedded) ──────────────────────────────
+
+[[agent]]
+name = "Gene"
+role = "recorder"
+
+# ── Charlie: exchange agent ─────────────────────────────────────────
+
+[[agent]]
+name = "Charlie"
+role = "exchange"
+lat = 18.2060
+lon = -63.0519
+
+[agent.exchange]
+buy_from = "Bob"
+initial_buy = 50
+
+# ── Alice: tourist consumer ─────────────────────────────────────────
+
+[[agent]]
+name = "Alice"
+role = "consumer"
+lat = 18.2040
+lon = -63.0500
+
+[agent.consumer]
+buy_from = "Charlie"
+redeem_at = "Bob"
+interval_secs = 30
+
+# ── Victor: chain validator ─────────────────────────────────────────
+
+[[agent]]
+name = "Victor"
+role = "validator"
+lat = 18.2050
+lon = -63.0530
+
+[agent.validator]
+poll_interval_secs = 5
+batch_size = 50
+
+# ── Mallory: double-spend attacker ──────────────────────────────────
+
+[[agent]]
+name = "Mallory"
+role = "attacker"
+lat = 18.2015
+lon = -63.0475
+
+[agent.attacker]
+attack = "double_spend"
+target_vendor = "Bob"
+attack_interval_secs = 15
+
+# ── Trudy: key-reuse attacker ───────────────────────────────────────
+
+[[agent]]
+name = "Trudy"
+role = "attacker"
+lat = 18.2080
+lon = -63.0510
+
+[agent.attacker]
+attack = "key_reuse"
+target_vendor = "Bob"
+attack_interval_secs = 15
+
+# ── Oscar: expired-UTXO attacker ────────────────────────────────────
+
+[[agent]]
+name = "Oscar"
+role = "attacker"
+lat = 18.2035
+lon = -63.0545
+
+[agent.attacker]
+attack = "expired_utxo"
+target_vendor = "Carol"
+attack_interval_secs = 15

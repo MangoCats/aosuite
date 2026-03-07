@@ -7,9 +7,11 @@ mod transfer;
 mod viewer;
 mod wallet;
 
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use clap::Parser;
 use tokio::sync::{mpsc, RwLock, watch};
 use tracing::info;
@@ -17,9 +19,12 @@ use tracing::info;
 use ao_crypto::sign::SigningKey;
 use ao_recorder::{AppState, build_router};
 
-use agents::{AgentDirectory, AgentMessage, ViewerState};
+use agents::{AgentDirectory, AgentMessage, PauseFlag, SharedSpeed, ViewerState};
 use client::RecorderClient;
 use config::ScenarioConfig;
+
+/// Shared map of agent name → pause flag, accessible from the viewer API.
+pub type PauseFlags = Arc<RwLock<HashMap<String, PauseFlag>>>;
 
 #[derive(Parser)]
 #[command(name = "ao-sims", about = "Assign Onward community simulator")]
@@ -63,10 +68,12 @@ async fn main() -> Result<()> {
     let directory = Arc::new(RwLock::new(AgentDirectory::new()));
     let (state_tx, state_rx) = mpsc::channel(256);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
+    let speed: SharedSpeed = Arc::new(AtomicU64::new(scenario.simulation.speed.to_bits()));
+    let pause_flags: PauseFlags = Arc::new(RwLock::new(HashMap::new()));
 
     // Start viewer state + API server
     let viewer_state = Arc::new(ViewerState::new());
-    let viewer_url = start_viewer(cli.viewer_port, viewer_state.clone()).await;
+    let viewer_url = start_viewer(cli.viewer_port, viewer_state.clone(), Arc::clone(&speed), Arc::clone(&pause_flags)).await;
     info!("Viewer API running at {}", viewer_url);
 
     // Register agent mailboxes
@@ -87,7 +94,6 @@ async fn main() -> Result<()> {
     let observer_handle = tokio::spawn(observer::run_observer(state_rx, viewer_state.clone(), shutdown_rx));
 
     // Spawn agents
-    let speed = scenario.simulation.speed;
     let mut agent_handles = Vec::new();
 
     for agent_cfg in scenario.agents {
@@ -95,23 +101,31 @@ async fn main() -> Result<()> {
         let client = Arc::clone(&client);
         let directory = Arc::clone(&directory);
         let state_tx = state_tx.clone();
+        let speed = Arc::clone(&speed);
         let name = agent_cfg.name.clone();
+        let agent_paused: PauseFlag = Arc::new(AtomicBool::new(false));
+        {
+            let mut flags = pause_flags.blocking_write();
+            flags.insert(name.clone(), Arc::clone(&agent_paused));
+        }
 
         let handle = match agent_cfg.role.as_str() {
             "vendor" => {
-                let vendor_cfg = agent_cfg.vendor.clone()
-                    .unwrap_or_else(|| panic!("vendor {} missing [agent.vendor] config", name));
+                let Some(vendor_cfg) = agent_cfg.vendor.clone() else {
+                    bail!("vendor {} missing [agent.vendor] config", name);
+                };
                 tokio::spawn(async move {
                     if let Err(e) = agents::run_vendor(
-                        agent_cfg, vendor_cfg, client, directory, state_tx, mailbox,
+                        agent_cfg, vendor_cfg, client, directory, state_tx, mailbox, agent_paused,
                     ).await {
                         tracing::error!("{}: vendor error: {}", name, e);
                     }
                 })
             }
             "exchange" => {
-                let exchange_cfg = agent_cfg.exchange.clone()
-                    .unwrap_or_else(|| panic!("exchange {} missing [agent.exchange] config", name));
+                let Some(exchange_cfg) = agent_cfg.exchange.clone() else {
+                    bail!("exchange {} missing [agent.exchange] config", name);
+                };
                 let block_rx = if mqtt_port > 0 {
                     Some(mqtt::subscribe_blocks(mqtt_port, &format!("exchange-{}", name)).await)
                 } else {
@@ -119,20 +133,45 @@ async fn main() -> Result<()> {
                 };
                 tokio::spawn(async move {
                     if let Err(e) = agents::run_exchange(
-                        agent_cfg, exchange_cfg, client, directory, state_tx, mailbox, speed, block_rx,
+                        agent_cfg, exchange_cfg, client, directory, state_tx, mailbox, speed, block_rx, agent_paused,
                     ).await {
                         tracing::error!("{}: exchange error: {}", name, e);
                     }
                 })
             }
             "consumer" => {
-                let consumer_cfg = agent_cfg.consumer.clone()
-                    .unwrap_or_else(|| panic!("consumer {} missing [agent.consumer] config", name));
+                let Some(consumer_cfg) = agent_cfg.consumer.clone() else {
+                    bail!("consumer {} missing [agent.consumer] config", name);
+                };
                 tokio::spawn(async move {
                     if let Err(e) = agents::run_consumer(
-                        agent_cfg, consumer_cfg, client, directory, state_tx, mailbox, speed,
+                        agent_cfg, consumer_cfg, client, directory, state_tx, mailbox, speed, agent_paused,
                     ).await {
                         tracing::error!("{}: consumer error: {}", name, e);
+                    }
+                })
+            }
+            "validator" => {
+                let Some(validator_cfg) = agent_cfg.validator.clone() else {
+                    bail!("validator {} missing [agent.validator] config", name);
+                };
+                tokio::spawn(async move {
+                    if let Err(e) = agents::run_validator(
+                        agent_cfg, validator_cfg, client, directory, state_tx, mailbox, speed, agent_paused,
+                    ).await {
+                        tracing::error!("{}: validator error: {}", name, e);
+                    }
+                })
+            }
+            "attacker" => {
+                let Some(attacker_cfg) = agent_cfg.attacker.clone() else {
+                    bail!("attacker {} missing [agent.attacker] config", name);
+                };
+                tokio::spawn(async move {
+                    if let Err(e) = agents::run_attacker(
+                        agent_cfg, attacker_cfg, client, directory, state_tx, mailbox, speed, agent_paused,
+                    ).await {
+                        tracing::error!("{}: attacker error: {}", name, e);
                     }
                 })
             }
@@ -152,7 +191,7 @@ async fn main() -> Result<()> {
 
     // Run for the configured duration
     let duration = std::time::Duration::from_secs(scenario.simulation.duration_secs);
-    info!("Simulation running for {:?} (speed {}x)...", duration, speed);
+    info!("Simulation running for {:?} (speed {}x)...", duration, agents::read_speed(&speed));
     info!("Press Ctrl+C to stop early.");
 
     tokio::select! {
@@ -204,9 +243,13 @@ async fn start_recorder(port: u16) -> (String, Arc<AppState>) {
 async fn start_viewer(
     port: u16,
     viewer_state: Arc<ViewerState>,
+    speed: SharedSpeed,
+    pause_flags: PauseFlags,
 ) -> String {
     let app_state = viewer::ViewerAppState {
         viewer: viewer_state,
+        speed,
+        pause_flags,
     };
     let app = viewer::build_viewer_router(app_state);
 

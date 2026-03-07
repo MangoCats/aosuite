@@ -1,7 +1,16 @@
+import { useEffect } from 'react';
 import { useStore } from '../store';
+import { fetchSpeed, setSpeed as apiSetSpeed } from '../api';
+
+const SPEED_STEPS = [0.5, 1, 2, 5, 10, 25, 50, 100];
 
 export function TimeControls() {
-  const { paused, setPaused, transactions, timeFilter, setTimeFilter } = useStore();
+  const { paused, setPaused, transactions, timeFilter, setTimeFilter, speed, setSpeed } = useStore();
+
+  // Fetch initial speed from server
+  useEffect(() => {
+    fetchSpeed().then(setSpeed).catch(() => {});
+  }, [setSpeed]);
 
   if (transactions.length === 0) return null;
 
@@ -9,6 +18,11 @@ export function TimeControls() {
   const maxTs = transactions[transactions.length - 1]?.timestamp_ms ?? 0;
   const currentTs = timeFilter ?? maxTs;
   const elapsed = Math.round((currentTs - minTs) / 1000);
+
+  const handleSpeedChange = (newSpeed: number) => {
+    setSpeed(newSpeed);
+    apiSetSpeed(newSpeed).catch(() => {});
+  };
 
   return (
     <div style={{
@@ -56,6 +70,22 @@ export function TimeControls() {
           Live — {transactions.length} events
         </span>
       )}
+
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ color: '#868e96', fontSize: 12 }}>Speed:</span>
+        <select
+          value={speed}
+          onChange={(e) => handleSpeedChange(Number(e.target.value))}
+          style={{
+            padding: '2px 6px', border: '1px solid #dee2e6', borderRadius: 4,
+            fontSize: 12, background: '#fff', cursor: 'pointer',
+          }}
+        >
+          {SPEED_STEPS.map((s) => (
+            <option key={s} value={s}>{s}x</option>
+          ))}
+        </select>
+      </div>
     </div>
   );
 }

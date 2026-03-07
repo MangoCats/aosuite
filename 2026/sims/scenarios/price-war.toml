@@ -1,0 +1,126 @@
+# Price war scenario: 2 competing exchange agents with overlapping BCG↔CCC pair.
+# Both have price_discovery enabled and will dynamically adjust rates.
+#
+# Chains:
+#   BCG — Bob's Curry Goat
+#   CCC — Carol's Cold Coffee
+#
+# Exchanges:
+#   Charlie starts at rate 3.0, Eve starts at rate 3.2
+#   Both adjust every 15s based on competitor rates and inventory levels.
+#
+# Consumers: Alice and Dan both buy BCG via whichever exchange they're assigned to.
+
+[simulation]
+name = "price-war"
+recorder_port = 0
+speed = 10.0
+duration_secs = 300
+
+# ── Vendors ─────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Bob"
+role = "vendor"
+lat = 18.2027
+lon = -63.0490
+
+[agent.vendor]
+symbol = "BCG"
+description = "Bob's Curry Goat"
+coins = "1000000000"
+shares = "2^40"
+plate_price = 25
+initial_float = 100
+
+[[agent]]
+name = "Carol"
+role = "vendor"
+lat = 18.2035
+lon = -63.0485
+
+[agent.vendor]
+symbol = "CCC"
+description = "Carol's Cold Coffee"
+coins = "500000000"
+shares = "2^38"
+plate_price = 8
+initial_float = 200
+
+# ── Recorder ────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Gene"
+role = "recorder"
+
+# ── Competing exchanges ─────────────────────────────────────────────
+
+[[agent]]
+name = "Charlie"
+role = "exchange"
+lat = 18.2060
+lon = -63.0519
+
+[agent.exchange]
+price_discovery = true
+adjust_interval_secs = 15
+pairs = [
+    { sell = "BCG", buy = "CCC", rate = 3.0 },
+]
+
+[[agent.exchange.inventory]]
+vendor = "Bob"
+plates = 60
+
+[[agent.exchange.inventory]]
+vendor = "Carol"
+plates = 180
+
+[[agent]]
+name = "Eve"
+role = "exchange"
+lat = 18.2045
+lon = -63.0510
+
+[agent.exchange]
+price_discovery = true
+adjust_interval_secs = 15
+pairs = [
+    { sell = "BCG", buy = "CCC", rate = 3.2 },
+]
+
+[[agent.exchange.inventory]]
+vendor = "Bob"
+plates = 60
+
+[[agent.exchange.inventory]]
+vendor = "Carol"
+plates = 180
+
+# ── Consumers ───────────────────────────────────────────────────────
+
+[[agent]]
+name = "Alice"
+role = "consumer"
+lat = 18.2040
+lon = -63.0500
+
+[agent.consumer]
+buy_from = "Charlie"
+want_symbol = "BCG"
+pay_symbol = "CCC"
+fund_from = "Carol"
+interval_secs = 20
+
+[[agent]]
+name = "Dan"
+role = "consumer"
+lat = 18.2055
+lon = -63.0495
+
+[agent.consumer]
+buy_from = "Eve"
+want_symbol = "BCG"
+pay_symbol = "CCC"
+fund_from = "Carol"
+interval_secs = 25

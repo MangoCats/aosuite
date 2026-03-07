@@ -9,14 +9,19 @@ const ROLE_COLORS: Record<string, string> = {
   exchange: '#e67700',
   consumer: '#1971c2',
   recorder: '#862e9c',
+  validator: '#862e9c',
+  attacker: '#e03131',
 };
 
 export function MapView() {
-  const { agents, transactions, selectAgent, timeFilter } = useStore();
+  const { agents, transactions, selectAgent, timeFilter, showHeatMap, toggleHeatMap, showCoverage, toggleCoverage, showAuditOverlay, toggleAuditOverlay } = useStore();
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<Map<string, L.CircleMarker>>(new Map());
   const arcsRef = useRef<L.Polyline[]>([]);
+  const heatRef = useRef<L.Circle[]>([]);
+  const coverageRef = useRef<L.Circle[]>([]);
+  const auditRef = useRef<L.Circle[]>([]);
   const tooltipLayerRef = useRef<L.LayerGroup | null>(null);
 
   // Initialize map once
@@ -141,11 +146,172 @@ export function MapView() {
     }
   }, [agents, transactions, timeFilter]);
 
+  // Heat map overlay: semi-transparent circles at transaction midpoints (debounced)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!showHeatMap) {
+      for (const c of heatRef.current) c.remove();
+      heatRef.current = [];
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      for (const c of heatRef.current) c.remove();
+      heatRef.current = [];
+
+      const agentMap = new Map(agents.map((a) => [a.name, a]));
+      const visible = timeFilter !== null
+        ? transactions.filter((t) => t.timestamp_ms <= timeFilter)
+        : transactions;
+      const now = Date.now();
+
+      for (const tx of visible.slice(-100)) {
+        const from = agentMap.get(tx.from_agent);
+        const to = agentMap.get(tx.to_agent);
+        if (!from || !to) continue;
+        if ((from.lat === 0 && from.lon === 0) || (to.lat === 0 && to.lon === 0)) continue;
+
+        const midLat = (from.lat + to.lat) / 2;
+        const midLon = (from.lon + to.lon) / 2;
+        const age = now - tx.timestamp_ms;
+        const opacity = Math.max(0.05, 0.4 * (1 - age / 300000)); // fade over 5 min
+
+        const circle = L.circle([midLat, midLon], {
+          radius: 80,
+          color: 'transparent',
+          fillColor: '#e03131',
+          fillOpacity: opacity,
+        }).addTo(map);
+        heatRef.current.push(circle);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [agents, transactions, timeFilter, showHeatMap]);
+
+  // Coverage zones: circles around vendors
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    for (const c of coverageRef.current) c.remove();
+    coverageRef.current = [];
+
+    if (!showCoverage) return;
+
+    for (const agent of agents) {
+      if (agent.coverage_radius == null) continue;
+      if (agent.lat === 0 && agent.lon === 0) continue;
+
+      const circle = L.circle([agent.lat, agent.lon], {
+        radius: agent.coverage_radius,
+        color: ROLE_COLORS[agent.role] || '#868e96',
+        weight: 1,
+        fillColor: ROLE_COLORS[agent.role] || '#868e96',
+        fillOpacity: 0.1,
+        dashArray: '4 4',
+      }).addTo(map);
+      coverageRef.current.push(circle);
+    }
+  }, [agents, showCoverage]);
+
+  // Audit overlay: halos around vendors showing chain validation status
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (!showAuditOverlay) {
+      for (const c of auditRef.current) c.remove();
+      auditRef.current = [];
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      for (const c of auditRef.current) c.remove();
+      auditRef.current = [];
+
+      // Collect validator chain statuses
+      const chainStatus = new Map<string, string>(); // chain_id -> "ok" | "alert"
+      for (const a of agents) {
+        if (!a.validator_status) continue;
+        for (const mc of a.validator_status.monitored_chains) {
+          const existing = chainStatus.get(mc.chain_id);
+          // alert overrides ok
+          if (!existing || mc.status === 'alert') {
+            chainStatus.set(mc.chain_id, mc.status);
+          }
+        }
+      }
+
+      // Draw halos around vendors
+      for (const agent of agents) {
+        if (agent.role !== 'vendor') continue;
+        if (agent.lat === 0 && agent.lon === 0) continue;
+        if (agent.chains.length === 0) continue;
+
+        const chainId = agent.chains[0].chain_id;
+        const status = chainStatus.get(chainId);
+        const color = status === 'ok' ? '#2b8a3e' : status === 'alert' ? '#e03131' : '#868e96';
+
+        const circle = L.circle([agent.lat, agent.lon], {
+          radius: 120,
+          color,
+          weight: 3,
+          fillColor: color,
+          fillOpacity: 0.08,
+          dashArray: status === 'ok' ? undefined : '8 4',
+        }).addTo(map);
+        auditRef.current.push(circle);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [agents, showAuditOverlay]);
+
   return (
-    <div
-      ref={containerRef}
-      style={{ width: '100%', height: 500, borderRadius: 8, border: '1px solid #dee2e6' }}
-    />
+    <div style={{ position: 'relative' }}>
+      <div
+        ref={containerRef}
+        style={{ width: '100%', height: 500, borderRadius: 8, border: '1px solid #dee2e6' }}
+      />
+      <div style={{
+        position: 'absolute', top: 10, right: 10, zIndex: 1000,
+        display: 'flex', gap: 4, flexDirection: 'column',
+      }}>
+        <button
+          onClick={toggleHeatMap}
+          style={{
+            ...overlayBtnStyle,
+            background: showHeatMap ? '#e03131' : '#fff',
+            color: showHeatMap ? '#fff' : '#333',
+          }}
+        >
+          Heat Map
+        </button>
+        <button
+          onClick={toggleCoverage}
+          style={{
+            ...overlayBtnStyle,
+            background: showCoverage ? '#2b8a3e' : '#fff',
+            color: showCoverage ? '#fff' : '#333',
+          }}
+        >
+          Coverage
+        </button>
+        <button
+          onClick={toggleAuditOverlay}
+          style={{
+            ...overlayBtnStyle,
+            background: showAuditOverlay ? '#862e9c' : '#fff',
+            color: showAuditOverlay ? '#fff' : '#333',
+          }}
+        >
+          Audit
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -164,3 +330,9 @@ function formatTxPopup(tx: TransactionEvent): string {
     `${tx.description}<br/>` +
     `Block ${tx.block_height} at ${time}`;
 }
+
+const overlayBtnStyle: React.CSSProperties = {
+  padding: '4px 10px', fontSize: 12, fontWeight: 600,
+  border: '1px solid #dee2e6', borderRadius: 4, cursor: 'pointer',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+};

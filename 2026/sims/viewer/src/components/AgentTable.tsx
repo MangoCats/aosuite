@@ -1,5 +1,6 @@
 import { useStore } from '../store';
 import type { AgentState } from '../api';
+import { holdingToCoins } from '../utils';
 
 export function AgentTable() {
   const { agents, agentSort, setAgentSort, agentFilter, setAgentFilter, selectAgent } = useStore();
@@ -35,18 +36,16 @@ export function AgentTable() {
             <SortTh label="Status" field="status" sort={agentSort} onSort={setAgentSort} />
             <SortTh label="Txns" field="transactions" sort={agentSort} onSort={setAgentSort} />
             <th style={thStyle}>UTXOs</th>
-            <th style={thStyle}>Shares</th>
+            <th style={thStyle}>Coins</th>
             <th style={thStyle}>Last Action</th>
           </tr>
         </thead>
         <tbody>
           {sorted.map((a) => {
             const utxos = a.chains.reduce((s, c) => s + c.unspent_utxos, 0);
-            const sharesDisplay = a.chains.length === 0
-              ? '0'
-              : a.chains.length === 1
-                ? formatShares(a.chains[0].shares)
-                : a.chains.map((c) => `${c.symbol}:${formatShares(c.shares)}`).join(' ');
+            const coinsDisplay = a.chains.length === 0
+              ? '-'
+              : a.chains.map((c) => holdingToCoins(c)).join(', ');
             return (
               <tr
                 key={a.name}
@@ -57,10 +56,14 @@ export function AgentTable() {
               >
                 <td style={tdStyle}><strong>{a.name}</strong></td>
                 <td style={tdStyle}><RoleBadge role={a.role} /></td>
-                <td style={tdStyle}>{a.status}</td>
+                <td style={tdStyle}>
+                  {a.paused
+                    ? <span style={{ color: '#e03131', fontWeight: 600 }}>paused</span>
+                    : a.status}
+                </td>
                 <td style={{ ...tdStyle, textAlign: 'right' }}>{a.transactions}</td>
                 <td style={{ ...tdStyle, textAlign: 'right' }}>{utxos}</td>
-                <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>{sharesDisplay}</td>
+                <td style={{ ...tdStyle, textAlign: 'right', fontSize: 12 }}>{coinsDisplay}</td>
                 <td style={{ ...tdStyle, fontSize: 12, color: '#666' }}>{a.last_action}</td>
               </tr>
             );
@@ -77,6 +80,8 @@ function RoleBadge({ role }: { role: string }) {
     exchange: '#e67700',
     consumer: '#1971c2',
     recorder: '#862e9c',
+    validator: '#862e9c',
+    attacker: '#e03131',
   };
   return (
     <span style={{
@@ -104,11 +109,6 @@ function SortTh({ label, field, sort, onSort }: {
       {label}{arrow}
     </th>
   );
-}
-
-function formatShares(s: string): string {
-  if (s.length <= 12) return s;
-  return `${s[0]}.${s.slice(1, 3)}e${s.length - 1}`;
 }
 
 const filterStyle: React.CSSProperties = {

@@ -106,6 +106,7 @@ dependencies = [
 name = "ao-recorder"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "ao-chain",
  "ao-crypto",
  "ao-types",

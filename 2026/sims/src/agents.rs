@@ -30,6 +30,12 @@ pub enum AgentMessage {
         receivers: Vec<Receiver>,
         reply: oneshot::Sender<Result<TransferResult>>,
     },
+    /// Notify an agent that one of its keys received a UTXO.
+    NotifyUtxo {
+        pubkey: [u8; 32],
+        seq_id: u64,
+        amount: BigInt,
+    },
 }
 
 pub struct PubkeyResponse {
@@ -71,8 +77,8 @@ pub type StateCollector = mpsc::Sender<AgentState>;
 
 pub struct AgentDirectory {
     agents: HashMap<String, AgentSender>,
-    /// chain_id → (symbol, vendor_name)
-    pub chains: HashMap<String, (String, String)>,
+    /// chain_id → (symbol, vendor_name, plate_price_coins)
+    pub chains: HashMap<String, (String, String, u64)>,
 }
 
 impl AgentDirectory {
@@ -84,8 +90,8 @@ impl AgentDirectory {
         self.agents.insert(name.to_string(), sender);
     }
 
-    pub fn register_chain(&mut self, chain_id: &str, symbol: &str, vendor_name: &str) {
-        self.chains.insert(chain_id.to_string(), (symbol.to_string(), vendor_name.to_string()));
+    pub fn register_chain(&mut self, chain_id: &str, symbol: &str, vendor_name: &str, plate_price: u64) {
+        self.chains.insert(chain_id.to_string(), (symbol.to_string(), vendor_name.to_string(), plate_price));
     }
 
     pub fn get(&self, name: &str) -> Option<&AgentSender> {
@@ -116,7 +122,7 @@ pub async fn run_vendor(
     let fee_num = parse_bigint(&vendor_cfg.fee_num);
     let fee_den = vendor_cfg.fee_den.as_ref()
         .map(|s| parse_bigint(s))
-        .unwrap_or_else(|| auto_fee_den(&vendor_cfg.shares, &vendor_cfg.coins));
+        .unwrap_or_else(|| auto_fee_den(&vendor_cfg.coins));
     let fee_rate = transfer::FeeRate { num: fee_num, den: fee_den };
 
     let (_genesis, genesis_json) = transfer::build_genesis(
@@ -130,11 +136,11 @@ pub async fn run_vendor(
     // Register chain + issuer UTXO
     {
         let mut dir = directory.write().await;
-        dir.register_chain(&chain_id, &vendor_cfg.symbol, &name);
+        dir.register_chain(&chain_id, &vendor_cfg.symbol, &name, vendor_cfg.plate_price);
     }
     let issuer_entry = wallet.import_key(seed, &chain_id);
     wallet.register_utxo(&issuer_entry.pubkey, 1, shares.clone());
-    report(&state_tx, &name, "vendor", "ready", &wallet, &chain_id, &vendor_cfg.symbol, tx_count, "genesis created").await;
+    let _ = state_tx.send(build_state(&name,"vendor", "ready", &wallet, &chain_id, &vendor_cfg.symbol, tx_count, "genesis created")).await;
 
     // Handle messages
     while let Some(msg) = mailbox.recv().await {
@@ -148,9 +154,13 @@ pub async fn run_vendor(
                 if let Ok(ref r) = result {
                     tx_count += 1;
                     info!("{}: Block {} (tx #{})", name, r.block_height, tx_count);
-                    report(&state_tx, &name, "vendor", "ready", &wallet, &chain_id, &vendor_cfg.symbol, tx_count, &format!("block {}", r.block_height)).await;
+                    let _ = state_tx.send(build_state(&name,"vendor", "ready", &wallet, &chain_id, &vendor_cfg.symbol, tx_count, &format!("block {}", r.block_height))).await;
                 }
                 let _ = reply.send(result);
+            }
+            AgentMessage::NotifyUtxo { pubkey, seq_id, amount } => {
+                wallet.register_utxo(&pubkey, seq_id, amount);
+                let _ = state_tx.send(build_state(&name,"vendor", "ready", &wallet, &chain_id, &vendor_cfg.symbol, tx_count, "received redemption")).await;
             }
         }
     }
@@ -173,19 +183,14 @@ pub async fn run_exchange(
     let mut tx_count: u64 = 0;
 
     // Wait for vendor's chain
-    let (chain_id, symbol) = wait_for_vendor_chain(&directory, &exchange_cfg.buy_from).await;
+    let (chain_id, symbol, plate_price) = wait_for_vendor_chain(&directory, &exchange_cfg.buy_from).await?;
     info!("{}: Found chain {} ({})", name, symbol, &chain_id[..12]);
-
-    // Wait for block timestamp to advance past genesis (recorder requires
-    // strictly increasing timestamps, and genesis was just created)
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
     // Buy initial inventory from vendor
     let info = client.chain_info(&chain_id).await?;
     let total_shares: BigInt = info.shares_out.parse()?;
     let total_coins: BigInt = info.coin_count.parse()?;
-    let plate_price = BigInt::from(25u64);
-    let buy_coins = &plate_price * BigInt::from(exchange_cfg.initial_buy);
+    let buy_coins = BigInt::from(plate_price) * BigInt::from(exchange_cfg.initial_buy);
     let buy_shares = &total_shares * &buy_coins / &total_coins;
 
     request_purchase(
@@ -194,7 +199,7 @@ pub async fn run_exchange(
     ).await?;
     tx_count += 1;
     info!("{}: Bought {} plates from {}", name, exchange_cfg.initial_buy, exchange_cfg.buy_from);
-    report(&state_tx, &name, "exchange", "ready", &wallet, &chain_id, &symbol, tx_count, "inventory acquired").await;
+    let _ = state_tx.send(build_state(&name,"exchange", "ready", &wallet, &chain_id, &symbol, tx_count, "inventory acquired")).await;
 
     // Handle buy requests from consumers
     while let Some(msg) = mailbox.recv().await {
@@ -208,9 +213,12 @@ pub async fn run_exchange(
                 if let Ok(ref r) = result {
                     tx_count += 1;
                     info!("{}: Block {} (tx #{})", name, r.block_height, tx_count);
-                    report(&state_tx, &name, "exchange", "ready", &wallet, &chain_id, &symbol, tx_count, &format!("sold plate, block {}", r.block_height)).await;
+                    let _ = state_tx.send(build_state(&name,"exchange", "ready", &wallet, &chain_id, &symbol, tx_count, &format!("sold plate, block {}", r.block_height))).await;
                 }
                 let _ = reply.send(result);
+            }
+            AgentMessage::NotifyUtxo { pubkey, seq_id, amount } => {
+                wallet.register_utxo(&pubkey, seq_id, amount);
             }
         }
     }
@@ -233,7 +241,7 @@ pub async fn run_consumer(
     let mut tx_count: u64 = 0;
 
     // Wait for vendor's chain
-    let (chain_id, symbol) = wait_for_vendor_chain(&directory, &consumer_cfg.redeem_at).await;
+    let (chain_id, symbol, plate_price) = wait_for_vendor_chain(&directory, &consumer_cfg.redeem_at).await?;
     // Give exchange time to acquire inventory
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
@@ -246,10 +254,16 @@ pub async fn run_consumer(
         tokio::time::sleep(interval).await;
 
         // Step 1: Buy from exchange
-        let info = client.chain_info(&chain_id).await?;
+        let info = match client.chain_info(&chain_id).await {
+            Ok(i) => i,
+            Err(e) => {
+                warn!("{}: chain_info failed: {}", name, e);
+                continue;
+            }
+        };
         let total_shares: BigInt = info.shares_out.parse()?;
         let total_coins: BigInt = info.coin_count.parse()?;
-        let plate_shares = &total_shares * BigInt::from(25u64) / &total_coins;
+        let plate_shares = &total_shares * BigInt::from(plate_price) / &total_coins;
 
         match request_purchase(
             &name, &mut wallet, &directory,
@@ -265,25 +279,24 @@ pub async fn run_consumer(
             }
         }
 
-        // Wait long enough to cross a second boundary so the recorder
-        // assigns a strictly increasing block timestamp.
-        tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
-
-        // Step 2: Redeem at vendor
-        match redeem_at(
-            &name, &mut wallet, &client, &directory,
-            &consumer_cfg.redeem_at, &chain_id,
-        ).await {
-            Ok(h) => {
-                tx_count += 1;
-                info!("{}: Redeemed at {} (block {})", name, consumer_cfg.redeem_at, h);
-            }
-            Err(e) => {
-                warn!("{}: Redeem failed: {}", name, e);
+        // Step 2: Redeem all unspent UTXOs at vendor
+        while wallet.find_unspent(&chain_id).is_some() {
+            match redeem_at(
+                &name, &mut wallet, &client, &directory,
+                &consumer_cfg.redeem_at, &chain_id,
+            ).await {
+                Ok(h) => {
+                    tx_count += 1;
+                    info!("{}: Redeemed at {} (block {})", name, consumer_cfg.redeem_at, h);
+                }
+                Err(e) => {
+                    warn!("{}: Redeem failed: {}", name, e);
+                    break;
+                }
             }
         }
 
-        report(&state_tx, &name, "consumer", "active", &wallet, &chain_id, &symbol, tx_count, "purchased + redeemed").await;
+        let _ = state_tx.send(build_state(&name,"consumer", "active", &wallet, &chain_id, &symbol, tx_count, "purchased + redeemed")).await;
     }
 }
 
@@ -297,15 +310,15 @@ async fn handle_sell(
     chain_id: &str,
     receivers: &mut Vec<Receiver>,
 ) -> Result<TransferResult> {
-    let utxo_entry = wallet.find_unspent(chain_id)
+    let utxo = wallet.find_unspent(chain_id)
         .ok_or_else(|| anyhow::anyhow!("{}: no unspent UTXO on chain", name))?;
 
     let giver = Giver {
-        seq_id: utxo_entry.seq_id.unwrap(),
-        amount: utxo_entry.amount.clone().unwrap(),
-        seed: utxo_entry.seed,
+        seq_id: utxo.seq_id,
+        amount: utxo.amount,
+        seed: utxo.seed,
     };
-    let giver_pubkey = utxo_entry.pubkey;
+    let giver_pubkey = utxo.pubkey;
 
     let result = transfer::execute_transfer(client, chain_id, &[giver], receivers).await?;
 
@@ -395,12 +408,8 @@ async fn redeem_at(
     drop(dir);
 
     // Find our unspent UTXO
-    let our_utxo = wallet.find_unspent(chain_id)
+    let utxo = wallet.find_unspent(chain_id)
         .ok_or_else(|| anyhow::anyhow!("{}: no UTXO to redeem", name))?;
-    let our_seq = our_utxo.seq_id.unwrap();
-    let our_amount = our_utxo.amount.clone().unwrap();
-    let our_seed = our_utxo.seed;
-    let our_pubkey = our_utxo.pubkey;
 
     // Ask vendor for a receiving key
     let (pk_tx, pk_rx) = oneshot::channel();
@@ -411,58 +420,61 @@ async fn redeem_at(
     let vendor_recv = pk_rx.await?;
 
     // Build transfer: consumer → vendor (single receiver)
+    let giver_pubkey = utxo.pubkey;
     let givers = vec![Giver {
-        seq_id: our_seq,
-        amount: our_amount.clone(),
-        seed: our_seed,
+        seq_id: utxo.seq_id,
+        amount: utxo.amount.clone(),
+        seed: utxo.seed,
     }];
     let mut receivers = vec![Receiver {
         pubkey: vendor_recv.pubkey,
         seed: vendor_recv.seed,
-        amount: our_amount, // last receiver — adjusted for fee
+        amount: utxo.amount, // last receiver — adjusted for fee
     }];
 
     let result = transfer::execute_transfer(client, chain_id, &givers, &mut receivers).await?;
-    wallet.mark_spent(&our_pubkey);
+    wallet.mark_spent(&giver_pubkey);
 
-    // The vendor generated the receiving key via RequestPubkey, so it has
-    // the key in its wallet. It doesn't know the seq_id yet, but the vendor
-    // wallet is slightly stale — acceptable for Sim-A.
+    // Notify vendor of the received UTXO so its wallet stays current
+    let _ = vendor.send(AgentMessage::NotifyUtxo {
+        pubkey: vendor_recv.pubkey,
+        seq_id: result.first_seq,
+        amount: receivers[0].amount.clone(),
+    }).await;
 
     Ok(result.height)
 }
 
 /// Wait for a vendor's chain to appear in the directory.
+/// Returns (chain_id, symbol, plate_price_coins).
 async fn wait_for_vendor_chain(
     directory: &Arc<RwLock<AgentDirectory>>,
     vendor_name: &str,
-) -> (String, String) {
+) -> Result<(String, String, u64)> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
     loop {
         {
             let dir = directory.read().await;
-            for (chain_id, (symbol, name)) in &dir.chains {
+            for (chain_id, (symbol, name, plate_price)) in &dir.chains {
                 if name == vendor_name {
-                    return (chain_id.clone(), symbol.clone());
+                    return Ok((chain_id.clone(), symbol.clone(), *plate_price));
                 }
             }
+        }
+        if std::time::Instant::now() >= deadline {
+            anyhow::bail!("timed out waiting for vendor {} chain", vendor_name);
         }
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
 }
 
-/// Report agent state to the observer.
-async fn report(
-    state_tx: &StateCollector,
-    name: &str,
-    role: &str,
-    status: &str,
-    wallet: &Wallet,
-    chain_id: &str,
-    symbol: &str,
-    transactions: u64,
-    last_action: &str,
-) {
-    let _ = state_tx.send(AgentState {
+/// Build an AgentState snapshot for reporting.
+fn build_state(
+    name: &str, role: &str, status: &str,
+    wallet: &Wallet, chain_id: &str, symbol: &str,
+    transactions: u64, last_action: &str,
+) -> AgentState {
+    AgentState {
         name: name.to_string(),
         role: role.to_string(),
         status: status.to_string(),
@@ -474,5 +486,5 @@ async fn report(
         }],
         transactions,
         last_action: last_action.to_string(),
-    }).await;
+    }
 }

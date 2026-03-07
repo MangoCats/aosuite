@@ -35,20 +35,33 @@ pub async fn run_observer(
     print_dashboard(&states);
 }
 
+fn format_shares(shares: &num_bigint::BigInt) -> String {
+    let s = shares.to_string();
+    if s.len() <= 12 {
+        s
+    } else {
+        // Show as e.g. "1.09e12"
+        let digits = s.len();
+        format!("{}.{}e{}", &s[..1], &s[1..3], digits - 1)
+    }
+}
+
 fn print_dashboard(states: &HashMap<String, AgentState>) {
     if states.is_empty() {
         return;
     }
 
+    const W: usize = 88; // inner width between ║ borders
+
     // Clear screen and move cursor to top
     print!("\x1B[2J\x1B[H");
 
-    println!("╔══════════════════════════════════════════════════════════════════════════╗");
-    println!("║  AO Sims — Community Simulation                                        ║");
-    println!("╠══════════════════════════════════════════════════════════════════════════╣");
-    println!("║ {:10} │ {:8} │ {:6} │ {:>5} │ {:>4} │ {:24} ║",
-        "Agent", "Role", "Status", "Txns", "UTXOs", "Last Action");
-    println!("╟────────────┼──────────┼────────┼───────┼──────┼──────────────────────────╢");
+    println!("╔{:═>W$}╗", "");
+    println!("║{:^W$}║", "AO Sims — Community Simulation");
+    println!("╠{:═>W$}╣", "");
+    println!("║ {:10} │ {:8} │ {:6} │ {:>5} │ {:>5} │ {:>12} │ {:20} ║",
+        "Agent", "Role", "Status", "Txns", "UTXOs", "Shares", "Last Action");
+    println!("╟{:─>W$}╢", "");
 
     let mut sorted: Vec<_> = states.values().collect();
     sorted.sort_by_key(|s| match s.role.as_str() {
@@ -60,36 +73,39 @@ fn print_dashboard(states: &HashMap<String, AgentState>) {
 
     for state in &sorted {
         let utxo_count: usize = state.chains.iter().map(|c| c.unspent_utxos).sum();
-        let last_action = if state.last_action.len() > 24 {
-            &state.last_action[..24]
+        let total_shares: num_bigint::BigInt = state.chains.iter().map(|c| &c.shares).sum();
+        let shares_str = format_shares(&total_shares);
+        let last_action = if state.last_action.len() > 20 {
+            &state.last_action[..20]
         } else {
             &state.last_action
         };
-        println!("║ {:10} │ {:8} │ {:6} │ {:>5} │ {:>4} │ {:24} ║",
+        println!("║ {:10} │ {:8} │ {:6} │ {:>5} │ {:>5} │ {:>12} │ {:20} ║",
             state.name, state.role, state.status,
-            state.transactions, utxo_count, last_action);
+            state.transactions, utxo_count, shares_str, last_action);
     }
 
-    println!("╠══════════════════════════════════════════════════════════════════════════╣");
+    println!("╠{:═>W$}╣", "");
 
     // Chain summary
-    let mut chain_map: HashMap<String, (String, num_bigint::BigInt, usize)> = HashMap::new();
+    let mut chain_map: HashMap<String, (String, usize)> = HashMap::new();
     for state in &sorted {
         for chain in &state.chains {
             let entry = chain_map.entry(chain.chain_id.clone())
-                .or_insert_with(|| (chain.symbol.clone(), num_bigint::BigInt::from(0), 0));
-            entry.2 += chain.unspent_utxos;
+                .or_insert_with(|| (chain.symbol.clone(), 0));
+            entry.1 += chain.unspent_utxos;
         }
     }
 
-    for (chain_id, (symbol, _, utxos)) in &chain_map {
+    for (chain_id, (symbol, utxos)) in &chain_map {
         let short_id = if chain_id.len() > 12 { &chain_id[..12] } else { chain_id };
-        println!("║ Chain: {} ({}) — {} active UTXOs {:>24} ║",
-            symbol, short_id, utxos, "");
+        let line = format!(" Chain: {} ({}) — {} active UTXOs", symbol, short_id, utxos);
+        println!("║{:W$}║", line);
     }
 
     let total_txns: u64 = sorted.iter().map(|s| s.transactions).sum();
-    println!("╟──────────────────────────────────────────────────────────────────────────╢");
-    println!("║ Total transactions: {:53} ║", total_txns);
-    println!("╚══════════════════════════════════════════════════════════════════════════╝");
+    println!("╟{:─>W$}╢", "");
+    let txn_line = format!(" Total transactions: {}", total_txns);
+    println!("║{:W$}║", txn_line);
+    println!("╚{:═>W$}╝", "");
 }

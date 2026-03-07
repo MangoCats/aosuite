@@ -1,0 +1,115 @@
+# Three-chain scenario: 3 vendors, 1 exchange, 2 consumers
+# Tests cross-vendor exchange behavior on a single recorder.
+
+[simulation]
+name = "three-chain"
+recorder_port = 0
+speed = 10.0
+duration_secs = 180
+
+# ── Gene: recorder operator ────────────────────────────────────────
+
+[[agent]]
+name = "Gene"
+role = "recorder"
+
+# ── Bob: curry goat vendor ─────────────────────────────────────────
+
+[[agent]]
+name = "Bob"
+role = "vendor"
+lat = 18.2027
+lon = -63.0490
+
+[agent.vendor]
+symbol = "BCG"
+description = "Bob's Curry Goat"
+plate_price = 25
+
+# ── Maria: empanada vendor ─────────────────────────────────────────
+
+[[agent]]
+name = "Maria"
+role = "vendor"
+lat = 18.2045
+lon = -63.0510
+
+[agent.vendor]
+symbol = "MEP"
+description = "Maria's Empanadas"
+plate_price = 10
+
+# ── Kwame: jerk chicken vendor ─────────────────────────────────────
+
+[[agent]]
+name = "Kwame"
+role = "vendor"
+lat = 18.2060
+lon = -63.0480
+
+[agent.vendor]
+symbol = "KJC"
+description = "Kwame's Jerk Chicken"
+plate_price = 30
+
+# ── Charlie: exchange agent (buys from all vendors) ────────────────
+
+[[agent]]
+name = "Charlie"
+role = "exchange"
+lat = 18.2050
+lon = -63.0519
+
+[agent.exchange]
+buy_from = "Bob"
+initial_buy = 30
+
+# ── Dave: exchange agent for Maria ─────────────────────────────────
+
+[[agent]]
+name = "Dave"
+role = "exchange"
+lat = 18.2055
+lon = -63.0505
+
+[agent.exchange]
+buy_from = "Maria"
+initial_buy = 50
+
+# ── Eli: exchange agent for Kwame ──────────────────────────────────
+
+[[agent]]
+name = "Eli"
+role = "exchange"
+lat = 18.2062
+lon = -63.0495
+
+[agent.exchange]
+buy_from = "Kwame"
+initial_buy = 20
+
+# ── Alice: tourist (buys curry goat from Charlie) ──────────────────
+
+[[agent]]
+name = "Alice"
+role = "consumer"
+lat = 18.2040
+lon = -63.0500
+
+[agent.consumer]
+buy_from = "Charlie"
+redeem_at = "Bob"
+interval_secs = 30
+
+# ── Fatima: local (buys empanadas from Dave) ───────────────────────
+
+[[agent]]
+name = "Fatima"
+role = "consumer"
+lat = 18.2048
+lon = -63.0515
+
+[agent.consumer]
+buy_from = "Dave"
+redeem_at = "Maria"
+interval_secs = 20

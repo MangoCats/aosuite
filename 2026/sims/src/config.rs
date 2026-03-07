@@ -79,7 +79,7 @@ fn default_initial_float() -> u64 { 50 }
 /// Target: fee for a ~400-byte page ≈ 0.4% of a plate (25 coins).
 /// fee = ceil(400 * num * shares / den) ≈ shares * 25 * 0.004 / coins
 /// => den ≈ 400 * num * coins / (25 * 0.004) = 400 * coins / 0.1 = 4000 * coins
-pub fn auto_fee_den(_shares: &str, coins: &str) -> num_bigint::BigInt {
+pub fn auto_fee_den(coins: &str) -> num_bigint::BigInt {
     let coins_val = parse_bigint(coins);
     // den = 4000 * coins gives fee ≈ 0.1% of total shares per 400-byte page
     // which is about 0.4% of a plate price

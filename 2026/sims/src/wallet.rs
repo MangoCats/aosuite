@@ -20,6 +20,15 @@ impl KeyEntry {
     }
 }
 
+/// A UTXO known to be registered (has seq_id and amount).
+pub struct RegisteredUtxo {
+    pub seed: [u8; 32],
+    pub pubkey: [u8; 32],
+    pub chain_id: String,
+    pub seq_id: u64,
+    pub amount: BigInt,
+}
+
 /// Per-agent wallet: manages Ed25519 keys and tracks UTXO ownership.
 pub struct Wallet {
     pub name: String,
@@ -76,11 +85,17 @@ impl Wallet {
         }
     }
 
-    /// Find an unspent UTXO on a given chain.
-    pub fn find_unspent(&self, chain_id: &str) -> Option<&KeyEntry> {
-        self.keys.iter().find(|k| {
-            k.chain_id == chain_id && k.seq_id.is_some() && !k.spent
-        })
+    /// Find an unspent UTXO on a given chain (with guaranteed seq_id/amount).
+    pub fn find_unspent(&self, chain_id: &str) -> Option<RegisteredUtxo> {
+        self.keys.iter()
+            .find(|k| k.chain_id == chain_id && k.seq_id.is_some() && !k.spent)
+            .map(|k| RegisteredUtxo {
+                seed: k.seed,
+                pubkey: k.pubkey,
+                chain_id: k.chain_id.clone(),
+                seq_id: k.seq_id.unwrap(),
+                amount: k.amount.clone().unwrap(),
+            })
     }
 
     /// Find all unspent UTXOs on a given chain.

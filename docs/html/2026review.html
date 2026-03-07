@@ -100,6 +100,16 @@
 
 The original Assign Onward design documents were written in 2018, with code development continuing through 2021 before the project stalled. The existing codebase is approximately 20,000 lines of C++ targeting Qt 5.10+, with dependencies on OpenPGP and GMP for cryptographic operations. It implements data serialization primitives, variable byte coding, hash wrappers and key structures, but none of the actual protocol logic, peer communication, or user-facing applications. The design documents, however, remain remarkably coherent and the core architecture of many small independent blockchains loosely joined through market makers holds up well. This review considers what a fresh implementation would look like using 2026 technology.<br/><br/>
 
+<h2>Updated Deployment Stories</h2>
+
+The following three narratives explore concrete scenarios where Assign Onward's architecture&mdash;many small independent chains, federated through exchange agents, designed for low bandwidth and real-world goods&mdash;maps to demonstrated market demand. Each story is grounded in real-world conditions documented in the 2026 research on global attitudes toward cryptocurrency, blockchain regulation, and electronic exchange systems.<br/><br/>
+
+<a href="TourismVendors.html"><b>Tourism Vendors: Sandy Ground Market.</b></a> Charlie the launch captain becomes an exchange agent, bridging tourist credit cards to local vendor chains. Beach vendors replace 3-5% card fees with fraction-of-a-percent recording fees, gain chargeback-proof final settlement, and&mdash;for the first time&mdash;build transparent business records. This is the <a href="IslandLife.html">Island Life</a> scenario made concrete, and the shortest path to a working pilot deployment.<br/><br/>
+
+<a href="IslandUBI.html"><b>Island UBI: The Tax Loop.</b></a> Inspired by the Marshall Islands' 2025 launch of the world's first blockchain-based universal basic income, this story follows a fisherman and a shopkeeper on a remote Pacific atoll. Government-distributed UBI tokens gain local utility through a village store's vendor chain, and the loop closes when the government accepts its own tokens for tax payment. The tax loop&mdash;distribute, spend, tax, recirculate&mdash;is the most powerful adoption flywheel identified in the research, drawing on precedents from the Bristol Pound and lessons from El Salvador's failed Bitcoin mandate.<br/><br/>
+
+<a href="FarmingCooperatives.html"><b>Farming Cooperatives: Amara's Harvest.</b></a> A Kenyan farming cooperative uses individual farmer chains and a shared cooperative chain to bring transparent accounting to agricultural production. Rita's mango futures concept from the original design documents becomes literal crop futures for smallholder tomato farmers. Transparent sale records resist middleman price manipulation, on-chain production history builds credit access, and diaspora remittances become verifiable productive investments rather than opaque consumption transfers. The largest addressable market of the three, serving a gap of 450 million smallholder producers across Sub-Saharan Africa.<br/><br/>
+
 <h2>Updated Technology Stack</h2>
 
 <h3>Core Protocol: Rust</h3>
@@ -195,16 +205,6 @@ Assign Onward is a well-thought-out design for a problem that remains real: enab
 The technology to build it is better and cheaper than ever. A Rust implementation with Axum, MQTT, SQLite, and a React PWA frontend could deliver a working Ⓐ¹ prototype&mdash;single recorder, single chain, with a functional AOE/AOS web interface&mdash;in a few months of focused development. Adding exchange agents and multi-chain support extends that to six to twelve months. The infrastructure costs are negligible: a Raspberry Pi and a $10/month VPS per community.<br/><br/>
 
 The hard problems are not in the code. They are in finding the first island where Eddie, Bob, Charlie, and Gene all show up at the same time willing to try something new, and in navigating the regulatory environment that has grown up around digital assets since the original design was written. The original documents understood this implicitly&mdash;Island Life is a story about people and relationships, not about hash functions&mdash;and that understanding remains the project's greatest strength and its greatest challenge.<br/><br/>
-
-<h2>Deployment Stories</h2>
-
-The following three narratives explore concrete scenarios where Assign Onward's architecture&mdash;many small independent chains, federated through exchange agents, designed for low bandwidth and real-world goods&mdash;maps to demonstrated market demand. Each story is grounded in real-world conditions documented in the 2026 research on global attitudes toward cryptocurrency, blockchain regulation, and electronic exchange systems.<br/><br/>
-
-<a href="TourismVendors.html"><b>Tourism Vendors: Sandy Ground Market.</b></a> Charlie the launch captain becomes an exchange agent, bridging tourist credit cards to local vendor chains. Beach vendors replace 3-5% card fees with fraction-of-a-percent recording fees, gain chargeback-proof final settlement, and&mdash;for the first time&mdash;build transparent business records. This is the <a href="IslandLife.html">Island Life</a> scenario made concrete, and the shortest path to a working pilot deployment.<br/><br/>
-
-<a href="IslandUBI.html"><b>Island UBI: The Tax Loop.</b></a> Inspired by the Marshall Islands' 2025 launch of the world's first blockchain-based universal basic income, this story follows a fisherman and a shopkeeper on a remote Pacific atoll. Government-distributed UBI tokens gain local utility through a village store's vendor chain, and the loop closes when the government accepts its own tokens for tax payment. The tax loop&mdash;distribute, spend, tax, recirculate&mdash;is the most powerful adoption flywheel identified in the research, drawing on precedents from the Bristol Pound and lessons from El Salvador's failed Bitcoin mandate.<br/><br/>
-
-<a href="FarmingCooperatives.html"><b>Farming Cooperatives: Amara's Harvest.</b></a> A Kenyan farming cooperative uses individual farmer chains and a shared cooperative chain to bring transparent accounting to agricultural production. Rita's mango futures concept from the original design documents becomes literal crop futures for smallholder tomato farmers. Transparent sale records resist middleman price manipulation, on-chain production history builds credit access, and diaspora remittances become verifiable productive investments rather than opaque consumption transfers. The largest addressable market of the three, serving a gap of 450 million smallholder producers across Sub-Saharan Africa.<br/><br/>
 
 </span>
 

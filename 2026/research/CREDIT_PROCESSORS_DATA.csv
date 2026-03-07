@@ -1,0 +1,153 @@
+SECTION,SUBSECTION,METRIC,VISA,MASTERCARD,AMEX,DISCOVER,UNIONPAY,JCB,RUPAY,GLOBAL,DATA_QUALITY,YEAR
+===== TABLE 1: NETWORK FINANCIALS =====,,,,,,,,,,
+Financials,Revenue,Net Revenue ($B),35.9,28.2,65.9,17.9,5-8 est,2.8 est,N/A (not-for-profit),,D/I,2024
+Financials,Revenue,Gross Revenue ($B),49.7,39.8 est,65.9,17.9,,,,,,D/M,2024
+Financials,Revenue,Client Incentives ($B),13.8,11.6 est,,,,,,,,D/M,2024
+Financials,Profit,Net Income ($B),19.7,12.9,10.1,4.5,,,,,,D,2024
+Financials,Profit,Net Profit Margin (%),55,46,15.3,25,,,,,,D,2024
+Financials,Profit,Operating Income ($B),23.6,15.6,,,,,,,,D,2024
+Financials,Expenses,Total Operating Expenses ($B),12.3,12.6,47.9,~10.6,,,,,,D,2024
+Financials,Expenses,Provision for Credit Losses ($B),N/A,N/A,5.2,4.66,,,,,,D,2024
+Financials,Volume,Payment Volume ($T),16.0,9.8 (GDV),1.55,0.225,35.7,0.35-0.41,N/A,51.92,D/M,2024
+Financials,Volume,Transactions (B),234,,,,228 (2023),4.9 ann.,,728,D/M,2024
+Financials,Cards,Cards in Circulation (B),4.6,3.5,0.146,0.061,9.6,0.158,0.75+,,D/M,2024
+,,,,,,,,,,
+===== TABLE 2: REVENUE BY SOURCE =====,,,,,,,,,,
+Revenue,Visa,Service Revenues ($B),16.1,,,,,,,,D,2024
+Revenue,Visa,Data Processing Revenues ($B),17.7,,,,,,,,D,2024
+Revenue,Visa,International Transaction Revenues ($B),12.7,,,,,,,,D,2024
+Revenue,Visa,Other Revenues ($B),3.2,,,,,,,,D,2024
+Revenue,Mastercard,Payment Network Segment ($B),,17.3,,,,,,,D,2024
+Revenue,Mastercard,Value-Added Services Segment ($B),,10.8,,,,,,,D,2024
+Revenue,Amex,Discount Revenue (Merchant Fees) ($B),,,35.2,,,,,,D,2024
+Revenue,Amex,Net Interest Income ($B),,,15.5,,,,,,D,2024
+Revenue,Amex,Net Card Fees (Annual Fees) ($B),,,8.4,,,,,,D,2024
+Revenue,Amex,Other Fees & Commissions ($B),,,6.8 est,,,,,,M,2024
+Revenue,Discover,Net Interest Income ($B),,,,14.3,,,,,D,2024
+Revenue,Discover,Non-Interest Income ($B),,,,3.6,,,,,M,2024
+,,,,,,,,,,
+===== TABLE 3: REVENUE BY GEOGRAPHY =====,,,,,,,,,,
+Geography,Visa,US ($B),14.8,,,,,,,,D,2024
+Geography,Visa,International ($B),21.1,,,,,,,,D,2024
+Geography,Visa,US Share (%),41,,,,,,,,D,2024
+Geography,Mastercard,North America ($B),,12.4,,,,,,,D,2024
+Geography,Mastercard,International ($B),,15.8,,,,,,,D,2024
+Geography,Mastercard,N. America Share (%),,44,,,,,,,D,2024
+Geography,Amex,US ($B),,,51.47,,,,,,D,2024
+Geography,Amex,EMEA ($B),,,6.22,,,,,,D,2024
+Geography,Amex,Japan/Asia-Pacific ($B),,,4.70,,,,,,D,2024
+Geography,Amex,Latin America/Caribbean ($B),,,3.85,,,,,,D,2024
+,,,,,,,,,,
+===== TABLE 4: OPERATING EXPENSES =====,,,,,,,,,,
+Expenses,Personnel,Visa ($B est),5.0,,,,,,,,I,2024
+Expenses,Personnel,Mastercard ($B),6.7,,,,,,,,D,2024
+Expenses,Marketing,Visa ($B est),1.4,,,,,,,,I,2024
+Expenses,Marketing,Mastercard ($B est),,1-2,,,,,,,I,2024
+Expenses,Marketing,Amex ($B),,,6.3-6.8,,,,,,D,2024
+Expenses,Network/Processing,Visa ($B est),1.0,,,,,,,,I,2024
+Expenses,D&A,Visa ($B est),1.0,,,,,,,,I,2024
+Expenses,D&A,Mastercard ($B est),,1.0,,,,,,,I,2024
+Expenses,Litigation,Visa ($B est),1.5,,,,,,,,I,2024
+Expenses,Litigation,Mastercard ($B est),,0.5,,,,,,,I,2024
+Expenses,G&A,Visa ($B est),1.8,,,,,,,,I,2024
+Expenses,G&A,Mastercard Total ($B),,10.0-10.2,,,,,,,M,2024
+Expenses,Credit Losses,Amex ($B),,,5.2,,,,,,D,2024
+Expenses,Credit Losses,Discover ($B),,,,4.66,,,,,D,2024
+Expenses,Rewards/Engagement,Amex ($B est),,,30-32,,,,,,I,2024
+,,,,,,,,,,
+===== TABLE 5: REGIONAL MARKET SIZE AND FEES =====,,,,,,,,,,
+REGION,METRIC,VALUE,DETAILS,,,,,,DATA_QUALITY,YEAR
+US,Card Payment Volume ($T),11.9,All networks combined,,,,,,D,2024
+US,Merchant Processing Fees ($B),187.2,Credit + debit,,,,,,D,2024
+US,Credit Interchange Range (%),1.15-2.40,+ per-txn fee,,,,,,D,2024
+US,Regulated Debit Interchange,$0.21 + 0.05%,Durbin Amendment (>$10B issuers),,,,,,D,2024
+US,Merchant Total Cost Range (%),1.3-3.5,Interchange + assessment + acquirer,,,,,,M,2024
+US,Cash Share of POS (%),16,Down from 44% in 2014,,,,,,D,2024
+EU+UK,Card Payment Volume (EUR T),3.2,~$3.5T,,,,,,D,2024
+EU+UK,Card Transactions (B),84.4,,,,,,,D,2024
+EU+UK,Credit Interchange Cap (%),0.30,EU IFR 2015/751,,,,,,D,2024
+EU+UK,Debit Interchange Cap (%),0.20,EU IFR 2015/751,,,,,,D,2024
+EU+UK,Merchant Total Cost Range (%),0.5-1.5,Average ~0.96%,,,,,,M,2024
+EU+UK,Cash Share of POS (%),25-33,Varies: Sweden ~10% to Germany ~40%,,,,,,M,2024
+India,Card Payment Value ($B),329,Cards only,,,,,,M,2024
+India,Credit Card Spend (INR T),18.26,+27% YoY,,,,,,D,FY2024
+India,UPI Transactions (B),172.2,85% of all payment volumes,,,,,,D,2024
+India,UPI Value ($T),2.95,,,,,,,D,2024
+India,RuPay/UPI MDR (%),0,Zero MDR by law since 2020,,,,,,D,2024
+India,Credit Interchange Range (%),1.2-1.8,Not capped for credit,,,,,,M,2024
+China,UnionPay Volume ($T),35.7,~96% domestic market,,,,,,M,2024-25
+China,Uniform Interchange (%),0.35,PBOC regulation (2016),,,,,,D,2016+
+China,Total MDR Range (%),0.38-0.45,,,,,,,M,2024
+China,Mobile Payment Volume ($T),80+,Alipay + WeChat (incl transfers),,,,,,I,2024
+Africa-Kenya,M-Pesa Volume ($B),450+,Incl P2P transfers,,,,,,I,2025
+Africa-Kenya,Mobile Money Penetration (%),91,Adult population,,,,,,D,2024
+Africa-Nigeria,Electronic Payment Volume ($B),650,+80% YoY,,,,,,M,2024
+Africa-SA,Interchange 3D Auth (%),1.68,SARB,,,,,,D,2024
+LatAm-Brazil,PIX Transactions (B),63.4,+53% YoY,,,,,,D,2024
+LatAm-Brazil,PIX Value ($T),4.6,5x card volumes,,,,,,D,2024
+LatAm-Brazil,PIX Penetration (%),93,Brazilian adults,,,,,,D,2024
+LatAm-Brazil,Credit Interchange Range (%),1.5-2.0,,,,,,,M,2024
+LatAm-Mexico,Cash Share of POS (%),47,Down from 66% in 2022,,,,,,I,2024
+SE-Asia,Indonesia Digital Payment ($B),39.5,+335% YoY surge,,,,,,D,2024
+SE-Asia,Credit Interchange Range (%),1.5-2.5,Largely unregulated,,,,,,I,2024
+SE-Asia-SG,Cash Share of POS (%),13,,,,,,,I,2024
+SE-Asia-ID,Cash Share of POS (%),50-60,Declining rapidly,,,,,,I,2024
+,,,,,,,,,,
+===== TABLE 6: FRAUD STATISTICS =====,,,,,,,,,,
+REGION,METRIC,VALUE,DETAILS,,,,,,DATA_QUALITY,YEAR
+Global,Total Card Fraud Losses ($B),33.41,,,,,,,D,2024
+Global,10-Year Cumulative Forecast ($B),403.88,,,,,,,I,2024-2034
+Global,CNP Fraud Share (%),71,Of US losses,,,,,,D,2024
+Global,Fraud Prevention Market ($B),33.13,Projected $90B by 2030,,,,,,I,2024
+Global,Chargeback Volume (M),261,,,,,,,I,2025
+Global,Chargeback Value ($B),33.79,,,,,,,I,2025
+Global,Avg Chargeback Cost to Merchant ($),191,Up from $165 in 2021,,,,,,I,2024
+Global,Cost Multiplier ($/$ fraud),3.75,Total merchant loss per $1 fraud,,,,,,I,2024
+US,Share of Global Fraud (%),41.87,From 26.31% of volume,,,,,,D,2024
+US,CNP Fraud Losses ($B),~10,,,,,,,D,2024
+US,Synthetic Identity Fraud ($B),23,+31% YoY,,,,,,I,2025
+US,Account Takeover Fraud ($B),17,+31% YoY,,,,,,I,2025
+US,Fraud Bearer: Merchants (%),49.9,Up from 38.3% in 2011,,,,,,D,2023
+US,Fraud Bearer: Issuers (%),28.3,Down from 59.8% in 2011,,,,,,D,2023
+US,Fraud Bearer: Cardholders (%),21.8,Up from <1.8% in 2011,,,,,,D,2023
+US,Fraud Bearer: Networks (%),~0,,,,,,,D,2023
+Europe,Fraud Loss Trend,12% decline,Attributed to SCA/PSD2,,,,,,M,2025
+Asia-Pacific,Fraud Loss Trend,17% increase,Rising digital adoption,,,,,,M,2025
+,,,,,,,,,,
+===== TABLE 7: REWARDS AND CASH BACK =====,,,,,,,,,,
+REGION,METRIC,VALUE,DETAILS,,,,,,DATA_QUALITY,YEAR
+US,Total Consumer Rewards Earned ($B),40+,,,,,,,D,2022
+US,Points Earned ($B),21,,,,,,,D,2022
+US,Cash Back Earned ($B),15.2,,,,,,,D,2022
+US,Miles Earned ($B),5.2,,,,,,,D,2022
+US,Unredeemed Rewards Liability ($B),33+,Up 40% from 2019,,,,,,D,2022
+US,Cashback Market ($B),38.4,Projected $75.5B by 2029,,,,,,M,2023
+US,Typical Cash Back Rate (%),1-2,Base; category bonuses 3-5%,,,,,,D,2024
+US,Revolvers Pay (% of interest/fees),94,But earn only 27% of rewards,,,,,,D,2022
+,,,,,,,,,,
+===== TABLE 8: COMPETING PAYMENT RAILS =====,,,,,,,,,,
+SYSTEM,COUNTRY,TRANSACTIONS,VALUE,MERCHANT_FEE,STATUS,,,,DATA_QUALITY,YEAR
+UPI,India,172.2B,$2.95T,0%,Dominant (85% share),,,,D,2024
+UPI,India,228.3B,$3.58T,0%,Growing +33% YoY,,,,D,2025
+PIX,Brazil,63.4B,$4.6T,0-0.5%,5x card volume,,,,D,2024
+Alipay+WeChat,China,N/A,>$80T,~0.1-0.6%,>90% mobile share,,,,I,2024
+M-Pesa,Kenya/Africa,N/A,>$450B,0.5-1.5%,91% penetration,,,,I,2025
+FedNow,US,1.5M,$20B (Q4),TBD,Early (launched Jul 2023),,,,D,2024
+SEPA Instant,EU,23% of retail EUR,N/A,Low,Mandate effective 2025,,,,D,2025
+BNPL Global,Multiple,N/A,$560B,Merchant-funded,~1.1% of US card volume,,,,I,2025
+Stablecoins,Global,N/A,$27.6T,~0%,~80% bot activity,,,,M,2024
+,,,,,,,,,,
+===== TABLE 9: PAYMENT FLOW ON $100 TRANSACTION =====,,,,,,,,,,
+REGION,RECIPIENT,AMOUNT,PERCENTAGE,NOTES,,,,,DATA_QUALITY,
+US,Issuing Bank (Interchange),$1.50-1.75,1.4-2.1%,+ $0.10 per-txn,,,,,D,
+US,Card Network (Assessment),$0.13-0.18,0.13-0.17%,Visa/MC direct revenue,,,,,D,
+US,Card Network (Per-Txn Fee),$0.02,flat,$0.0195,,,,,D,
+US,Acquirer/Processor,$0.07-0.50,variable,Thin margin on interchange++,,,,,M,
+US,Merchant Receives,$97.60-98.30,,After all fees,,,,,D,
+EU,Issuing Bank (Interchange),$0.30,0.30% cap,Credit card,,,,,D,
+EU,Card Network + Acquirer,$0.20-1.20,variable,,,,,,M,
+EU,Merchant Receives,$98.50-99.50,,After all fees,,,,,M,
+China,All Recipients (Total MDR),$0.38-0.45,0.38-0.45%,UnionPay uniform rate,,,,,M,
+China,Merchant Receives,$99.55-99.62,,After all fees,,,,,M,
+India-UPI,All Recipients,$0.00,0%,Government subsidized,,,,,D,
+India-UPI,Merchant Receives,$100.00,,Zero MDR,,,,,D,

@@ -58,7 +58,7 @@ async fn main() -> Result<()> {
 
     // Start viewer state + API server
     let viewer_state = Arc::new(ViewerState::new());
-    let viewer_url = start_viewer(cli.viewer_port, viewer_state.clone(), client.clone()).await;
+    let viewer_url = start_viewer(cli.viewer_port, viewer_state.clone()).await;
     info!("Viewer API running at {}", viewer_url);
 
     // Register agent mailboxes
@@ -191,11 +191,9 @@ async fn start_recorder(port: u16) -> String {
 async fn start_viewer(
     port: u16,
     viewer_state: Arc<ViewerState>,
-    recorder: Arc<RecorderClient>,
 ) -> String {
     let app_state = viewer::ViewerAppState {
         viewer: viewer_state,
-        recorder,
     };
     let app = viewer::build_viewer_router(app_state);
 

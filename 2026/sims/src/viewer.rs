@@ -11,12 +11,10 @@ use serde::{Deserialize, Serialize};
 use tower_http::cors::{Any, CorsLayer};
 
 use crate::agents::ViewerState;
-use crate::client::RecorderClient;
 
 #[derive(Clone)]
 pub struct ViewerAppState {
     pub viewer: Arc<ViewerState>,
-    pub recorder: Arc<RecorderClient>,
 }
 
 pub fn build_viewer_router(state: ViewerAppState) -> Router {
@@ -79,15 +77,7 @@ async fn list_chains(
         }
     }
 
-    // Enrich with recorder data
     let mut result: Vec<ChainSummary> = chains.into_values().collect();
-    for chain in &mut result {
-        if let Ok(info) = state.recorder.chain_info(&chain.chain_id).await {
-            // ChainSummary already has chain_id and symbol; could add block_height etc.
-            // For now the basic structure suffices; viewer can fetch recorder directly too.
-            let _ = info;
-        }
-    }
     result.sort_by(|a, b| a.symbol.cmp(&b.symbol));
     Json(result)
 }
@@ -129,11 +119,12 @@ async fn ws_handler(
 
 async fn ws_connection(mut socket: ws::WebSocket, state: ViewerAppState) {
     let mut rx = state.viewer.subscribe.clone();
-    let mut last_version = 0u64;
 
     // Send initial snapshot
     let agents = state.viewer.get_agents().await;
-    let txns = state.viewer.get_transactions(0, 200).await;
+    let txns = state.viewer.get_transactions(0, 10_000).await;
+    // Track highest tx_id sent so updates don't re-send old transactions
+    let mut last_sent_id = txns.last().map_or(0, |t| t.id);
     let snapshot = serde_json::json!({
         "type": "snapshot",
         "agents": agents,
@@ -143,14 +134,16 @@ async fn ws_connection(mut socket: ws::WebSocket, state: ViewerAppState) {
         return;
     }
 
-    // Stream updates
+    // Stream incremental updates
     loop {
         match rx.changed().await {
             Ok(()) => {
-                let version = *rx.borrow();
+                let _ = *rx.borrow();
                 let agents = state.viewer.get_agents().await;
-                let new_txns = state.viewer.get_transactions(last_version, 100).await;
-                last_version = version;
+                let new_txns = state.viewer.get_transactions(last_sent_id, 100).await;
+                if let Some(last) = new_txns.last() {
+                    last_sent_id = last.id;
+                }
 
                 let update = serde_json::json!({
                     "type": "update",

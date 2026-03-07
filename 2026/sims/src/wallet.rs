@@ -24,21 +24,18 @@ impl KeyEntry {
 pub struct RegisteredUtxo {
     pub seed: [u8; 32],
     pub pubkey: [u8; 32],
-    pub chain_id: String,
     pub seq_id: u64,
     pub amount: BigInt,
 }
 
 /// Per-agent wallet: manages Ed25519 keys and tracks UTXO ownership.
 pub struct Wallet {
-    pub name: String,
     keys: Vec<KeyEntry>,
 }
 
 impl Wallet {
-    pub fn new(name: &str) -> Self {
+    pub fn new(_name: &str) -> Self {
         Wallet {
-            name: name.to_string(),
             keys: Vec::new(),
         }
     }
@@ -92,7 +89,6 @@ impl Wallet {
             .map(|k| RegisteredUtxo {
                 seed: k.seed,
                 pubkey: k.pubkey,
-                chain_id: k.chain_id.clone(),
                 seq_id: k.seq_id.unwrap(),
                 amount: k.amount.clone().unwrap(),
             })
@@ -124,15 +120,5 @@ impl Wallet {
         self.find_all_unspent(chain_id).iter()
             .filter_map(|k| k.amount.as_ref())
             .sum()
-    }
-
-    /// Count of total keys held.
-    pub fn key_count(&self) -> usize {
-        self.keys.len()
-    }
-
-    /// Count of unspent UTXOs.
-    pub fn unspent_count(&self) -> usize {
-        self.keys.iter().filter(|k| k.seq_id.is_some() && !k.spent).count()
     }
 }

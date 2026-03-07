@@ -27,11 +27,13 @@ pub enum AgentMessage {
     /// Receivers include seeds so the executor can sign for all parties.
     SellToMe {
         chain_id: String,
+        buyer_name: String,
         receivers: Vec<Receiver>,
         reply: oneshot::Sender<Result<TransferResult>>,
     },
     /// Cross-chain exchange: consumer pays on pay_chain, receives on sell_chain.
     CrossChainBuy {
+        buyer_name: String,
         /// Chain the consumer wants shares on.
         sell_chain_id: String,
         /// Chain the consumer is paying with.
@@ -60,7 +62,6 @@ pub struct PubkeyResponse {
 pub struct TransferResult {
     pub block_height: u64,
     pub first_seq: u64,
-    pub seq_count: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -147,6 +148,10 @@ impl ViewerState {
         event.id = id;
         let mut txns = self.transactions.write().await;
         txns.push(event);
+        // Cap at 50k transactions to prevent unbounded memory growth
+        if txns.len() > 50_000 {
+            txns.drain(..10_000);
+        }
         let _ = self.notify.send(id);
     }
 
@@ -227,16 +232,6 @@ impl AgentDirectory {
         self.symbol_to_chain.get(symbol).map(|s| s.as_str())
     }
 
-    pub fn chain_info(&self, chain_id: &str) -> Option<&ChainRegistration> {
-        self.chains.get(chain_id)
-    }
-
-    /// Find vendor name for a given symbol.
-    pub fn vendor_for_symbol(&self, symbol: &str) -> Option<&str> {
-        self.symbol_to_chain.get(symbol)
-            .and_then(|cid| self.chains.get(cid))
-            .map(|r| r.vendor_name.as_str())
-    }
 }
 
 // ── Vendor agent ────────────────────────────────────────────────────
@@ -289,13 +284,13 @@ pub async fn run_vendor(
                 let entry = wallet.generate_key(&cid);
                 let _ = reply.send(PubkeyResponse { pubkey: entry.pubkey, seed: entry.seed });
             }
-            AgentMessage::SellToMe { chain_id: cid, mut receivers, reply } => {
+            AgentMessage::SellToMe { chain_id: cid, buyer_name, mut receivers, reply } => {
                 let result = handle_sell(&name, &mut wallet, &client, &cid, &mut receivers).await;
                 if let Ok(ref r) = result {
                     tx_count += 1;
                     info!("{}: Block {} (tx #{})", name, r.block_height, tx_count);
                     let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                        &cid, &vendor_cfg.symbol, &name, "buyer", r.block_height, "vendor sold shares",
+                        &cid, &vendor_cfg.symbol, &name, &buyer_name, r.block_height, "vendor sold shares",
                     ))).await;
                     let _ = state_tx.send(ViewerEvent::State(build_state(&name,"vendor", "ready", &wallet, &chain_id, &vendor_cfg.symbol, tx_count, &format!("block {}", r.block_height)))).await;
                 }
@@ -401,14 +396,14 @@ pub async fn run_exchange(
                 let entry = wallet.generate_key(&cid);
                 let _ = reply.send(PubkeyResponse { pubkey: entry.pubkey, seed: entry.seed });
             }
-            AgentMessage::SellToMe { chain_id: cid, mut receivers, reply } => {
+            AgentMessage::SellToMe { chain_id: cid, buyer_name, mut receivers, reply } => {
                 let sym = my_chains.get(&cid).cloned().unwrap_or_default();
                 let result = handle_sell(&name, &mut wallet, &client, &cid, &mut receivers).await;
                 if let Ok(ref r) = result {
                     tx_count += 1;
                     info!("{}: {} sold, block {} (tx #{})", name, sym, r.block_height, tx_count);
                     let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                        &cid, &sym, &name, "buyer", r.block_height, "exchange sold shares",
+                        &cid, &sym, &name, &buyer_name, r.block_height, "exchange sold shares",
                     ))).await;
                 }
                 let _ = state_tx.send(ViewerEvent::State(build_multi_state(
@@ -418,7 +413,7 @@ pub async fn run_exchange(
                 let _ = reply.send(result);
             }
             AgentMessage::CrossChainBuy {
-                sell_chain_id, pay_chain_id, pay_amount,
+                buyer_name, sell_chain_id, pay_chain_id, pay_amount,
                 receiver_pubkey, receiver_seed, reply,
             } => {
                 let result = handle_cross_chain_buy(
@@ -434,11 +429,11 @@ pub async fn run_exchange(
                     info!("{}: Cross-chain {}→{}: pay block {}, sell block {} (tx #{})",
                         name, pay_sym, sell_sym, r.pay_block, r.sell_block, tx_count);
                     let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                        &pay_chain_id, &pay_sym, "consumer", &name, r.pay_block,
-                        &format!("cross-chain: consumer paid {}", pay_sym),
+                        &pay_chain_id, &pay_sym, &buyer_name, &name, r.pay_block,
+                        &format!("cross-chain: {} paid {}", buyer_name, pay_sym),
                     ))).await;
                     let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                        &sell_chain_id, &sell_sym, &name, "consumer", r.sell_block,
+                        &sell_chain_id, &sell_sym, &name, &buyer_name, r.sell_block,
                         &format!("cross-chain: exchange sent {}", sell_sym),
                     ))).await;
                 }
@@ -477,12 +472,14 @@ async fn handle_cross_chain_buy(
     // In this sim, the consumer already executed leg 1 before sending CrossChainBuy.
     // So we just need to do leg 2.
 
-    // Calculate sell amount from pay amount and rate
-    // rate = how many pay units per 1 sell unit
-    // sell_amount = pay_amount / rate
-    let pay_f64 = pay_amount.to_string().parse::<f64>().unwrap_or(0.0);
-    let sell_f64 = pay_f64 / rate;
-    let sell_amount = BigInt::from(sell_f64 as i64);
+    // Calculate sell amount from pay amount and rate.
+    // rate = how many pay units per 1 sell unit (as f64, converted to rational).
+    // sell_amount = pay_amount / rate, using integer arithmetic to avoid f64 precision loss.
+    // Express rate as integer ratio: rate = rate_num / rate_den (multiply by 1_000_000 for precision).
+    let rate_scale = 1_000_000u64;
+    let rate_num = BigInt::from((*rate * rate_scale as f64) as u64);
+    let rate_den = BigInt::from(rate_scale);
+    let sell_amount = pay_amount * &rate_den / &rate_num;
 
     if sell_amount <= BigInt::from(0) {
         anyhow::bail!("{}: sell amount too small after rate conversion", name);
@@ -755,6 +752,7 @@ async fn run_cross_chain_consumer(
         // Leg 2: Ask exchange to send us want_chain shares
         let (reply_tx, reply_rx) = oneshot::channel();
         exchange_sender.send(AgentMessage::CrossChainBuy {
+            buyer_name: name.to_string(),
             sell_chain_id: want_chain_id.clone(),
             pay_chain_id: pay_chain_id.clone(),
             pay_amount: pay_receivers[0].amount.clone(),
@@ -819,14 +817,13 @@ async fn handle_sell(
     Ok(TransferResult {
         block_height: result.height,
         first_seq: result.first_seq,
-        seq_count: result.seq_count,
     })
 }
 
 /// Request a purchase from another agent (vendor or exchange).
 /// The seller provides the giver UTXO; we provide our receiver key.
 async fn request_purchase(
-    _name: &str,
+    name: &str,
     wallet: &mut Wallet,
     directory: &Arc<RwLock<AgentDirectory>>,
     seller_name: &str,
@@ -854,6 +851,7 @@ async fn request_purchase(
     let (reply_tx, reply_rx) = oneshot::channel();
     seller.send(AgentMessage::SellToMe {
         chain_id: chain_id.to_string(),
+        buyer_name: name.to_string(),
         receivers: vec![
             Receiver {
                 pubkey: our_entry.pubkey,

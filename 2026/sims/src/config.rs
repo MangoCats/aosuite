@@ -25,6 +25,7 @@ fn default_speed() -> f64 { 1.0 }
 fn default_duration() -> u64 { 300 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)] // lat/lon deserialized for Sim-C map view
 pub struct AgentConfig {
     pub name: String,
     pub role: String,
@@ -44,6 +45,7 @@ pub struct AgentConfig {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)] // initial_float deserialized for future vendor float management
 pub struct VendorConfig {
     pub symbol: String,
     #[serde(default = "default_description")]

@@ -8,6 +8,7 @@ pub struct RecorderClient {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)] // Deserialized from JSON; not all fields read yet
 pub struct ChainInfo {
     pub chain_id: String,
     pub symbol: String,
@@ -20,14 +21,7 @@ pub struct ChainInfo {
 }
 
 #[derive(Deserialize, Debug, Clone)]
-pub struct UtxoInfo {
-    pub seq_id: u64,
-    pub pubkey: String,
-    pub amount: String,
-    pub status: String,
-}
-
-#[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)] // Deserialized from JSON; not all fields read yet
 pub struct BlockResult {
     pub height: u64,
     pub hash: String,
@@ -46,10 +40,6 @@ impl RecorderClient {
             base_url: base_url.to_string(),
             client: reqwest::Client::new(),
         }
-    }
-
-    pub fn base_url(&self) -> &str {
-        &self.base_url
     }
 
     /// POST /chains — create a new chain from genesis JSON.
@@ -85,20 +75,6 @@ impl RecorderClient {
             bail!("chain_info failed: {}", resp.status());
         }
         resp.json().await.context("invalid chain_info response")
-    }
-
-    /// GET /chain/{id}/utxo/{seq_id}
-    pub async fn get_utxo(&self, chain_id: &str, seq_id: u64) -> Result<UtxoInfo> {
-        let resp = self.client
-            .get(format!("{}/chain/{}/utxo/{}", self.base_url, chain_id, seq_id))
-            .send()
-            .await
-            .context("failed to connect to recorder")?;
-
-        if !resp.status().is_success() {
-            bail!("get_utxo failed: {}", resp.status());
-        }
-        resp.json().await.context("invalid utxo response")
     }
 
     /// POST /chain/{id}/submit — submit a signed AUTHORIZATION.

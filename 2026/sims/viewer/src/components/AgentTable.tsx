@@ -42,7 +42,11 @@ export function AgentTable() {
         <tbody>
           {sorted.map((a) => {
             const utxos = a.chains.reduce((s, c) => s + c.unspent_utxos, 0);
-            const shares = a.chains.length > 0 ? a.chains[0].shares : '0';
+            const sharesDisplay = a.chains.length === 0
+              ? '0'
+              : a.chains.length === 1
+                ? formatShares(a.chains[0].shares)
+                : a.chains.map((c) => `${c.symbol}:${formatShares(c.shares)}`).join(' ');
             return (
               <tr
                 key={a.name}
@@ -56,7 +60,7 @@ export function AgentTable() {
                 <td style={tdStyle}>{a.status}</td>
                 <td style={{ ...tdStyle, textAlign: 'right' }}>{a.transactions}</td>
                 <td style={{ ...tdStyle, textAlign: 'right' }}>{utxos}</td>
-                <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>{formatShares(shares)}</td>
+                <td style={{ ...tdStyle, textAlign: 'right', fontFamily: 'monospace', fontSize: 12 }}>{sharesDisplay}</td>
                 <td style={{ ...tdStyle, fontSize: 12, color: '#666' }}>{a.last_action}</td>
               </tr>
             );

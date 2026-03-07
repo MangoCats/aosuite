@@ -1,11 +1,13 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 use tokio::sync::mpsc;
 
-use crate::agents::AgentState;
+use crate::agents::{AgentState, ViewerEvent, ViewerState};
 
 /// Text-mode observer that prints a live dashboard of agent states.
 pub async fn run_observer(
-    mut state_rx: mpsc::Receiver<AgentState>,
+    mut state_rx: mpsc::Receiver<ViewerEvent>,
+    viewer_state: Arc<ViewerState>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
 ) {
     let mut states: HashMap<String, AgentState> = HashMap::new();
@@ -13,9 +15,15 @@ pub async fn run_observer(
 
     loop {
         tokio::select! {
-            state = state_rx.recv() => {
-                match state {
-                    Some(s) => { states.insert(s.name.clone(), s); }
+            event = state_rx.recv() => {
+                match event {
+                    Some(ViewerEvent::State(s)) => {
+                        viewer_state.update_agent(s.clone()).await;
+                        states.insert(s.name.clone(), s);
+                    }
+                    Some(ViewerEvent::Transaction(t)) => {
+                        viewer_state.add_transaction(t).await;
+                    }
                     None => break,
                 }
             }
@@ -51,7 +59,7 @@ fn print_dashboard(states: &HashMap<String, AgentState>) {
         return;
     }
 
-    const W: usize = 88; // inner width between ║ borders
+    const W: usize = 88; // inner width between borders
 
     // Clear screen and move cursor to top
     print!("\x1B[2J\x1B[H");

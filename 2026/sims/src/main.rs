@@ -3,6 +3,7 @@ mod client;
 mod config;
 mod observer;
 mod transfer;
+mod viewer;
 mod wallet;
 
 use std::sync::Arc;
@@ -15,7 +16,7 @@ use tracing::info;
 use ao_crypto::sign::SigningKey;
 use ao_recorder::{AppState, build_router};
 
-use agents::{AgentDirectory, AgentMessage};
+use agents::{AgentDirectory, AgentMessage, ViewerState};
 use client::RecorderClient;
 use config::ScenarioConfig;
 
@@ -25,6 +26,10 @@ struct Cli {
     /// Path to scenario TOML file
     #[arg(default_value = "scenarios/minimal.toml")]
     scenario: String,
+
+    /// Viewer API port (0 = auto-assign)
+    #[arg(long, default_value = "4200")]
+    viewer_port: u16,
 }
 
 #[tokio::main]
@@ -51,6 +56,11 @@ async fn main() -> Result<()> {
     let (state_tx, state_rx) = mpsc::channel(256);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
+    // Start viewer state + API server
+    let viewer_state = Arc::new(ViewerState::new());
+    let viewer_url = start_viewer(cli.viewer_port, viewer_state.clone(), client.clone()).await;
+    info!("Viewer API running at {}", viewer_url);
+
     // Register agent mailboxes
     let mut mailbox_senders: std::collections::HashMap<String, mpsc::Sender<AgentMessage>> = std::collections::HashMap::new();
     let mut mailbox_receivers: std::collections::HashMap<String, mpsc::Receiver<AgentMessage>> = std::collections::HashMap::new();
@@ -66,7 +76,7 @@ async fn main() -> Result<()> {
     }
 
     // Spawn observer
-    let observer_handle = tokio::spawn(observer::run_observer(state_rx, shutdown_rx));
+    let observer_handle = tokio::spawn(observer::run_observer(state_rx, viewer_state.clone(), shutdown_rx));
 
     // Spawn agents
     let speed = scenario.simulation.speed;
@@ -168,6 +178,30 @@ async fn start_recorder(port: u16) -> String {
     let bind_addr = format!("127.0.0.1:{}", port);
     let listener = tokio::net::TcpListener::bind(&bind_addr).await
         .expect("failed to bind recorder");
+    let actual_addr = listener.local_addr().unwrap();
+
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    format!("http://{}", actual_addr)
+}
+
+/// Start the viewer API server. Returns the base URL.
+async fn start_viewer(
+    port: u16,
+    viewer_state: Arc<ViewerState>,
+    recorder: Arc<RecorderClient>,
+) -> String {
+    let app_state = viewer::ViewerAppState {
+        viewer: viewer_state,
+        recorder,
+    };
+    let app = viewer::build_viewer_router(app_state);
+
+    let bind_addr = format!("127.0.0.1:{}", port);
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await
+        .expect("failed to bind viewer");
     let actual_addr = listener.local_addr().unwrap();
 
     tokio::spawn(async move {

@@ -1,0 +1,135 @@
+# 3-chain cross-chain exchange scenario
+# Tests: 3 vendors, 2 exchange agents, 2 consumers doing cross-chain trades.
+#
+# Chains:
+#   BCG — Bob's Curry Goat (want chain for Alice)
+#   CCC — Carol's Cold Coffee (payment chain / want chain for Dan)
+#   MFF — Maria's Mango Futures (payment chain for Dan)
+#
+# Flow:
+#   Alice pays CCC, receives BCG via Charlie (exchange agent)
+#   Dan pays MFF, receives CCC via Eve (exchange agent)
+
+[simulation]
+name = "exchange-3chain"
+recorder_port = 0
+speed = 10.0
+duration_secs = 180
+
+# ── Vendors ─────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Bob"
+role = "vendor"
+lat = 18.2027
+lon = -63.0490
+
+[agent.vendor]
+symbol = "BCG"
+description = "Bob's Curry Goat"
+coins = "1000000000"
+shares = "2^40"
+plate_price = 25
+initial_float = 50
+
+[[agent]]
+name = "Carol"
+role = "vendor"
+lat = 18.2035
+lon = -63.0485
+
+[agent.vendor]
+symbol = "CCC"
+description = "Carol's Cold Coffee"
+coins = "500000000"
+shares = "2^38"
+plate_price = 8
+initial_float = 100
+
+[[agent]]
+name = "Maria"
+role = "vendor"
+lat = 18.2050
+lon = -63.0470
+
+[agent.vendor]
+symbol = "MFF"
+description = "Maria's Mango Futures"
+coins = "200000000"
+shares = "2^36"
+plate_price = 15
+initial_float = 80
+
+# ── Recorder (embedded) ────────────────────────────────────────────
+
+[[agent]]
+name = "Gene"
+role = "recorder"
+
+# ── Exchange agents ─────────────────────────────────────────────────
+
+[[agent]]
+name = "Charlie"
+role = "exchange"
+lat = 18.2060
+lon = -63.0519
+
+[agent.exchange]
+pairs = [
+    { sell = "BCG", buy = "CCC", rate = 3.0 },   # 1 BCG plate = 3 CCC plates (25 coins = 3×8 coins)
+]
+
+[[agent.exchange.inventory]]
+vendor = "Bob"
+plates = 40
+
+[[agent.exchange.inventory]]
+vendor = "Carol"
+plates = 120
+
+[[agent]]
+name = "Eve"
+role = "exchange"
+lat = 18.2045
+lon = -63.0510
+
+[agent.exchange]
+pairs = [
+    { sell = "CCC", buy = "MFF", rate = 2.0 },   # 1 CCC plate = 2 MFF plates (8 coins = 2×15 coins ≈ close enough)
+]
+
+[[agent.exchange.inventory]]
+vendor = "Carol"
+plates = 80
+
+[[agent.exchange.inventory]]
+vendor = "Maria"
+plates = 160
+
+# ── Consumers ───────────────────────────────────────────────────────
+
+[[agent]]
+name = "Alice"
+role = "consumer"
+lat = 18.2040
+lon = -63.0500
+
+[agent.consumer]
+buy_from = "Charlie"
+want_symbol = "BCG"
+pay_symbol = "CCC"
+fund_from = "Carol"
+interval_secs = 30
+
+[[agent]]
+name = "Dan"
+role = "consumer"
+lat = 18.2055
+lon = -63.0495
+
+[agent.consumer]
+buy_from = "Eve"
+want_symbol = "CCC"
+pay_symbol = "MFF"
+fund_from = "Maria"
+interval_secs = 45

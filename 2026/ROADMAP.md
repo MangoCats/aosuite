@@ -226,19 +226,85 @@ Full assignment flow with off-band negotiation, plus AOE consumer and AOS vendor
 
 ## Phase 4: Market Making — AOI + Exchange (Weeks 29–38)
 
-Exchange agent infrastructure with automated trading. This is where most business-logic complexity lives.
+Exchange agent infrastructure with automated trading. This is where most business-logic complexity lives. All deliverables are in `2026/src/` — the sims framework is an independent consumer of these products and maintained separately.
 
-### Deliverables
+### Phase 4A: MQTT Block Publishing (Weeks 29–30)
 
-**AOI view:** Portfolio dashboard. Automated trading rules (bid/ask ladders, float-sensitive pricing, position limits). Order book. Auto-execution. ROI tracking.
+Add MQTT support to ao-recorder for efficient real-time block event delivery to exchange agents.
 
-**Exchange infrastructure:** Exchange listing as separable item (bid/ask for other issues). AOR publishes JSON index of issues and known exchange agents.
+**Deliverables:**
 
-**Two-party exchange:** Alice sends CCC to Charlie; Charlie's AOI sends BCG to Alice. Two independent single-chain assignments. Charlie absorbs settlement risk.
+**rumqttc integration:** Add `rumqttc` dependency to ao-recorder. Optional `[mqtt]` section in TOML config: `broker_url`, `client_id`, `topic_prefix` (default `ao/chain`), optional TLS paths.
 
-**MQTT:** AOR publishes block notifications to per-chain topics. AOI subscribes. Optional `rumqttd` embedded broker.
+**Block publication:** After block construction in `submit_assignment`, publish `BlockInfo` JSON to `{topic_prefix}/{chain_id}/blocks`. Non-blocking — MQTT failure does not fail the HTTP response.
 
-**Referral fees:** Fee structures in assignment metadata. Net-of-fees display.
+**Graceful degradation:** If MQTT broker is unavailable or not configured, recorder runs normally (SSE/WebSocket still work). Log warning on connection failure, retry with exponential backoff.
+
+**MQTT subscriber in sims:** Exchange agent can optionally subscribe via MQTT instead of polling for faster event delivery.
+
+**Acceptance:** MQTT-connected exchange agent receives block notifications within 100ms. 100 msg/s sustained on localhost.
+
+### Phase 4B: Standalone Exchange Agent (Weeks 31–32)
+
+Extract exchange agent logic from sims into a reusable, config-driven daemon that can run independently against live recorders.
+
+**Deliverables:**
+
+**`ao-exchange` crate:** [src/ao-exchange/](src/ao-exchange/) — lib + bin. TOML config specifying: chains (recorder URL, chain ID), trading pairs (chain A → chain B, rate, spread, position limits), key files (encrypted seeds per chain).
+
+**Trading rules engine:** Configurable bid/ask spreads, float-sensitive pricing (wider spreads when inventory is low), position limits per chain, minimum/maximum trade sizes.
+
+**Agent loop:** Monitor chains via SSE (MQTT when available). Scan for incoming shares (UTXO polling or SSE-driven). Match against trading rules. Execute two-leg trades automatically. Log all executions.
+
+**Position management:** Track current holdings per chain. Enforce position limits. Auto-rebalance when holdings drift outside configured bands.
+
+**CLI:** `ao-exchange run config.toml` — starts the daemon. `ao-exchange status config.toml` — shows current positions and pending trades.
+
+**Acceptance:** Exchange agent runs unattended, executes BCG↔CCC trades automatically. Handles concurrent requests. Recovers from recorder restarts.
+
+### Phase 4C: AOI Investor View in PWA (Weeks 33–34)
+
+Add investor view to the React PWA for monitoring and configuring exchange agents.
+
+**Deliverables:**
+
+**Investor view mode:** Add 'investor' to the view toggle in store and Header. AOI view shows multi-chain portfolio, not single-chain detail.
+
+**Portfolio dashboard:** Connect to multiple recorders (configured URLs). Display holdings table: chain symbol, shares held, coin value, % of float, expiry status.
+
+**Exchange status:** Active trading pairs with current rates and position levels. Spread indicators. Recent execution log.
+
+**Trade history:** Chronological log of all exchange-mediated trades. Filter by chain, counterparty, time range.
+
+**Acceptance:** AOI view displays accurate multi-chain portfolio from 2+ recorders. Updates in real-time via SSE.
+
+### Phase 4D: Referral Fees + Exchange Discovery (Weeks 35–36)
+
+Protocol extensions for fee structures and exchange agent discovery.
+
+**Deliverables:**
+
+**Referral fees:** Optional `REFERRAL_FEE` item in PARTICIPANT containers — specifies a fraction of the recording fee directed to a referral key. Net-of-fees display in ConsumerView.
+
+**Exchange index API:** Extend `GET /chains` response with optional `exchange_agents` array listing registered agents and their trading pairs. Exchange agent registers with recorder on startup via new `POST /chain/{id}/exchange-agent` endpoint.
+
+**On-chain exchange listing:** EXCHANGE_LISTING separable item type (code 37) — a container with chain symbols and exchange rates, attached to assignments for transparency and auditability.
+
+**Acceptance:** Consumer can discover available exchange agents for a chain. Referral fees deducted correctly and visible in transaction detail.
+
+### Phase 4E: Acceptance Testing + Equilibrium (Weeks 37–38)
+
+Full integration testing against all Phase 4 acceptance criteria.
+
+**Deliverables:**
+
+**Equilibrium simulation:** 5-AOI agents, 3 chains (BCG, CCC, MMF), 200 random consumer transactions. Verify market reaches equilibrium (prices stabilize, exchange agents maintain inventory).
+
+**Cross-chain latency test:** CCC→BCG through Charlie in <10s consistently (p99).
+
+**MQTT throughput:** 100 msg/s sustained on Pi 5 with 3 chains and 5 exchange agents.
+
+**Long-run stability:** 24-hour simulation without memory growth or deadlock.
 
 ### Acceptance Criteria
 

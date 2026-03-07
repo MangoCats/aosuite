@@ -88,11 +88,41 @@ pub fn auto_fee_den(coins: &str) -> num_bigint::BigInt {
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct ExchangeConfig {
-    /// Vendor name to buy initial inventory from.
-    pub buy_from: String,
-    /// Number of plates/units to buy initially.
+    /// Single-chain mode: vendor name to buy initial inventory from.
+    #[serde(default)]
+    pub buy_from: Option<String>,
+    /// Single-chain mode: number of plates to buy initially.
     #[serde(default = "default_initial_buy")]
     pub initial_buy: u64,
+    /// Multi-chain mode: trading pairs.
+    #[serde(default)]
+    pub pairs: Vec<TradingPairConfig>,
+    /// Multi-chain mode: initial inventory to buy per chain symbol.
+    #[serde(default)]
+    pub inventory: Vec<InventoryConfig>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct TradingPairConfig {
+    /// Symbol of chain we sell (consumer receives).
+    pub sell: String,
+    /// Symbol of chain we accept as payment (consumer pays).
+    pub buy: String,
+    /// Exchange rate: how many `buy` units per `sell` unit.
+    /// E.g., rate=12 means 1 BCG costs 12 CCC.
+    #[serde(default = "default_rate")]
+    pub rate: f64,
+}
+
+fn default_rate() -> f64 { 1.0 }
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct InventoryConfig {
+    /// Vendor name to buy from.
+    pub vendor: String,
+    /// Number of plates/units to buy.
+    #[serde(default = "default_initial_buy")]
+    pub plates: u64,
 }
 
 fn default_initial_buy() -> u64 { 50 }
@@ -101,8 +131,18 @@ fn default_initial_buy() -> u64 { 50 }
 pub struct ConsumerConfig {
     /// Exchange agent name to buy from.
     pub buy_from: String,
-    /// Vendor name to redeem at.
-    pub redeem_at: String,
+    /// Vendor name to redeem at (single-chain mode).
+    #[serde(default)]
+    pub redeem_at: Option<String>,
+    /// For cross-chain: symbol of chain consumer wants.
+    #[serde(default)]
+    pub want_symbol: Option<String>,
+    /// For cross-chain: symbol of chain consumer pays with.
+    #[serde(default)]
+    pub pay_symbol: Option<String>,
+    /// Vendor to buy initial payment currency from (cross-chain mode).
+    #[serde(default)]
+    pub fund_from: Option<String>,
     /// Seconds between purchases (sim time).
     #[serde(default = "default_interval")]
     pub interval_secs: u64,

@@ -13,7 +13,8 @@ ao-crypto = { path = "../src/ao-crypto" }
 ao-chain = { path = "../src/ao-chain" }
 ao-recorder = { path = "../src/ao-recorder" }
 
-axum = "0.8"
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.6", features = ["cors"] }
 tokio = { version = "1", features = ["full"] }
 reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1", features = ["derive"] }

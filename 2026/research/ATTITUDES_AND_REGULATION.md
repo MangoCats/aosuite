@@ -18,6 +18,44 @@ Sources: [Security.org 2025 Consumer Report](https://www.security.org/digital-se
 
 ---
 
+## 1a. How Much Do People Actually Hold?
+
+Despite 559 million users worldwide, most individual crypto holdings are small. The available data paints a consistent picture: crypto remains a minor fraction of household wealth for the vast majority of participants.
+
+### Retail / Personal Holdings
+
+**Median investment is tiny.** JPMorgan Chase Institute analysis of actual U.S. checking-account flows (2015-H1 2022) found the median gross amount transferred to crypto accounts was approximately **$620**. The median for men was ~$1,000; for women ~$400. Roughly 80% of crypto participants had less than one month's take-home pay in the ecosystem, and the median holding was equivalent to **less than one week's take-home pay** (median take-home in the sample: ~$48,000/year, so ~$920/week).
+
+**Global median portfolio: ~$1,300** as of late 2025 (median user age 34.8). This figure is skewed upward by bull-market appreciation; the median amount *invested* is lower.
+
+**Percentage of net worth.** No large-scale survey directly reports median crypto-as-percentage-of-net-worth for the general population, but the available evidence converges:
+- The typical retail holder has less than one week's income invested -- for a median U.S. household with ~$190,000 net worth, this represents roughly **0.3-0.5% of net worth**.
+- Among those who hold crypto ETFs specifically, the median allocation is approximately **4% of total portfolio value**.
+- Financial advisors recommend 2-6% allocation (BlackRock/Fidelity suggest ~2%, Morgan Stanley up to 4%, VanEck up to 6%).
+- 59% of institutional investors plan to allocate over 5% of AUM to crypto, but only 3% allocate above 20%.
+
+**High-net-worth divergence.** 26% of Americans with $1M+ investible assets own crypto (vs. 20% of all Americans). 38% of this group expect crypto to be part of their portfolio in the future. Globally, 241,700 individuals qualify as "crypto millionaires" and 36 as crypto billionaires (Henley & Partners 2025).
+
+**Performance perception.** 53% of those who have ever owned crypto report net gains; 21% report net losses. This positive skew among survivors likely understates actual losses, as those who lost money and exited are less likely to appear in current-holder surveys.
+
+### Business Holdings
+
+**Corporate treasuries are concentrated at the top.** At least 172 publicly traded companies held Bitcoin by Q3 2025 (up 40% QoQ), collectively holding ~1 million BTC (~5% of circulating supply). But this is overwhelmingly dominated by a handful of firms: Strategy (formerly MicroStrategy) alone holds 660,624 BTC (~$62B).
+
+**Small business adoption is modest but growing.** 75% of businesses using Bitcoin have fewer than 50 employees, allocating a median **10% of net income** to crypto. The absolute dollar amounts for small businesses are not well-documented, but given that most are micro-enterprises, median holdings are likely in the low thousands.
+
+**$12.5B in business BTC inflows** occurred in the first 8 months of 2025 alone, exceeding all of 2024. Regulatory clarity and declining volatility are cited as drivers.
+
+### The Big Picture
+
+For most of the world's 559 million crypto users, holdings represent a **speculative side allocation, not a core store of wealth**. The median retail participant has roughly $1,000-$1,300 in crypto -- less than one week's income and well under 1% of household net worth. The ecosystem's total market capitalization (~$2.5-3T) is meaningful in aggregate but thinly distributed across hundreds of millions of small holders, with concentration at the top among whales, corporate treasuries, and institutional funds.
+
+This has direct implications for the "blockchain for everyday commerce" thesis: the vast majority of current crypto holders are *investors*, not *users*. They hold crypto as a financial asset, not as a medium of exchange. The infrastructure for spending, earning, and transacting in crypto-denominated value at small scale remains largely unbuilt.
+
+Sources: [JPMorgan Chase Institute - Dynamics and Demographics of U.S. Household Crypto Use](https://www.jpmorganchase.com/institute/all-topics/financial-health-wealth-creation/dynamics-demographics-us-household-crypto-asset-cryptocurrency-use), [JPMorgan Chase Institute - Crypto Investor Waves](https://www.jpmorganchase.com/institute/all-topics/financial-health-wealth-creation/crypto-investor-waves-since-2017-what-retail-investor-behavior-reveals-about-digital-asset-adoption), [CoinLaw Crypto in Investment Portfolios](https://coinlaw.io/cryptocurrency-in-investment-portfolios-statistics/), [Henley & Partners Crypto Wealth Report 2025](https://www.henleyglobal.com/publications/crypto-wealth-report-2025), [Grayscale/Harris Poll HNW Investors](https://www.globenewswire.com/news-release/2025/03/13/3042248/0/en/High-Net-Worth-Investors-Are-More-Likely-to-Own-Crypto-than-the-Average-American-According-to-Data-from-Grayscale-Investments-and-The-Harris-Poll.html), [Morgan Stanley 4% Allocation](https://www.coindesk.com/markets/2025/10/07/morgan-stanley-recommends-a-4-opportunistic-crypto-portfolio-allocation), [XBTO Institutional Guide 2026](https://www.xbto.com/resources/crypto-portfolio-allocation-2026-institutional-strategy-guide), [Security.org 2026 Report](https://www.security.org/digital-security/cryptocurrency-annual-consumer-report/), [DemandSage Public Companies Holding BTC](https://www.demandsage.com/public-companies-holding-btc/)
+
+---
+
 ## 2. Government Regulation: The Shift from Enforcement to Frameworks
 
 2025 marked the global pivot from regulation-by-enforcement to structured legislative frameworks.

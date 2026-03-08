@@ -671,17 +671,9 @@ Blobs are now linked on-chain as DATA_BLOB separable children in assignments. Re
 
 ## Tier 2: Adoption Features
 
-### N18: Payment Notifications — *Tourism + UBI*
+### N18: Payment Notifications — *Tourism + UBI* ✓ Done
 
-Audio chime on incoming payments via SSE. Configurable UX. Web Push server deferred — SSE-while-open model for now.
-
-**Deliverables:**
-- Audio chime on VendorView SSE payment event (`new Audio('chime.mp3').play()`).
-- Notification settings panel: sound style selector, volume slider, time-window muting (e.g. "silent 10pm–8am"), quick-mute button with duration picker (15min/1hr/until tomorrow), manual on/off toggle.
-- Settings persisted in localStorage.
-- Future: Web Push API integration (far down roadmap, requires VAPID server).
-
-**Depends on:** SSE subscription (exists).
+Web Audio API chime on VendorView SSE payment events. Three sound styles (bell, cash register, ding), volume slider, quiet hours (overnight time window), quick-mute with duration picker (15min/1hr/until quiet-hours-end). Settings persisted in localStorage. Notification ref pattern avoids SSE reconnection on settings change. Web Push deferred.
 
 ### N19: Printable QR Signage — *Tourism*
 

@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore.ts';
 import { QrScanner } from './QrScanner.tsx';
 import { PairedDevices } from './PairedDevices.tsx';
 import { WalletBackup } from './WalletBackup.tsx';
+import { NotificationSettings } from './NotificationSettings.tsx';
 
 /** Parse a chain info URL into recorder base URL and chain ID.
  *  Accepts: http://host:port/chain/{id}/info or http://host:port/chain/{id}
@@ -59,6 +60,9 @@ export function Settings() {
           onClose={() => setScanning(false)}
         />
       )}
+
+      {/* Payment Notifications */}
+      <NotificationSettings />
 
       {/* Wallet Backup */}
       <WalletBackup />

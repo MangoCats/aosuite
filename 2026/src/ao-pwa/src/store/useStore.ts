@@ -2,6 +2,8 @@
 
 import { create } from 'zustand';
 import type { ChainInfo, ChainListEntry } from '../api/client.ts';
+import type { ChimeStyle } from '../core/chime.ts';
+import { isChimeStyle } from '../core/chime.ts';
 
 // localStorage helpers (silent on failure for SSR / private browsing)
 function loadString(key: string): string | null {
@@ -12,6 +14,21 @@ function saveString(key: string, value: string | null) {
     if (value === null) localStorage.removeItem(key);
     else localStorage.setItem(key, value);
   } catch { /* ignore */ }
+}
+function loadNumber(key: string, fallback: number): number {
+  const s = loadString(key);
+  if (s === null) return fallback;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+export interface NotificationSettings {
+  enabled: boolean;
+  chimeStyle: ChimeStyle;
+  volume: number;        // 0–1
+  quietStart: number;    // hour 0–23
+  quietEnd: number;      // hour 0–23
+  quickMuteUntil: number | null; // Unix ms timestamp, null = not muted
 }
 
 export interface AppState {
@@ -62,6 +79,10 @@ export interface AppState {
   // Multi-recorder connections for investor view
   recorderUrls: string[];
   setRecorderUrls: (urls: string[]) => void;
+
+  // Notifications
+  notification: NotificationSettings;
+  setNotification: (patch: Partial<NotificationSettings>) => void;
 
   // UI
   view: 'vendor' | 'consumer' | 'investor';
@@ -121,6 +142,24 @@ export const useStore = create<AppState>((set) => ({
 
   recorderUrls: [],
   setRecorderUrls: (recorderUrls) => set({ recorderUrls }),
+
+  notification: {
+    enabled: loadString('ao_notify_enabled') !== 'false', // default on
+    chimeStyle: (() => { const s = loadString('ao_notify_chime'); return s && isChimeStyle(s) ? s : 'bell'; })(),
+    volume: Math.max(0, Math.min(1, loadNumber('ao_notify_volume', 0.7))),
+    quietStart: Math.max(0, Math.min(23, Math.floor(loadNumber('ao_notify_quiet_start', 22)))),
+    quietEnd: Math.max(0, Math.min(23, Math.floor(loadNumber('ao_notify_quiet_end', 8)))),
+    quickMuteUntil: null, // session-only, not persisted
+  },
+  setNotification: (patch) => set(state => {
+    const next = { ...state.notification, ...patch };
+    saveString('ao_notify_enabled', String(next.enabled));
+    saveString('ao_notify_chime', next.chimeStyle);
+    saveString('ao_notify_volume', String(next.volume));
+    saveString('ao_notify_quiet_start', String(next.quietStart));
+    saveString('ao_notify_quiet_end', String(next.quietEnd));
+    return { notification: next };
+  }),
 
   view: 'consumer',
   setView: (view) => set({ view }),

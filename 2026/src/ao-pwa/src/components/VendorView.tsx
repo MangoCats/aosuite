@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore.ts';
 import { RecorderClient } from '../api/client.ts';
 import type { BlockInfo } from '../api/client.ts';
+import { playChime, isInQuietHours, isQuickMuted } from '../core/chime.ts';
 import { signingKeyFromSeed } from '../core/sign.ts';
 import { bytesToHex, hexToBytes } from '../core/hex.ts';
 import * as tc from '../core/typecodes.ts';
@@ -118,11 +119,23 @@ function IncomingMonitor({ recorderUrl, chainId, symbol }: MonitorProps) {
   const [events, setEvents] = useState<BlockInfo[]>([]);
   const [connected, setConnected] = useState(false);
   const esRef = useRef<EventSource | null>(null);
+  const notification = useStore(s => s.notification);
+  // Ref avoids SSE reconnection when notification settings change
+  const notifRef = useRef(notification);
+  notifRef.current = notification;
 
   useEffect(() => {
     const client = new RecorderClient(recorderUrl);
     const es = client.subscribeBlocks(chainId, (block) => {
       setEvents(prev => [block, ...prev].slice(0, 50));
+      const n = notifRef.current;
+      if (block.seq_count > 0
+        && n.enabled
+        && !isInQuietHours(n.quietStart, n.quietEnd)
+        && !isQuickMuted(n.quickMuteUntil)
+      ) {
+        playChime(n.chimeStyle, n.volume);
+      }
     });
 
     es.onopen = () => setConnected(true);

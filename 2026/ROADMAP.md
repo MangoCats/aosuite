@@ -597,7 +597,7 @@ Five sub-phases (S1–S5) delivering multi-device key sync for AO's single-use k
 | **Tier 1: Pilot blockers** | | | | | |
 | N12 | Transfer confirmation screen | All three | Small | N2 | ✓ Done |
 | N13 | Wallet backup/restore UX | All three | Small | N11 | ✓ Done |
-| N14 | Offline balance cache | All three | Small | N11 | — |
+| N14 | Offline balance cache | All three | Small | N11 | ✓ Done |
 | N15 | Transaction history + CSV export | All three | Medium | N2 | — |
 | N16 | Vendor profile persistence + on-chain | Tourism | Small | N5 | — |
 | N17 | On-chain blob linking + blob fees | Coop, Tourism | Medium | N8 | — |
@@ -645,16 +645,11 @@ Encrypted file-based wallet backup using existing `buildFullExportPayload()`. Ba
 
 **Implementation:** [backup.ts](src/ao-pwa/src/core/backup.ts) (encrypt/decrypt), [WalletBackup.tsx](src/ao-pwa/src/components/WalletBackup.tsx) (UI), [walletDb.ts](src/ao-pwa/src/core/walletDb.ts) (`lastBackupAt` config field), [Settings.tsx](src/ao-pwa/src/components/Settings.tsx) (integration). 4 tests (round-trip, wrong password, large payload, salt uniqueness).
 
-### N14: Offline Balance Cache — *All Three*
+### N14: Offline Balance Cache — *All Three* ✓
 
-Display cached balance from IndexedDB immediately on app load. `walletDb.ts` already stores `amount` per key; `chainBalance()` already sums unspent keys.
+Cached balance from IndexedDB displayed immediately on app load, before any UTXO scan. Zustand store holds `cachedBalance` (stringified bigint) and `lastValidatedAt` (Unix ms). On chain selection, `walletDb.chainBalance()` loads the cached sum. After successful UTXO validation, both fields refresh. UI shows "verified {time}" or "unverified"/"stale" badges.
 
-**Deliverables:**
-- On app load: display cached balance with "last verified: {time}" indicator.
-- When online: validate against recorder, update IndexedDB, refresh.
-- Stale badge: yellow "unverified" when last validation > 1 hour.
-
-**Depends on:** N11 (IndexedDB wallet state).
+**Implementation:** [useStore.ts](src/ao-pwa/src/store/useStore.ts) (`cachedBalance`, `lastValidatedAt` fields), [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx) (load effect, validation refresh, cached balance display with staleness badges).
 
 ### N15: Transaction History + CSV Export — *All Three*
 

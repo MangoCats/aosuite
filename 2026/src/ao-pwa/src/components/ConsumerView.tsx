@@ -56,6 +56,8 @@ export function ConsumerView() {
     seedHex: storedSeedHex, publicKeyHex, walletPassphrase,
     setWallet, clearWallet,
     setUnsyncedKeyCount, setWalletKeyCount,
+    cachedBalance, lastValidatedAt,
+    setCachedBalance, setLastValidatedAt,
   } = useStore();
 
   // Wallet management
@@ -100,6 +102,14 @@ export function ConsumerView() {
     };
   }, []);
 
+  // Load cached balance from IndexedDB immediately (N14)
+  useEffect(() => {
+    if (!selectedChainId) return;
+    walletDb.chainBalance(selectedChainId).then(bal => {
+      setCachedBalance(bal.toString());
+    });
+  }, [selectedChainId, setCachedBalance]);
+
   // Validate held keys against recorder when chain is selected (WalletSync §2)
   // Also subscribe to SSE block events for real-time monitoring.
   useEffect(() => {
@@ -107,7 +117,7 @@ export function ConsumerView() {
     const client = new RecorderClient(recorderUrl);
 
     function runValidation() {
-      validateKeysOnChain(client, selectedChainId!).then(result => {
+      validateKeysOnChain(client, selectedChainId!).then(async result => {
         if (result.unknownSpends.length > 0) {
           const keys = result.unknownSpends.map(k =>
             `seq #${k.seqId} (${k.amount ?? '?'} shares)`
@@ -126,6 +136,10 @@ export function ConsumerView() {
             : `Validation: ${result.newlySpent} key(s) found spent since last check.`
           );
         }
+        // Update cached balance and validation timestamp (N14)
+        const bal = await walletDb.chainBalance(selectedChainId!);
+        setCachedBalance(bal.toString());
+        setLastValidatedAt(Date.now());
       }).catch(() => {
         // Validation failure is non-fatal — balance may be stale
       });
@@ -517,6 +531,25 @@ export function ConsumerView() {
             <div style={{ fontSize: 12, fontFamily: 'monospace', wordBreak: 'break-all', marginBottom: 4 }}>
               Pubkey: {publicKeyHex}
             </div>
+            {cachedBalance !== null && (
+              <div style={{ fontSize: 12, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>Cached balance: {cachedBalance} shares</span>
+                {lastValidatedAt ? (
+                  <span style={{ color: '#666' }}>
+                    (verified {new Date(lastValidatedAt).toLocaleTimeString()})
+                  </span>
+                ) : (
+                  <span style={{ background: '#fff3cd', padding: '1px 6px', borderRadius: 8, fontSize: 11 }}>
+                    unverified
+                  </span>
+                )}
+                {lastValidatedAt && Date.now() - lastValidatedAt > 3600000 && (
+                  <span style={{ background: '#fff3cd', padding: '1px 6px', borderRadius: 8, fontSize: 11 }}>
+                    stale
+                  </span>
+                )}
+              </div>
+            )}
             <div style={{ display: 'flex', gap: 8 }}>
               <button onClick={handleScan} disabled={scanning}>
                 {scanning ? 'Scanning...' : 'Scan UTXOs'}

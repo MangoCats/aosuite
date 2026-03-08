@@ -598,7 +598,7 @@ Five sub-phases (S1–S5) delivering multi-device key sync for AO's single-use k
 | N12 | Transfer confirmation screen | All three | Small | N2 | ✓ Done |
 | N13 | Wallet backup/restore UX | All three | Small | N11 | ✓ Done |
 | N14 | Offline balance cache | All three | Small | N11 | ✓ Done |
-| N15 | Transaction history + CSV export | All three | Medium | N2 | — |
+| N15 | Transaction history + CSV export | All three | Medium | N2 | ✓ Done |
 | N16 | Vendor profile persistence + on-chain | Tourism | Small | N5 | — |
 | N17 | On-chain blob linking + blob fees | Coop, Tourism | Medium | N8 | — |
 | **Tier 2: Adoption** | | | | | |
@@ -651,18 +651,11 @@ Cached balance from IndexedDB displayed immediately on app load, before any UTXO
 
 **Implementation:** [useStore.ts](src/ao-pwa/src/store/useStore.ts) (`cachedBalance`, `lastValidatedAt` fields), [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx) (load effect, validation refresh, cached balance display with staleness badges).
 
-### N15: Transaction History + CSV Export — *All Three*
+### N15: Transaction History + CSV Export — *All Three* ✓
 
-Scrollable list of past transfers with date, amount, direction, counterparty, and blob indicators. Simple CSV export initially; modular design to support future accounting standards.
+Scrollable transaction list with date, direction, amount, counterparty (truncated pubkey), blob indicator, and block height. Parses blocks via `getBlocks()` API, matches participants against wallet keys (receivers by pubkey, givers by seq_id). Separate `ao-tx-history` IndexedDB database caches parsed records for offline access with incremental scan cursor. CSV export with date, time, direction, shares, coins, counterparty, block height, seq_id, blob flag. `Exporter` interface supports future SA-BAS/OFX/XBRL-CSV formats.
 
-**Deliverables:**
-- `TransactionHistory.tsx` component. Walks blocks from recorder, filters for assignments involving user's public keys.
-- Displays: timestamp, amount (coins), direction (sent/received), counterparty pubkey (truncated), blob attachment indicator (when N17 ships).
-- IndexedDB cache of processed transactions for offline access.
-- CSV export: date, time, amount (coins), amount (shares), counterparty, block height, seq ID.
-- Modular export architecture supporting future standard formats (identified candidates: SA-BAS for South African small business, OFX for personal finance import, XBRL-CSV for regulatory reporting). Infrastructure must support adding all three as options without current implementation.
-
-**Depends on:** Recorder block pagination API (exists).
+**Implementation:** [txHistory.ts](src/ao-pwa/src/core/txHistory.ts) (block parser, IndexedDB cache, CSV exporter, `Exporter` interface), [TransactionHistory.tsx](src/ao-pwa/src/components/TransactionHistory.tsx) (UI), [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx) (integration). 10 tests (block parsing: received/sent/self-transfer/multi-block/timestamp/blob detection; CSV: header/coins/multi-seq).
 
 ### N16: Vendor Profile Persistence + On-Chain Records — *Tourism*
 

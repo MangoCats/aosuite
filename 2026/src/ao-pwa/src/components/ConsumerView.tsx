@@ -13,6 +13,7 @@ import * as offlineQueue from '../core/offlineQueue.ts';
 import { VendorMap, type VendorPin } from './VendorMap.tsx';
 import { AttachmentPicker } from './AttachmentPicker.tsx';
 import type { AttachedBlob } from '../core/blob.ts';
+import { TransactionHistory } from './TransactionHistory.tsx';
 import * as walletDb from '../core/walletDb.ts';
 import { validateKeysOnChain } from '../core/walletSync.ts';
 
@@ -689,6 +690,9 @@ export function ConsumerView() {
           {status}
         </pre>
       )}
+
+      {/* Transaction History (N15) */}
+      {storedSeedHex && <TransactionHistory />}
     </div>
   );
 }

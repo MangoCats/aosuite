@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+  WiX v4 manifest for Assign Onward suite MSI installer.
+  Installs: ao.exe, ao-recorder.exe, ao-validator.exe, ao-exchange.exe
+  Target:   Program Files\AssignOnward\
+  Data:     %ProgramData%\AssignOnward\
+  Adds bin directory to system PATH.
+-->
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package
+    Name="Assign Onward"
+    Version="0.1.0"
+    Manufacturer="Assign Onward Project"
+    UpgradeCode="E7A3C1D0-8F4B-4E2A-9C6D-1B5F0A3E7D92"
+    Scope="perMachine">
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of Assign Onward is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Installation directory structure -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="AssignOnward">
+        <Directory Id="BinFolder" Name="bin" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DataRoot" Name="AssignOnward">
+        <Directory Id="RecorderDataDir" Name="ao-recorder" />
+        <Directory Id="ValidatorDataDir" Name="ao-validator" />
+        <Directory Id="ExchangeDataDir" Name="ao-exchange" />
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Binaries -->
+    <ComponentGroup Id="Binaries" Directory="BinFolder">
+      <Component Id="AoCli" Guid="A1B2C3D4-1111-4E2A-9C6D-1B5F0A3E7D01">
+        <File Id="ao_exe" Source="$(var.BinDir)\ao.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="AoRecorder" Guid="A1B2C3D4-2222-4E2A-9C6D-1B5F0A3E7D02">
+        <File Id="ao_recorder_exe" Source="$(var.BinDir)\ao-recorder.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="AoValidator" Guid="A1B2C3D4-3333-4E2A-9C6D-1B5F0A3E7D03">
+        <File Id="ao_validator_exe" Source="$(var.BinDir)\ao-validator.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="AoExchange" Guid="A1B2C3D4-4444-4E2A-9C6D-1B5F0A3E7D04">
+        <File Id="ao_exchange_exe" Source="$(var.BinDir)\ao-exchange.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Data directories (empty, created at install time) -->
+    <ComponentGroup Id="DataDirs">
+      <Component Id="RecorderData" Directory="RecorderDataDir"
+                 Guid="A1B2C3D4-5555-4E2A-9C6D-1B5F0A3E7D05">
+        <CreateFolder />
+      </Component>
+      <Component Id="ValidatorData" Directory="ValidatorDataDir"
+                 Guid="A1B2C3D4-6666-4E2A-9C6D-1B5F0A3E7D06">
+        <CreateFolder />
+      </Component>
+      <Component Id="ExchangeData" Directory="ExchangeDataDir"
+                 Guid="A1B2C3D4-7777-4E2A-9C6D-1B5F0A3E7D07">
+        <CreateFolder />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Add bin to system PATH -->
+    <Component Id="PathEntry" Directory="BinFolder"
+               Guid="A1B2C3D4-8888-4E2A-9C6D-1B5F0A3E7D08">
+      <CreateFolder />
+      <Environment Id="PATH" Name="PATH" Value="[BinFolder]"
+                   Permanent="no" Part="last" Action="set" System="yes" />
+    </Component>
+
+    <!-- Feature tree -->
+    <Feature Id="Complete" Title="Assign Onward Suite" Level="1">
+      <Feature Id="CoreTools" Title="CLI Tool (ao)" Level="1">
+        <ComponentRef Id="AoCli" />
+        <ComponentRef Id="PathEntry" />
+      </Feature>
+      <Feature Id="Recorder" Title="AO Recorder" Level="1">
+        <ComponentRef Id="AoRecorder" />
+        <ComponentRef Id="RecorderData" />
+      </Feature>
+      <Feature Id="Validator" Title="AO Validator" Level="1">
+        <ComponentRef Id="AoValidator" />
+        <ComponentRef Id="ValidatorData" />
+      </Feature>
+      <Feature Id="Exchange" Title="AO Exchange" Level="1">
+        <ComponentRef Id="AoExchange" />
+        <ComponentRef Id="ExchangeData" />
+      </Feature>
+    </Feature>
+
+  </Package>
+</Wix>

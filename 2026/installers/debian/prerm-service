@@ -1,0 +1,15 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        if systemctl is-active --quiet @@PKG_NAME@@.service 2>/dev/null; then
+            systemctl stop @@PKG_NAME@@.service
+        fi
+        if systemctl is-enabled --quiet @@PKG_NAME@@.service 2>/dev/null; then
+            systemctl disable @@PKG_NAME@@.service
+        fi
+        ;;
+esac
+
+exit 0

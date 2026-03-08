@@ -1,0 +1,54 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Create system user if it doesn't exist
+        if ! getent passwd ao-exchange > /dev/null 2>&1; then
+            adduser --system --group --home /var/lib/ao-exchange \
+                --no-create-home --shell /usr/sbin/nologin ao-exchange
+        fi
+
+        # Ensure data directory ownership
+        chown ao-exchange:ao-exchange /var/lib/ao-exchange
+        chmod 750 /var/lib/ao-exchange
+
+        # Create placeholder config if none exists
+        if [ ! -f /etc/ao-exchange/exchange.toml ]; then
+            cat > /etc/ao-exchange/exchange.toml <<'EOF'
+# AO Exchange configuration
+# See: https://assignonward.com/docs/exchange
+
+# Trading pairs — at least one required:
+# [[pairs]]
+# sell = "FISH"
+# buy = "AOT"
+# rate = 1.5
+# spread = 0.02
+# min_trade = "1000"
+# max_trade = "1000000"
+
+# Chain connections — at least one required:
+# [[chains]]
+# symbol = "FISH"
+# recorder_url = "https://recorder.example.com"
+# chain_id = "abcdef1234..."
+# key_seed = ""  # Ed25519 hex seed for exchange wallet on this chain
+
+# Optional MQTT
+# [mqtt]
+# host = "localhost"
+# port = 1883
+EOF
+            chown ao-exchange:ao-exchange /etc/ao-exchange/exchange.toml
+            chmod 640 /etc/ao-exchange/exchange.toml
+        fi
+
+        systemctl daemon-reload
+        systemctl enable ao-exchange.service
+        echo "AO Exchange installed. Edit /etc/ao-exchange/exchange.toml then:"
+        echo "  sudo systemctl start ao-exchange"
+        ;;
+esac
+
+exit 0

@@ -1,0 +1,27 @@
+[Unit]
+Description=AO Validator - Assign Onward chain validator daemon
+After=network.target
+
+[Service]
+Type=simple
+User=ao-validator
+Group=ao-validator
+WorkingDirectory=/var/lib/ao-validator
+ExecStart=/usr/bin/ao-validator run /etc/ao-validator/validator.toml
+Restart=on-failure
+RestartSec=5
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ao-validator
+PrivateTmp=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ao-validator
+
+[Install]
+WantedBy=multi-user.target

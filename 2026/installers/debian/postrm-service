@@ -1,0 +1,23 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove)
+        systemctl daemon-reload
+        ;;
+    purge)
+        # Remove data and config on purge
+        rm -rf /var/lib/@@PKG_NAME@@
+        rm -rf /etc/@@PKG_NAME@@
+        # Remove system user
+        if getent passwd @@PKG_NAME@@ > /dev/null 2>&1; then
+            deluser --system @@PKG_NAME@@ 2>/dev/null || true
+        fi
+        if getent group @@PKG_NAME@@ > /dev/null 2>&1; then
+            delgroup --system @@PKG_NAME@@ 2>/dev/null || true
+        fi
+        systemctl daemon-reload
+        ;;
+esac
+
+exit 0

@@ -1,0 +1,31 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Create system user if it doesn't exist
+        if ! getent passwd ao-recorder > /dev/null 2>&1; then
+            adduser --system --group --home /var/lib/ao-recorder \
+                --no-create-home --shell /usr/sbin/nologin ao-recorder
+        fi
+
+        # Ensure data directory ownership
+        chown ao-recorder:ao-recorder /var/lib/ao-recorder
+        chmod 750 /var/lib/ao-recorder
+
+        # Generate default config if none exists
+        if [ ! -f /etc/ao-recorder/recorder.toml ]; then
+            su -s /bin/sh ao-recorder -c \
+                "ao-recorder init /etc/ao-recorder/recorder.toml" 2>/dev/null || true
+        fi
+
+        # Enable and start service
+        systemctl daemon-reload
+        systemctl enable ao-recorder.service
+        echo "AO Recorder installed. Edit /etc/ao-recorder/recorder.toml then:"
+        echo "  sudo systemctl start ao-recorder"
+        echo "  sudo ao-recorder doctor /etc/ao-recorder/recorder.toml"
+        ;;
+esac
+
+exit 0

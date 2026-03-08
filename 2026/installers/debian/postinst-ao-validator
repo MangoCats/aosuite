@@ -1,0 +1,53 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    configure)
+        # Create system user if it doesn't exist
+        if ! getent passwd ao-validator > /dev/null 2>&1; then
+            adduser --system --group --home /var/lib/ao-validator \
+                --no-create-home --shell /usr/sbin/nologin ao-validator
+        fi
+
+        # Ensure data directory ownership
+        chown ao-validator:ao-validator /var/lib/ao-validator
+        chmod 750 /var/lib/ao-validator
+
+        # Create placeholder config if none exists
+        if [ ! -f /etc/ao-validator/validator.toml ]; then
+            cat > /etc/ao-validator/validator.toml <<'EOF'
+# AO Validator configuration
+# See: https://assignonward.com/docs/validator
+
+# Ed25519 seed for validator identity (hex, 64 characters)
+# Generate with: head -c 32 /dev/urandom | xxd -p -c 64
+validator_seed = ""
+
+# SQLite database path for validation history
+db_path = "/var/lib/ao-validator/validator.db"
+
+# host = "127.0.0.1"
+# port = 4000
+# poll_interval = 60
+
+# Chains to monitor — add at least one:
+# [[chains]]
+# recorder_url = "https://recorder.example.com"
+# chain_id = "abcdef1234..."
+# label = "My Chain"
+
+# Optional webhook for alerts
+# webhook_url = "https://hooks.example.com/alert"
+EOF
+            chown ao-validator:ao-validator /etc/ao-validator/validator.toml
+            chmod 640 /etc/ao-validator/validator.toml
+        fi
+
+        systemctl daemon-reload
+        systemctl enable ao-validator.service
+        echo "AO Validator installed. Edit /etc/ao-validator/validator.toml then:"
+        echo "  sudo systemctl start ao-validator"
+        ;;
+esac
+
+exit 0

@@ -1,5 +1,7 @@
 /// Integration tests for the full chain flow:
 /// genesis → assignment → block construction → validation.
+use std::collections::HashMap;
+
 use num_bigint::BigInt;
 use num_traits::Zero;
 
@@ -201,7 +203,7 @@ fn test_full_chain_flow() {
 
     // Validate the assignment
     let validated = validate::validate_assignment(
-        &store, &meta, &auth, block_ts.raw(),
+        &store, &meta, &auth, block_ts.raw(), &HashMap::new(),
     ).unwrap();
 
     assert_eq!(validated.givers.len(), 1);
@@ -270,7 +272,7 @@ fn test_double_spend_rejected() {
         &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out,
         deadline, sign_ts1, sign_ts2,
     );
-    let va1 = validate::validate_assignment(&store, &meta, &auth1, block_ts.raw()).unwrap();
+    let va1 = validate::validate_assignment(&store, &meta, &auth1, block_ts.raw(), &HashMap::new()).unwrap();
     block::construct_block(&store, &meta, &blockmaker, vec![va1], block_ts.raw()).unwrap();
 
     // Second assignment: try to spend seq 1 again
@@ -284,7 +286,7 @@ fn test_double_spend_rejected() {
     );
 
     let updated_meta = store.load_chain_meta().unwrap().unwrap();
-    let result = validate::validate_assignment(&store, &updated_meta, &auth2, block_ts2.raw());
+    let result = validate::validate_assignment(&store, &updated_meta, &auth2, block_ts2.raw(), &HashMap::new());
     assert!(result.is_err());
     // Should be UtxoAlreadySpent
     let err_msg = format!("{}", result.unwrap_err());
@@ -315,7 +317,7 @@ fn test_key_reuse_rejected() {
         &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out,
         deadline, sign_ts1, sign_ts2,
     );
-    let va1 = validate::validate_assignment(&store, &meta, &auth1, block_ts.raw()).unwrap();
+    let va1 = validate::validate_assignment(&store, &meta, &auth1, block_ts.raw(), &HashMap::new()).unwrap();
     block::construct_block(&store, &meta, &blockmaker, vec![va1], block_ts.raw()).unwrap();
 
     // Try to use the same receiver key again (self-assign from seq 2 to same key)
@@ -332,7 +334,7 @@ fn test_key_reuse_rejected() {
         deadline, sign_ts3, sign_ts4,
     );
 
-    let result = validate::validate_assignment(&store, &updated_meta, &auth2, block_ts2.raw());
+    let result = validate::validate_assignment(&store, &updated_meta, &auth2, block_ts2.raw(), &HashMap::new());
     assert!(result.is_err());
     let err_msg = format!("{}", result.unwrap_err());
     assert!(err_msg.contains("key already used"), "Expected 'key already used', got: {}", err_msg);
@@ -365,7 +367,7 @@ fn test_expired_utxo_rejected() {
         deadline, sign_ts1, sign_ts2,
     );
 
-    let result = validate::validate_assignment(&store, &meta, &auth, far_future_ts);
+    let result = validate::validate_assignment(&store, &meta, &auth, far_future_ts, &HashMap::new());
     assert!(result.is_err());
     let err_msg = format!("{}", result.unwrap_err());
     assert!(err_msg.contains("expired"), "Expected 'expired', got: {}", err_msg);
@@ -398,7 +400,7 @@ fn test_expiration_sweep_in_block() {
         &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out,
         deadline, sign_ts1, sign_ts2,
     );
-    let va1 = validate::validate_assignment(&store, &meta, &auth1, block1_ts.raw()).unwrap();
+    let va1 = validate::validate_assignment(&store, &meta, &auth1, block1_ts.raw(), &HashMap::new()).unwrap();
     block::construct_block(&store, &meta, &blockmaker, vec![va1], block1_ts.raw()).unwrap();
 
     let meta_after_1 = store.load_chain_meta().unwrap().unwrap();
@@ -423,7 +425,7 @@ fn test_expiration_sweep_in_block() {
         &meta_after_1.fee_rate_num, &meta_after_1.fee_rate_den, &meta_after_1.shares_out,
         deadline2, sign_ts3, sign_ts4,
     );
-    let va2 = validate::validate_assignment(&store, &meta_after_1, &auth2, block2_ts.raw()).unwrap();
+    let va2 = validate::validate_assignment(&store, &meta_after_1, &auth2, block2_ts.raw(), &HashMap::new()).unwrap();
     let block2 = block::construct_block(&store, &meta_after_1, &blockmaker, vec![va2], block2_ts.raw()).unwrap();
 
     // Verify chain progressed
@@ -463,7 +465,7 @@ fn test_timestamp_ordering_giver() {
         deadline, bad_giver_ts, recv_ts,
     );
 
-    let result = validate::validate_assignment(&store, &meta, &auth, block_ts.raw());
+    let result = validate::validate_assignment(&store, &meta, &auth, block_ts.raw(), &HashMap::new());
     assert!(result.is_err());
     let err_msg = format!("{}", result.unwrap_err());
     assert!(err_msg.contains("timestamp"), "Expected timestamp error, got: {}", err_msg);
@@ -568,7 +570,7 @@ fn test_multi_receiver_assignment() {
     ]);
 
     let block_ts = Timestamp::from_raw(genesis_ts.raw() + 5_000_000);
-    let va = validate::validate_assignment(&store, &meta, &auth, block_ts.raw()).unwrap();
+    let va = validate::validate_assignment(&store, &meta, &auth, block_ts.raw(), &HashMap::new()).unwrap();
     assert_eq!(va.givers.len(), 1);
     assert_eq!(va.receivers.len(), 2);
 
@@ -644,7 +646,7 @@ fn test_missing_utxo_returns_error() {
         deadline, sign_ts1, sign_ts2,
     );
 
-    let result = validate::validate_assignment(&store, &meta, &auth, block_ts.raw());
+    let result = validate::validate_assignment(&store, &meta, &auth, block_ts.raw(), &HashMap::new());
     assert!(result.is_err(), "Missing UTXO must return an error, not panic");
     let err_msg = format!("{}", result.unwrap_err());
     assert!(err_msg.contains("not found"), "Expected 'not found', got: {}", err_msg);
@@ -714,7 +716,7 @@ fn test_late_recording_allowed() {
     // Validate at a time well past the deadline (1 day later)
     // but still within the expiry period (1 year)
     let late_ts = Timestamp::from_unix_seconds(1_772_611_200 + 86400);
-    let result = validate::validate_assignment(&store, &meta, &auth, late_ts.raw());
+    let result = validate::validate_assignment(&store, &meta, &auth, late_ts.raw(), &HashMap::new());
     assert!(result.is_ok(), "Late recording should succeed: {:?}", result.err());
 
     // Actually record it
@@ -757,7 +759,7 @@ fn test_late_recording_rejected_after_refutation() {
 
     // Try to validate past deadline — should fail with AgreementRefuted
     let late_ts = Timestamp::from_unix_seconds(1_772_611_200 + 86400);
-    let result = validate::validate_assignment(&store, &meta, &auth, late_ts.raw());
+    let result = validate::validate_assignment(&store, &meta, &auth, late_ts.raw(), &HashMap::new());
     assert!(result.is_err());
     let err_msg = format!("{}", result.unwrap_err());
     assert!(err_msg.contains("refuted"), "Expected 'refuted', got: {}", err_msg);
@@ -797,7 +799,7 @@ fn test_before_deadline_not_affected_by_refutation() {
 
     // Validate BEFORE deadline — refutation should not matter
     let block_ts = Timestamp::from_raw(genesis_ts.raw() + 3_000_000);
-    let result = validate::validate_assignment(&store, &meta, &auth, block_ts.raw());
+    let result = validate::validate_assignment(&store, &meta, &auth, block_ts.raw(), &HashMap::new());
     assert!(result.is_ok(), "Before-deadline recording should succeed despite refutation: {:?}", result.err());
 
     let va = result.unwrap();

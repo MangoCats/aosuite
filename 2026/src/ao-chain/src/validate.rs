@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use num_bigint::BigInt;
 use num_traits::Zero;
 
@@ -6,6 +8,7 @@ use ao_types::typecode::*;
 use ao_types::bigint;
 use ao_types::timestamp::Timestamp;
 use ao_types::fees;
+use ao_types::vbc;
 use ao_crypto::sign;
 use ao_crypto::hash;
 
@@ -32,11 +35,16 @@ pub struct ValidatedAssignment {
 
 /// Validate a submitted AUTHORIZATION against current chain state.
 /// Returns a ValidatedAssignment if everything checks out.
+///
+/// `blob_sizes` maps SHA-256 hex hash → blob file size in bytes (from BlobStore).
+/// Used to reconstruct the pre-substitution byte count for fee validation.
+/// Pass an empty map if no blobs are involved.
 pub fn validate_assignment(
     store: &ChainStore,
     meta: &ChainMeta,
     authorization: &DataItem,
     current_timestamp: i64,
+    blob_sizes: &HashMap<String, u64>,
 ) -> Result<ValidatedAssignment> {
     if authorization.type_code != AUTHORIZATION {
         return Err(ChainError::InvalidAssignment(
@@ -52,7 +60,7 @@ pub fn validate_assignment(
 
     validate_utxos(store, meta, &givers, &receivers, current_timestamp)?;
 
-    let (fee_shares, page_bytes) = calculate_fee(authorization, meta)?;
+    let (fee_shares, page_bytes) = calculate_fee(authorization, meta, blob_sizes)?;
 
     validate_balance(assignment, meta, &givers, &receivers, &fee_shares)?;
 
@@ -177,19 +185,74 @@ fn validate_utxos(
 }
 
 /// Calculate recording fee from PAGE encoding size.
-fn calculate_fee(authorization: &DataItem, meta: &ChainMeta) -> Result<(BigInt, u64)> {
+///
+/// For pre-substitution fee validation: the submitted assignment contains SHA256
+/// items where DATA_BLOB children were before substitution. For each SHA256 child
+/// in the assignment whose hash matches a known blob, we reconstruct the original
+/// DATA_BLOB item size and compute the fee on that larger (pre-substitution) size.
+fn calculate_fee(
+    authorization: &DataItem,
+    meta: &ChainMeta,
+    blob_sizes: &HashMap<String, u64>,
+) -> Result<(BigInt, u64)> {
     let page_item = DataItem::container(PAGE, vec![
         DataItem::vbc_value(PAGE_INDEX, 0),
         authorization.clone(),
     ]);
-    let page_bytes = page_item.to_bytes().len() as u64;
+    let post_sub_bytes = page_item.to_bytes().len() as u64;
+
+    // Reconstruct pre-substitution size by finding SHA256 items that match
+    // known blob hashes and computing the size difference.
+    let assignment = authorization.find_child(ASSIGNMENT)
+        .ok_or_else(|| ChainError::InvalidAssignment("missing ASSIGNMENT for fee calc".into()))?;
+    let blob_delta = compute_blob_size_delta(assignment, blob_sizes);
+    let pre_sub_bytes = post_sub_bytes + blob_delta;
+
     let fee_shares = fees::recording_fee(
-        page_bytes,
+        pre_sub_bytes,
         &meta.fee_rate_num,
         &meta.fee_rate_den,
         &meta.shares_out,
     );
-    Ok((fee_shares, page_bytes))
+    Ok((fee_shares, pre_sub_bytes))
+}
+
+/// Walk the ASSIGNMENT's direct children looking for SHA256 items whose hash matches
+/// a stored blob. Returns the total byte delta: sum(data_blob_encoded_size -
+/// sha256_item_size) for all matching blobs.
+///
+/// Only checks direct children of the ASSIGNMENT, not nested items. This is correct
+/// because DATA_BLOB items are always top-level children of the ASSIGNMENT (they are
+/// added as `separableItems` in `buildAssignment()`).
+fn compute_blob_size_delta(assignment: &DataItem, blob_sizes: &HashMap<String, u64>) -> u64 {
+    if blob_sizes.is_empty() {
+        return 0;
+    }
+    let children = match &assignment.value {
+        ao_types::dataitem::DataValue::Container(children) => children,
+        _ => return 0,
+    };
+
+    let mut delta: u64 = 0;
+    for child in children {
+        if child.type_code == SHA256
+            && let Some(hash_bytes) = child.as_bytes()
+            && hash_bytes.len() == 32
+        {
+            let hash_hex = hex::encode(hash_bytes);
+            if let Some(&blob_file_size) = blob_sizes.get(&hash_hex) {
+                // SHA256 item: type_code VBC + 32 bytes fixed data
+                let sha256_tc_len = vbc::encoded_signed_len(SHA256) as u64;
+                let sha256_item_size = sha256_tc_len + 32;
+                // DATA_BLOB item: type_code VBC + size VBC + payload
+                let blob_tc_len = vbc::encoded_signed_len(DATA_BLOB) as u64;
+                let size_vbc_len = vbc::encoded_unsigned_len(blob_file_size) as u64;
+                let data_blob_item_size = blob_tc_len + size_vbc_len + blob_file_size;
+                delta += data_blob_item_size - sha256_item_size;
+            }
+        }
+    }
+    delta
 }
 
 /// Validate recording bid and balance equation (givers = receivers + fee).
@@ -315,4 +378,85 @@ fn parse_amount(participant: &DataItem) -> Result<BigInt> {
         return Err(ChainError::InvalidAssignment("amount must be positive".into()));
     }
     Ok(amount)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_blob_size_delta_empty_map() {
+        // No blobs → delta is 0
+        let assignment = DataItem::container(ASSIGNMENT, vec![
+            DataItem::vbc_value(LIST_SIZE, 1),
+        ]);
+        let sizes = HashMap::new();
+        assert_eq!(compute_blob_size_delta(&assignment, &sizes), 0);
+    }
+
+    #[test]
+    fn test_blob_size_delta_with_matching_blob() {
+        // SHA256 child whose hash matches a blob in the map
+        let fake_hash = vec![0xAA_u8; 32];
+        let hash_hex = hex::encode(&fake_hash);
+
+        let assignment = DataItem::container(ASSIGNMENT, vec![
+            DataItem::vbc_value(LIST_SIZE, 1),
+            DataItem::bytes(SHA256, fake_hash),
+        ]);
+
+        let blob_file_size: u64 = 2048; // 2KB blob
+        let mut sizes = HashMap::new();
+        sizes.insert(hash_hex, blob_file_size);
+
+        let delta = compute_blob_size_delta(&assignment, &sizes);
+
+        // SHA256 item: signed VBC len for SHA256(18) + 32 fixed = 33 bytes
+        let sha256_size = vbc::encoded_signed_len(SHA256) as u64 + 32;
+        // DATA_BLOB item: signed VBC len for DATA_BLOB(33) + unsigned VBC len for 2048 + 2048
+        let blob_size = vbc::encoded_signed_len(DATA_BLOB) as u64
+            + vbc::encoded_unsigned_len(blob_file_size) as u64
+            + blob_file_size;
+        let expected_delta = blob_size - sha256_size;
+        assert_eq!(delta, expected_delta);
+    }
+
+    #[test]
+    fn test_blob_size_delta_no_match() {
+        // SHA256 child whose hash does NOT match any blob
+        let fake_hash = vec![0xBB_u8; 32];
+        let assignment = DataItem::container(ASSIGNMENT, vec![
+            DataItem::bytes(SHA256, fake_hash),
+        ]);
+
+        let mut sizes = HashMap::new();
+        sizes.insert("cc".repeat(32), 1000);
+
+        assert_eq!(compute_blob_size_delta(&assignment, &sizes), 0);
+    }
+
+    #[test]
+    fn test_blob_size_delta_multiple_blobs() {
+        let hash1 = vec![0x01_u8; 32];
+        let hash2 = vec![0x02_u8; 32];
+
+        let assignment = DataItem::container(ASSIGNMENT, vec![
+            DataItem::vbc_value(LIST_SIZE, 1),
+            DataItem::bytes(SHA256, hash1.clone()),
+            DataItem::bytes(SHA256, hash2.clone()),
+        ]);
+
+        let mut sizes = HashMap::new();
+        sizes.insert(hex::encode(&hash1), 500);
+        sizes.insert(hex::encode(&hash2), 1500);
+
+        let delta = compute_blob_size_delta(&assignment, &sizes);
+
+        let sha256_size = vbc::encoded_signed_len(SHA256) as u64 + 32;
+        let blob1_size = vbc::encoded_signed_len(DATA_BLOB) as u64
+            + vbc::encoded_unsigned_len(500) as u64 + 500;
+        let blob2_size = vbc::encoded_signed_len(DATA_BLOB) as u64
+            + vbc::encoded_unsigned_len(1500) as u64 + 1500;
+        assert_eq!(delta, (blob1_size - sha256_size) + (blob2_size - sha256_size));
+    }
 }

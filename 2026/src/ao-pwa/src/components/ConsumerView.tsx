@@ -6,7 +6,9 @@ import { signingKeyFromSeed, generateSigningKey } from '../core/sign.ts';
 import type { SigningKey } from '../core/sign.ts';
 import { buildAuthorizationJson, buildAssignment } from '../core/assignment.ts';
 import { recordingFee } from '../core/fees.ts';
-import { toBytes } from '../core/dataitem.ts';
+import { toBytes, bytesItem } from '../core/dataitem.ts';
+import type { DataItem } from '../core/dataitem.ts';
+import { DATA_BLOB } from '../core/typecodes.ts';
 import { bytesToHex, hexToBytes } from '../core/hex.ts';
 import type { Giver, Receiver, FeeRate } from '../core/assignment.ts';
 import * as offlineQueue from '../core/offlineQueue.ts';
@@ -311,10 +313,19 @@ export function ConsumerView() {
         });
       }
 
-      // Iterative fee convergence (3 rounds)
+      // Build DATA_BLOB DataItems from attachments for on-chain linking.
+      // These are included in the assignment for pre-substitution fee calculation,
+      // then replaced with SHA256 hashes before signing.
+      const blobItems: DataItem[] = attachments.map(a =>
+        bytesItem(DATA_BLOB, a.payload),
+      );
+      const separableItems = blobItems.length > 0 ? blobItems : undefined;
+
+      // Iterative fee convergence (3 rounds).
+      // Fee is computed on pre-substitution size (includes full blob payloads).
       let fee = 0n;
       for (let i = 0; i < 3; i++) {
-        const assignment = buildAssignment(givers, receivers, feeRate);
+        const assignment = buildAssignment(givers, receivers, feeRate, separableItems);
         const pageBytes = BigInt(toBytes(assignment).length + 200);
         fee = recordingFee(pageBytes, feeRate.num, feeRate.den, sharesOut);
 
@@ -355,12 +366,17 @@ export function ConsumerView() {
 
     try {
       const client = new RecorderClient(recorderUrl);
-      const authJson = await buildAuthorizationJson(givers, receivers, feeRate);
 
-      // Upload attached blobs to recorder.
-      // TODO: Reference blob hashes in the assignment DataItem once buildAssignment
-      // supports DATA_BLOB children. For now, blobs are uploaded alongside but not
-      // linked on-chain.
+      // Build DATA_BLOB items for on-chain linking (same as in handleBuild).
+      const blobItems: DataItem[] = attachments.map(a =>
+        bytesItem(DATA_BLOB, a.payload),
+      );
+      const separableItems = blobItems.length > 0 ? blobItems : undefined;
+
+      const authJson = await buildAuthorizationJson(givers, receivers, feeRate, separableItems);
+
+      // Upload blobs to recorder before submitting the assignment.
+      // Blobs must be present on the recorder so it can validate pre-sub fees.
       if (attachments.length > 0) {
         setStatus('Uploading attachments...');
         try {

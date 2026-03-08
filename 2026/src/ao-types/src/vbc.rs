@@ -43,6 +43,21 @@ pub fn encode_unsigned(value: u64, out: &mut Vec<u8>) -> usize {
     out.len() - start
 }
 
+/// Compute the number of bytes needed to encode an unsigned value as VBC,
+/// without allocating.
+pub fn encoded_unsigned_len(value: u64) -> usize {
+    if value == 0 {
+        return 1;
+    }
+    let mut v = value;
+    let mut len = 0;
+    while v > 0 {
+        len += 1;
+        v >>= 7;
+    }
+    len
+}
+
 /// Decode an unsigned VBC value from `data` starting at `pos`.
 /// Returns `(value, bytes_consumed)`.
 pub fn decode_unsigned(data: &[u8], pos: usize) -> Result<(u64, usize), VbcError> {
@@ -87,6 +102,18 @@ pub fn encode_signed(value: i64, out: &mut Vec<u8>) -> usize {
         (mag << 1) | 1
     };
     encode_unsigned(wire, out)
+}
+
+/// Compute the number of bytes needed to encode a signed value as VBC,
+/// without allocating.
+pub fn encoded_signed_len(value: i64) -> usize {
+    let wire: u64 = if value >= 0 {
+        (value as u64) << 1
+    } else {
+        let mag = (value as i128).unsigned_abs() as u64;
+        (mag << 1) | 1
+    };
+    encoded_unsigned_len(wire)
 }
 
 /// Decode a signed VBC value from `data` starting at `pos`.
@@ -222,6 +249,21 @@ mod tests {
             let (decoded, consumed) = decode_unsigned(&expected_bytes, 0).unwrap();
             assert_eq!(decoded, value);
             assert_eq!(consumed, expected_bytes.len());
+        }
+    }
+
+    #[test]
+    fn test_encoded_unsigned_len() {
+        // Must match the actual encode_unsigned output length
+        let test_values: &[u64] = &[0, 1, 63, 64, 127, 128, 255, 256, 1000, 16383, 16384, 2048, 5_242_880];
+        for &v in test_values {
+            let mut buf = Vec::new();
+            let written = encode_unsigned(v, &mut buf);
+            assert_eq!(
+                encoded_unsigned_len(v), written,
+                "encoded_unsigned_len({}) = {}, expected {}",
+                v, encoded_unsigned_len(v), written,
+            );
         }
     }
 

@@ -729,6 +729,10 @@ async fn submit_assignment(
 
     let chain = state.get_chain_or_err(&chain_id_hex)?;
 
+    // Collect blob sizes for pre-substitution fee validation.
+    // Walk the assignment's SHA256 children and look up matching blobs.
+    let blob_sizes = collect_blob_sizes(&state, &chain_id_hex, &authorization);
+
     // All SQLite work runs on the blocking pool
     let info = blocking(move || {
         let store = lock_store(&chain)?;
@@ -741,7 +745,7 @@ async fn submit_assignment(
         // same second need monotonically increasing timestamps.
         let current_ts = wall_ts.max(meta.last_block_timestamp + 1);
 
-        let validated = validate::validate_assignment(&store, &meta, &authorization, current_ts)
+        let validated = validate::validate_assignment(&store, &meta, &authorization, current_ts, &blob_sizes)
             .map_err(|e| RecorderError::BadRequest(e.to_string()))?;
 
         let constructed = block::construct_block(
@@ -769,6 +773,50 @@ async fn submit_assignment(
     }
 
     Ok(Json(info))
+}
+
+/// Collect blob sizes for pre-substitution fee validation.
+///
+/// Walks the assignment inside the authorization, finds SHA256 children,
+/// and checks if any correspond to uploaded blobs. Returns a map of
+/// hash_hex → blob_file_size for blobs that exist on the recorder.
+fn collect_blob_sizes(
+    state: &AppState,
+    chain_id: &str,
+    authorization: &ao_types::dataitem::DataItem,
+) -> std::collections::HashMap<String, u64> {
+    use ao_types::typecode::{ASSIGNMENT, SHA256};
+    use ao_types::dataitem::DataValue;
+
+    let mut sizes = std::collections::HashMap::new();
+    let blob_store = match &state.blob_store {
+        Some(bs) => bs,
+        None => return sizes,
+    };
+
+    let assignment = match authorization.find_child(ASSIGNMENT) {
+        Some(a) => a,
+        None => return sizes,
+    };
+
+    let children = match &assignment.value {
+        DataValue::Container(c) => c,
+        _ => return sizes,
+    };
+
+    for child in children {
+        if child.type_code == SHA256
+            && let Some(hash_bytes) = child.as_bytes()
+            && hash_bytes.len() == 32
+        {
+            let hash_hex = hex::encode(hash_bytes);
+            if let Ok(Some(size)) = blob_store.get_size_for_chain(&hash_hex, chain_id) {
+                sizes.insert(hash_hex, size);
+            }
+        }
+    }
+
+    sizes
 }
 
 /// GET /chain/{id}/events — Server-Sent Events stream of block notifications.

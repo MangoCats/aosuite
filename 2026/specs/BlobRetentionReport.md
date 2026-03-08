@@ -316,8 +316,9 @@ the fee reflects the true cost of what the recorder accepted and must store.
 When the recorder receives a block submission with blob references:
 1. For each DATA_BLOB hash in the post-substitution assignment, look up the blob's
    size from `blob_meta` (it was uploaded moments before).
-2. Compute `expected_pre_sub_bytes = post_sub_bytes - (N × 34) + sum(blob_sizes + overhead)`.
-   (Each substitution replaced a variable-size blob with a 34-byte hash item.)
+2. Compute `expected_pre_sub_bytes = post_sub_bytes - (N × 33) + sum(blob_sizes + overhead)`.
+   (Each substitution replaced a variable-size blob with a 33-byte hash item:
+   1 byte signed VBC type code for SHA256 + 32 bytes fixed hash data.)
 3. Verify: `actual_fee >= ceil(expected_pre_sub_bytes × FEE_RATE / SHARES_OUT)`.
 4. Reject if underpaid.
 

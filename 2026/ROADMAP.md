@@ -663,18 +663,9 @@ Vendor profiles persist in per-chain SQLite via `vendor_profile` table. API hand
 
 **Implementation:** [store.rs](src/ao-chain/src/store.rs) (`vendor_profile` table, get/set methods), [lib.rs](src/ao-recorder/src/lib.rs) (SQLite-backed handlers, `set_vendor_profile_cache`), [main.rs](src/ao-recorder/src/main.rs) (startup profile loading), [assignment.ts](src/ao-pwa/src/core/assignment.ts) (`buildVendorProfile`, separable items parameter).
 
-### N17: On-Chain Blob Linking + Pre-Substitution Fees — *Coop + Tourism*
+### N17: On-Chain Blob Linking + Pre-Substitution Fees — *Coop + Tourism* ✓ Done
 
-Close the gap between blob uploads and on-chain proof. Compute recording fees against pre-substitution assignment size so blob storage costs are covered by the existing fee mechanism. Design: [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md) §2.4 and §5.5.
-
-**Deliverables:**
-- Extend `buildAssignment()` (TypeScript + Rust) to accept `DATA_BLOB` children.
-- Fee calculation on pre-substitution byte count: `ceil(full_size × FEE_RATE_num × SHARES_OUT / FEE_RATE_den)`. Then `substituteSeparable()` replaces blobs with hashes. Existing `FEE_RATE` scales naturally — no new genesis parameters.
-- Update `ConsumerView.tsx` to wire attachments into assignment building (resolves TODO at line 283).
-- Recorder-side fee validation: reconstruct expected pre-substitution size from post-substitution assignment + blob metadata, reject underpaid assignments.
-- Round-trip tests: build with blobs, verify fee, sign, verify hash, verify recorder accepts.
-
-**Depends on:** N8 (blob infrastructure).
+Blobs are now linked on-chain as DATA_BLOB separable children in assignments. Recording fees computed on pre-substitution size (full blob payloads). Recorder reconstructs pre-sub size from SHA256 hashes + stored blob sizes for fee validation. Chain-isolated blob size lookups prevent cross-chain fee manipulation. 6 TS + 5 Rust tests added. `vbc::encoded_unsigned_len` + `encoded_signed_len` helpers added. Spec §5.5 hash item size corrected (34→33 bytes).
 
 ---
 

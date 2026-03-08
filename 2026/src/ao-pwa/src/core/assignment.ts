@@ -9,6 +9,7 @@ import * as tc from './typecodes.ts';
 import { encodeBigint, encodeRational, type Rational } from './bigint.ts';
 import { fromUnixSeconds, timestampToBytes, nowUnixSeconds } from './timestamp.ts';
 import { signDataItem, type SigningKey } from './sign.ts';
+import { substituteSeparable } from './separable.ts';
 
 export interface Giver {
   seqId: bigint;
@@ -89,22 +90,31 @@ export function buildAssignment(
 }
 
 /** Build a complete AUTHORIZATION DataItem with all signatures.
- *  Each participant signs the assignment with incrementing timestamps. */
+ *  Each participant signs the assignment with incrementing timestamps.
+ *  If separableItems are present, they are included in the assignment for
+ *  fee calculation, then substituteSeparable() replaces them with SHA256
+ *  hashes before signing (pre-substitution fee, post-substitution signature). */
 export async function buildAuthorization(
   givers: Giver[],
   receivers: Receiver[],
   feeRate: FeeRate,
+  separableItems?: DataItem[],
 ): Promise<DataItem> {
-  const assignment = buildAssignment(givers, receivers, feeRate);
+  const assignment = buildAssignment(givers, receivers, feeRate, separableItems);
+
+  // Apply separable substitution: blobs → SHA256 hashes.
+  // Signatures are computed over the post-substitution assignment.
+  const signableAssignment = substituteSeparable(assignment);
+
   const baseUnixSecs = nowUnixSeconds();
   const participantCount = givers.length + receivers.length;
 
-  const authChildren: DataItem[] = [assignment];
+  const authChildren: DataItem[] = [signableAssignment];
 
   // Giver signatures
   for (let i = 0; i < givers.length; i++) {
     const ts = fromUnixSeconds(baseUnixSecs + 1n + BigInt(i));
-    const sig = await signDataItem(givers[i].key, assignment, ts);
+    const sig = await signDataItem(givers[i].key, signableAssignment, ts);
     authChildren.push(containerItem(tc.AUTH_SIG, [
       bytesItem(tc.ED25519_SIG, sig),
       bytesItem(tc.TIMESTAMP, timestampToBytes(ts)),
@@ -119,7 +129,7 @@ export async function buildAuthorization(
     const ts = fromUnixSeconds(
       baseUnixSecs + 1n + BigInt(participantCount) + BigInt(j),
     );
-    const sig = await signDataItem(receivers[j].key, assignment, ts);
+    const sig = await signDataItem(receivers[j].key, signableAssignment, ts);
     authChildren.push(containerItem(tc.AUTH_SIG, [
       bytesItem(tc.ED25519_SIG, sig),
       bytesItem(tc.TIMESTAMP, timestampToBytes(ts)),
@@ -135,7 +145,8 @@ export async function buildAuthorizationJson(
   givers: Giver[],
   receivers: Receiver[],
   feeRate: FeeRate,
+  separableItems?: DataItem[],
 ): Promise<DataItemJson> {
-  const auth = await buildAuthorization(givers, receivers, feeRate);
+  const auth = await buildAuthorization(givers, receivers, feeRate, separableItems);
   return toJson(auth);
 }

@@ -222,6 +222,29 @@ impl BlobStore {
         self.dir.join(hash_hex).exists()
     }
 
+    /// Return the size of a blob in bytes, enforcing chain isolation.
+    /// Only returns a size if the blob is owned by the specified chain.
+    pub fn get_size_for_chain(&self, hash_hex: &str, chain_id: &str) -> Result<Option<u64>, BlobError> {
+        if validate_hash_hex(hash_hex).is_err() {
+            return Ok(None);
+        }
+        // Enforce chain isolation: only the owning chain can reference the blob.
+        {
+            let owners = self.blob_owners.lock().expect("blob_owners lock");
+            if let Some(owner) = owners.get(hash_hex)
+                && owner != chain_id
+            {
+                return Ok(None);
+            }
+        }
+        let path = self.dir.join(hash_hex);
+        match std::fs::metadata(&path) {
+            Ok(meta) => Ok(Some(meta.len())),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(BlobError::IoError(e)),
+        }
+    }
+
     /// Return current storage usage for a chain in bytes.
     pub fn chain_usage(&self, chain_id: &str) -> u64 {
         self.chain_usage.lock().expect("chain_usage lock")

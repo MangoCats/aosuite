@@ -675,15 +675,9 @@ Blobs are now linked on-chain as DATA_BLOB separable children in assignments. Re
 
 Web Audio API chime on VendorView SSE payment events. Three sound styles (bell, cash register, ding), volume slider, quiet hours (overnight time window), quick-mute with duration picker (15min/1hr/until quiet-hours-end). Settings persisted in localStorage. Notification ref pattern avoids SSE reconnection on settings change. Web Push deferred.
 
-### N19: Printable QR Signage — *Tourism*
+### N19: Printable QR Signage — *Tourism* ✓ Done
 
-Print-optimized QR for physical vendor signage. Output as PDF and PNG.
-
-**Deliverables:**
-- "Print QR" button in VendorView / ChainDetail.
-- Print layout: high-DPI QR (SVG for scalability), chain symbol in large text, business name, "Scan to pay" label.
-- Output options: browser print dialog (CSS `@media print`), download as PDF (via browser print-to-PDF or `jspdf`), download as PNG (canvas export).
-- Size guidance: minimum 3×3 cm for arm's-length scanning, 6×6 cm for countertop.
+Collapsible "Print QR Signage" section in VendorView. SVG QR code preview with chain symbol, business name (from vendor profile), and "Scan to pay" label. Print/PDF via browser print dialog (opens in new window, auto-closes after print). PNG download at 4x scale (1600px). Size guidance displayed. Filename sanitized.
 
 ### N20: Sales Reporting — *Tourism + Coop*
 

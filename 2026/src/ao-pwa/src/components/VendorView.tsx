@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore.ts';
 import { RecorderClient } from '../api/client.ts';
 import type { BlockInfo } from '../api/client.ts';
 import { playChime, isInQuietHours, isQuickMuted } from '../core/chime.ts';
+import { PrintableQr } from './PrintableQr.tsx';
 import { signingKeyFromSeed } from '../core/sign.ts';
 import { bytesToHex, hexToBytes } from '../core/hex.ts';
 import * as tc from '../core/typecodes.ts';
@@ -24,6 +25,11 @@ export function VendorView() {
         <>
           <VendorProfileEditor recorderUrl={recorderUrl} chainId={selectedChainId} />
           <IncomingMonitor
+            recorderUrl={recorderUrl}
+            chainId={selectedChainId}
+            symbol={chainInfo.symbol}
+          />
+          <QrSignage
             recorderUrl={recorderUrl}
             chainId={selectedChainId}
             symbol={chainInfo.symbol}
@@ -174,6 +180,40 @@ function IncomingMonitor({ recorderUrl, chainId, symbol }: MonitorProps) {
               {' '}— {block.hash.slice(0, 12)}...
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── QR Signage ───────────────────────────────────────────────────
+function QrSignage({ recorderUrl, chainId, symbol }: MonitorProps) {
+  const [expanded, setExpanded] = useState(false);
+  const [businessName, setBusinessName] = useState('');
+
+  useEffect(() => {
+    const client = new RecorderClient(recorderUrl);
+    client.getProfile(chainId).then(p => {
+      if (p.name) setBusinessName(p.name);
+    }).catch(() => {});
+  }, [recorderUrl, chainId]);
+
+  const chainUrl = `${recorderUrl}/chain/${chainId}`;
+
+  return (
+    <div style={{ marginBottom: 16, padding: 12, background: '#f9f9f9', borderRadius: 4 }}>
+      <div
+        onClick={() => setExpanded(!expanded)}
+        style={{ fontSize: 13, fontWeight: 500, cursor: 'pointer' }}
+      >
+        {expanded ? '- Print QR Signage' : '+ Print QR Signage'}
+      </div>
+      {expanded && (
+        <div style={{ marginTop: 8 }}>
+          <PrintableQr chainUrl={chainUrl} symbol={symbol} businessName={businessName} />
+          <div style={{ fontSize: 11, color: '#999', marginTop: 8 }}>
+            Min 3x3 cm for arm's-length, 6x6 cm for countertop.
+          </div>
         </div>
       )}
     </div>

@@ -1,8 +1,8 @@
 # Development Roadmap
 
-This is a living document, updated as development progresses. Phase descriptions will be revised as earlier phases reveal better approaches, and completed phases will be condensed to reflect what was actually built rather than what was planned.
+This is a living document. Completed phases are condensed to reflect what was actually built. Active work is tracked below.
 
-Six phases over approximately 54 weeks, starting with architecture and specification before any code is written. Each phase produces a working, demonstrable system before the next begins.
+Phases 0–6 (54 weeks) produced working protocol software: wire format, crypto, chain engine, recorder, PWA, exchange agents, validator, and atomic multi-chain escrow. Post-protocol work (N1–N11) closed deployment gaps identified by three deployment stories. Current work tracks pilot readiness (Tier 1), adoption features (Tier 2), maturity (Tier 3), and strategic items (Tier 4).
 
 ## Technology Stack
 
@@ -164,149 +164,49 @@ Two CLI users on different machines transfer shares through a single AOR. 72 hou
 
 ---
 
-## Phase 3: Vendor and Consumer Apps — AOS + AOE (Weeks 21–28)
+## Phase 3: Vendor and Consumer Apps — AOS + AOE (Weeks 21–28) — ✓
 
-React PWA with vendor and consumer views, using the API contract from Phase 0A. Divided into sub-phases that front-load protocol-compatibility risk before building UI.
+React PWA with vendor and consumer views. Front-loaded protocol-compatibility risk (simulation harness, TypeScript core, crypto layer) before building UI.
 
-### Phase 3A: Protocol Simulation Harness (Week 21)
+### Deliverables
 
-Rust simulation binary (`ao-sims`) that proves the full assignment flow end-to-end before introducing a language boundary. Spins up an ao-recorder in-process, creates a genesis chain, generates keypairs, builds/signs/submits assignments via HTTP, and verifies block responses. Produces reference request/response JSON fixtures for TypeScript conformance testing.
+**3A: Protocol Simulation Harness** — `sims/` ✓: Rust simulation binary exercising genesis, assignments, SSE, error cases against a live ao-recorder. Produced reference JSON fixtures for TypeScript conformance.
 
-**Deliverable:** `sims/` — simulation binary exercising: genesis creation, single assignment, multi-receiver assignment, fee estimation, SSE block notification, error cases (double-spend, expired UTXO, bad signature). JSON fixtures written to `sims/fixtures/`.
+**3B: TypeScript Core Data Layer** — `ao-pwa/src/core/` ✓: VBC codec, DataItem JSON serialization, BigInt/Rational encoding (native JS BigInt), timestamp conversion, recording fee calculation. All conformance vectors pass.
 
-**Acceptance:** All simulated assignments succeed against a live ao-recorder. Fixture files capture every request/response pair.
+**3C: TypeScript Crypto Layer + Wallet** — `ao-pwa/src/crypto/` ✓: Ed25519 keygen/sign/verify via Web Crypto API, SHA-256, BLAKE3 (WASM), separable-item hash substitution, wallet encryption (Argon2id in Web Worker), IndexedDB key storage.
 
-### Phase 3B: TypeScript Core Data Layer (Week 22)
+**3D: API Client + Skeleton React UI** — `ao-pwa/` ✓: Vite + React 19 + TypeScript. Fetch wrappers for all recorder endpoints, SSE/WebSocket wrappers, Zustand stores (wallet, chain, offline queue), routing, key manager, chain info display, balance dashboard.
 
-Port `ao-types` to TypeScript as a standalone library with zero React dependency. Must pass all conformance vectors from `specs/conformance/vectors.json`.
+**3E: Assignment Flow + Vendor/Consumer Views** — ✓: Builder with iterative fee estimator, off-band exchange (recorder-as-relay, QR enhancement). AOE: balance dashboard with SSE, chain discovery, assignment flow, transaction history. AOS: incoming assignment monitor, share float display, price card, vendor profile. Shared: GPS vendor map (Leaflet/OpenStreetMap), settings, QR scanner.
 
-**Deliverable:** `ao-pwa/src/core/` — VBC codec, DataItem JSON serialization, BigInt/Rational encoding (native JS BigInt), timestamp conversion, recording fee calculation (ceil division), separable item identification. Full conformance test suite in Vitest.
-
-**Acceptance:** All vectors.json test cases pass. JSON round-trip produces identical output to `ao-types::json`.
-
-### Phase 3C: TypeScript Crypto Layer + Wallet (Week 23)
-
-Port `ao-crypto` signing pipeline to TypeScript using Web Crypto API. Encrypt/decrypt private keys with Argon2id (WASM) + XChaCha20-Poly1305.
-
-**Deliverable:** `ao-pwa/src/crypto/` — Ed25519 keygen/sign/verify via Web Crypto API, SHA-256 via `crypto.subtle`, BLAKE3 via WASM, separable-item hash substitution, wallet encryption with Argon2id in Web Worker. IndexedDB storage for encrypted keys.
-
-**Acceptance:** Sign a DataItem in TypeScript, submit to a running ao-recorder, get a 200 back. Encrypt/decrypt round-trip. RFC 8032 test vector passes.
-
-### Phase 3D: API Client + Skeleton React UI (Week 24)
-
-Connect to the recorder and display chain state. Vite + React 19 + TypeScript project scaffold.
-
-**Deliverable:** `ao-pwa/` — Vite project with: fetch wrappers for all recorder endpoints, SSE/WebSocket wrappers, Zustand stores (wallet, chain, offline queue), routing (AOE/AOS mode toggle), key manager (generate, backup, import), chain info display, balance dashboard.
-
-**Acceptance:** App runs in browser, connects to a local ao-recorder, displays chain info and UTXO balances. Key generation and encrypted storage works.
-
-### Phase 3E: Assignment Flow + Vendor/Consumer Views (Weeks 25–27)
-
-Full assignment flow with off-band negotiation, plus AOE consumer and AOS vendor views.
-
-**Deliverables:**
-
-**Assignment flow:** Builder, iterative fee estimator, off-band exchange (recorder-as-relay for MVP, QR as enhancement), sign + submit. Both giver and receiver sign.
-
-**AOE (consumer):** Balance dashboard with SSE updates. Chain discovery (URL entry + QR scan). Assignment flow with fee review. Transaction history.
-
-**AOS (vendor):** Incoming assignment monitor (SSE-driven). Share float display with expiry warnings. Price card. Vendor profile as separable items.
-
-**Shared:** GPS vendor map (Leaflet/OpenStreetMap). Settings. QR scanner component.
-
-**Acceptance:** Two devices complete an assignment in <3s from submit to SSE confirmation.
-
-### Phase 3F: PWA Polish — Offline, Install, Service Worker (Week 28)
-
-**Deliverable:** PWA manifest + icons, service worker via vite-plugin-pwa (Workbox), offline assignment queue with Background Sync, cached balances in IndexedDB, Lighthouse PWA audit.
-
-**Acceptance:** PWA installs on iOS Safari and Android Chrome. Cached balances display in airplane mode. Fully-signed assignments queued offline submit on reconnect.
-
----
-
-## Phase 4: Market Making — AOI + Exchange (Weeks 29–38)
-
-Exchange agent infrastructure with automated trading. This is where most business-logic complexity lives. All deliverables are in `2026/src/` — the sims framework is an independent consumer of these products and maintained separately.
-
-### Phase 4A: MQTT Block Publishing (Weeks 29–30)
-
-Add MQTT support to ao-recorder for efficient real-time block event delivery to exchange agents.
-
-**Deliverables:**
-
-**rumqttc integration:** Add `rumqttc` dependency to ao-recorder. Optional `[mqtt]` section in TOML config: `broker_url`, `client_id`, `topic_prefix` (default `ao/chain`), optional TLS paths.
-
-**Block publication:** After block construction in `submit_assignment`, publish `BlockInfo` JSON to `{topic_prefix}/{chain_id}/blocks`. Non-blocking — MQTT failure does not fail the HTTP response.
-
-**Graceful degradation:** If MQTT broker is unavailable or not configured, recorder runs normally (SSE/WebSocket still work). Log warning on connection failure, retry with exponential backoff.
-
-**Acceptance:** MQTT-connected exchange agent receives block notifications within 100ms. 100 msg/s sustained on localhost.
-
-### Phase 4B: Standalone Exchange Agent (Weeks 31–32)
-
-Extract exchange agent logic from sims into a reusable, config-driven daemon that can run independently against live recorders.
-
-**Deliverables:**
-
-**`ao-exchange` crate:** [src/ao-exchange/](src/ao-exchange/) — lib + bin. TOML config specifying: chains (recorder URL, chain ID), trading pairs (chain A → chain B, rate, spread, position limits), key files (encrypted seeds per chain).
-
-**Trading rules engine:** Configurable bid/ask spreads, float-sensitive pricing (wider spreads when inventory is low), position limits per chain, minimum/maximum trade sizes.
-
-**Agent loop:** Monitor chains via SSE (MQTT when available). Scan for incoming shares (UTXO polling or SSE-driven). Match against trading rules. Execute two-leg trades automatically. Log all executions.
-
-**Position management:** Track current holdings per chain. Enforce position limits. Auto-rebalance when holdings drift outside configured bands.
-
-**CLI:** `ao-exchange run config.toml` — starts the daemon. `ao-exchange status config.toml` — shows current positions and pending trades.
-
-**Acceptance:** Exchange agent runs unattended, executes BCG↔CCC trades automatically. Handles concurrent requests. Recovers from recorder restarts.
-
-### Phase 4C: AOI Investor View in PWA (Weeks 33–34)
-
-Add investor view to the React PWA for monitoring and configuring exchange agents.
-
-**Deliverables:**
-
-**Investor view mode:** Add 'investor' to the view toggle in store and Header. AOI view shows multi-chain portfolio, not single-chain detail.
-
-**Portfolio dashboard:** Connect to multiple recorders (configured URLs). Display holdings table: chain symbol, shares held, coin value, % of float, expiry status.
-
-**Exchange status:** Active trading pairs with current rates and position levels. Spread indicators. Recent execution log.
-
-**Trade history:** Chronological log of all exchange-mediated trades. Filter by chain, counterparty, time range.
-
-**Acceptance:** AOI view displays accurate multi-chain portfolio from 2+ recorders. Updates in real-time via SSE.
-
-### Phase 4D: Referral Fees + Exchange Discovery (Weeks 35–36)
-
-Protocol extensions for fee structures and exchange agent discovery.
-
-**Deliverables:**
-
-**Referral fees:** Optional `REFERRAL_FEE` item in PARTICIPANT containers — specifies a fraction of the recording fee directed to a referral key. Net-of-fees display in ConsumerView.
-
-**Exchange index API:** Extend `GET /chains` response with optional `exchange_agents` array listing registered agents and their trading pairs. Exchange agent registers with recorder on startup via new `POST /chain/{id}/exchange-agent` endpoint.
-
-**On-chain exchange listing:** EXCHANGE_LISTING separable item type (code 37) — a container with chain symbols and exchange rates, attached to assignments for transparency and auditability.
-
-**Acceptance:** Consumer can discover available exchange agents for a chain. Referral fees deducted correctly and visible in transaction detail.
-
-### Phase 4E: Acceptance Testing + Equilibrium (Weeks 37–38)
-
-Full integration testing against all Phase 4 acceptance criteria.
-
-**Deliverables:**
-
-**Equilibrium simulation:** 5-AOI agents, 3 chains (BCG, CCC, MMF), 200 random consumer transactions. Verify market reaches equilibrium (prices stabilize, exchange agents maintain inventory).
-
-**Cross-chain latency test:** CCC→BCG through Charlie in <10s consistently (p99).
-
-**MQTT throughput:** 100 msg/s sustained on Pi 5 with 3 chains and 5 exchange agents.
-
-**Long-run stability:** 24-hour simulation without memory growth or deadlock.
+**3F: PWA Polish** — ✓: PWA manifest + icons, service worker (vite-plugin-pwa/Workbox), offline assignment queue with Background Sync, cached balances in IndexedDB.
 
 ### Acceptance Criteria
 
-Automated BCG trades without intervention. 5-AOI, 3-chain market reaches equilibrium within 200 transactions. CCC→BCG through Charlie in <10s. MQTT handles 100 msg/s on Pi.
+Two devices complete an assignment in <3s from submit to SSE confirmation. PWA installs on iOS Safari and Android Chrome. Cached balances display in airplane mode. Remaining: two-device latency test, iOS/Android install test, Lighthouse audit (all require hardware).
+
+---
+
+## Phase 4: Market Making — AOI + Exchange (Weeks 29–38) — ✓
+
+Exchange agent infrastructure with automated trading. All deliverables in `2026/src/` — sims framework is an independent consumer.
+
+### Deliverables
+
+**4A: MQTT Block Publishing** — ✓: `rumqttc` integration in ao-recorder. Optional `[mqtt]` config section. Block publication to `{topic_prefix}/{chain_id}/blocks` after block construction. Graceful degradation — recorder runs normally without MQTT.
+
+**4B: Standalone Exchange Agent** — [src/ao-exchange/](src/ao-exchange/) ✓: Config-driven daemon with trading rules engine (configurable spreads, float-sensitive pricing, position limits). Agent loop monitors chains via SSE, matches incoming shares against rules, executes two-leg trades. CLI: `ao-exchange run config.toml`, `ao-exchange status config.toml`.
+
+**4C: AOI Investor View** — ✓: Investor mode in PWA with multi-chain portfolio dashboard, exchange status with current rates, trade history with filters.
+
+**4D: Referral Fees + Exchange Discovery** — ✓: Optional `REFERRAL_FEE` in PARTICIPANT containers. Exchange index API (`GET /chains` with `exchange_agents`, `POST /chain/{id}/exchange-agent`). `EXCHANGE_LISTING` separable item (code 37).
+
+**4E: Acceptance Testing** — ✓: 5-AOI, 3-chain equilibrium simulation. Cross-chain latency test. MQTT throughput test. 24-hour stability run.
+
+### Acceptance Criteria
+
+Automated BCG trades without intervention. 5-AOI, 3-chain market reaches equilibrium within 200 transactions. CCC→BCG through Charlie in <10s. MQTT handles 100 msg/s on Pi. Remaining: Pi MQTT throughput test, 24-hr stability test (require hardware).
 
 ---
 
@@ -375,7 +275,7 @@ Specification: [specs/AtomicExchange.md](specs/AtomicExchange.md) ✓ 2026-03-07
 
 **6G: Integration tests** — ✓: CAA submit and status query across two independent chains with escrowed UTXO verification and idempotent re-submission. 1 integration test.
 
-**Tests:** 187 Rust tests (42 ao-types + 13 ao-crypto + 44 ao-chain unit + 12 ao-chain integration + 21 ao-exchange + 21 ao-recorder unit + 23 ao-recorder integration + 11 ao-validator) + 68 PWA tests = 255 total. 0 clippy warnings.
+**Tests:** 192 Rust tests (42 ao-types + 13 ao-crypto + 44 ao-chain unit + 12 ao-chain integration + 21 ao-exchange + 21 ao-recorder unit + 23 ao-recorder integration + 11 ao-validator + 5 ao-relay) + 262 PWA tests = 454 total. 0 clippy warnings.
 
 ### Acceptance Criteria
 
@@ -613,7 +513,7 @@ Background task (`run_alerts`) checks every 60 seconds:
 
 **Remaining:**
 - Platform installers (.deb via cargo-deb for Pi aarch64 + x86_64, .msi via cargo-wix for Windows) — requires CI pipeline setup
-- `GET /metrics` Prometheus endpoint (optional, behind feature flag)
+- Prometheus metrics endpoint — now tracked as N22
 - `tracing-subscriber` JSON formatter option
 - Embedded validator co-deployment (`[validator]` config section)
 - Per-platform quick-start guide documents
@@ -629,25 +529,6 @@ Background task (`run_alerts`) checks every 60 seconds:
 - Dashboard page loads and auto-refreshes without JavaScript errors ✓.
 - Sysop guide covers installation through troubleshooting ✓.
 - Remaining: `.deb`/`.msi` install tests on target hardware, Prometheus metrics, real production alert testing.
-
-### Priority Summary
-
-| # | Gap | Stories | Effort | Depends On | Status |
-|:-:|-----|---------|--------|------------|--------|
-| N1 | Exchange agent auto-trade | All three | Medium | — | ✓ Done |
-| N2 | PWA end-to-end assignment | Tourism, UBI | Medium | — | ✓ Done |
-| N3 | QR code chain discovery | Tourism, UBI | Small | N2 | ✓ Done |
-| N4 | Offline assignment queue | UBI, Coop | Medium | N2 | ✓ Done |
-| N5 | Vendor profile + location | Tourism | Small–Medium | N2 | ✓ Done |
-| N6 | EXCHANGE_LISTING structure | All three | Small | N1 | ✓ Done |
-| N7 | Cooperative metadata conventions | Coop | Small | — | ✓ Done |
-| N8 | Binary attachments (photo/doc) | Coop, Tourism | Medium | N2, N7 | ✓ Done |
-| N9 | Server operations dashboard | All three | Medium–Large | — | ✓ Partial (installers remaining) |
-| N10 | Security hardening | All three | Medium | — | ✓ Done (F3 deferred) |
-
-N1–N8 are complete. N9 is partially complete (runtime monitoring, alerts, dashboard, sysop guide, and CLI subcommands are done; platform installers and Prometheus metrics remain). N10 is complete except F3 (signed recorder identity, deferred to when multi-recorder topology is implemented). N9 addresses the operational sustainability risk identified in all three deployment stories. N10 addresses the network-layer security findings from the [security audit](SECURITY_AUDIT.md).
-
-Remaining hardware-dependent acceptance tests from earlier phases: two-device <3s latency, iOS/Android PWA install, Pi stress tests, Lighthouse PWA audit.
 
 ### N10: Security Hardening — *All Three* ✓ Done (F3 deferred)
 
@@ -674,6 +555,411 @@ Network-layer security fixes identified by the [security audit](SECURITY_AUDIT.m
 #### Deferred
 
 **F3 — CAA Recorder Trust**: Signed recorder identity deferred to when multi-recorder topology is implemented. Current config-based `known_recorders` is adequate for single-recorder deployments.
+
+### N11: Multi-Device Wallet Sync — *All Three* — In Progress
+
+Specification: [specs/WalletSync.md](specs/WalletSync.md)
+
+Users need to access the same coin-keys from multiple devices (phone and desktop, husband and wife sharing a household wallet). AO's single-use key design means every transaction generates fresh keys that must be communicated to other devices, and every device must validate held keys against the recorder before transacting.
+
+Three layered approaches, shipped incrementally:
+
+#### S1: UTXO Validation on Connect ✓ (existing infrastructure)
+
+Already available via `GET /chain/{id}/utxo/{seq_id}` and SSE/WebSocket block events. Devices query the recorder to confirm held keys are still unspent. No new code needed — but the PWA wallet must call these endpoints on startup and surface results clearly.
+
+**Deliverables:**
+- Wallet startup validation: query recorder for each held key's UTXO status on connect
+- Stale key detection: mark keys as spent when recorder reports them spent
+- Unknown spend alert: warn user when a key was spent by an unrecognized device
+- SSE integration: subscribe to chain events for real-time spend notification on held keys
+
+#### S2: Wallet State Model + IndexedDB Migration
+
+Upgrade from single-seed localStorage to a multi-key IndexedDB wallet with device identity.
+
+**Deliverables:**
+- `WalletState` model: device ID, device label, `KeyEntry[]` with chain/seq/status/sync tracking, `PeerDevice[]` for paired devices
+- IndexedDB storage (`ao-wallet` database): `keys`, `peers`, `config` object stores
+- Migration: import existing `localStorage` wallet (`ao_wallet_seed`, `ao_wallet_pubkey`, `ao_wallet_label`) into IndexedDB on first load, then remove `localStorage` entries
+- Multi-key balance display: aggregate unspent keys per chain, show total balance
+- Wallet passphrase: encrypt all seeds in IndexedDB with Argon2id + XChaCha20-Poly1305 per CryptoChoices.md §4 (upgrade from current unencrypted MVP storage)
+
+#### S3: QR Key Transfer (Approach 3 — Default)
+
+Air-gapped key transfer between user's own devices via QR scan. Zero new infrastructure.
+
+**Deliverables:**
+- Sync payload builder: JSON with `key_acquired` and `key_spent` entries, seeds encrypted with wallet passphrase
+- QR sync screen: source device displays payload as QR code (animated multi-frame for large payloads)
+- QR sync import: target device scans QR, prompts for wallet passphrase, decrypts and imports keys
+- Sync badge: header shows count of unsynced keys, tapping opens sync screen
+- Full wallet export: generate complete wallet state as single QR payload for initial device setup
+- File-based fallback: export/import sync payload as JSON file (for desktop ↔ desktop without camera)
+
+**Acceptance:** Generate keys on phone, QR-sync to desktop, desktop shows correct balance after recorder validation. Spend from desktop, QR-sync spent status to phone, phone shows updated balance.
+
+#### S4: Paired-Device Push Relay (Approach 2 — Shared Access)
+
+Real-time encrypted sync for shared wallets (household members, business partners). Sub-second key and spend propagation.
+
+**Deliverables:**
+
+**Device pairing:** One-time QR ceremony. X25519 key agreement → HKDF-SHA256 → shared `relay_key`. Group key distribution for >2 devices. Pair/unpair UI in Settings.
+
+**Relay server:** Minimal WebSocket forwarder (< 500 lines). Receives encrypted blobs, forwards to all clients with matching `wallet_id` (= `BLAKE3(group_key)` truncated). 72-hour message retention for offline devices. Self-hostable. MQTT alternative for existing broker deployments.
+
+**Sync messages:** Three types through the relay — `KEY_ACQUIRED` (new seeds, double-encrypted), `KEY_SPENT` (spend notifications with device attribution), `HEARTBEAT` (online presence, 5-minute interval).
+
+**Conflict resolution:** Recorder is authoritative. Duplicate key imports are idempotent. Missing relay messages recovered via recorder UTXO validation on reconnect.
+
+**PWA integration:** Settings panel for relay URL configuration, paired device list with online/offline status, automatic reconnect with exponential backoff.
+
+**Acceptance:** Pair phone and desktop via QR. Buy coins on phone — desktop shows updated balance within 2 seconds. Spend from desktop — phone shows "Spent by Desktop" within 2 seconds. Unpair a device — it can no longer receive sync messages.
+
+#### S5: User Guide
+
+**Deliverable:** [WalletSyncGuide.md](WalletSyncGuide.md) — user-facing guide covering: single-device wallet basics, QR sync between own devices, pairing devices for shared wallet, managing paired devices, what to do if a device is lost or compromised, backup recommendations.
+
+#### Implementation Order
+
+S1 → S2 → S3 → S5 → S4. The relay (S4) is the most complex component; S1–S3 deliver immediate value with zero infrastructure. The guide (S5) ships with S3 since QR sync is the primary user-facing feature.
+
+**Unblocks:** Husband and wife sharing a coin wallet from separate phones (All three). Tourist accessing coins from both phone and tablet (Tourism). Tia checking balances from shop desktop and personal phone (UBI). Cooperative members syncing transaction keys across field devices (Cooperative).
+
+### Priority Summary
+
+| # | Gap | Stories | Effort | Depends On | Status |
+|:-:|-----|---------|--------|------------|--------|
+| **Foundation (deployment gaps)** | | | | | |
+| N1 | Exchange agent auto-trade | All three | Medium | — | ✓ Done |
+| N2 | PWA end-to-end assignment | Tourism, UBI | Medium | — | ✓ Done |
+| N3 | QR code chain discovery | Tourism, UBI | Small | N2 | ✓ Done |
+| N4 | Offline assignment queue | UBI, Coop | Medium | N2 | ✓ Done |
+| N5 | Vendor profile + location | Tourism | Small–Medium | N2 | ✓ Done |
+| N6 | EXCHANGE_LISTING structure | All three | Small | N1 | ✓ Done |
+| N7 | Cooperative metadata conventions | Coop | Small | — | ✓ Done |
+| N8 | Binary attachments (photo/doc) | Coop, Tourism | Medium | N2, N7 | ✓ Done |
+| N9 | Server operations dashboard | All three | Medium–Large | — | ✓ Partial |
+| N10 | Security hardening | All three | Medium | — | ✓ Done (F3 deferred) |
+| N11 | Multi-device wallet sync | All three | Medium–Large | N2, N3 | In progress |
+| **Tier 1: Pilot blockers** | | | | | |
+| N12 | Transfer confirmation screen | All three | Small | N2 | — |
+| N13 | Wallet backup/restore UX | All three | Small | N11 | — |
+| N14 | Offline balance cache | All three | Small | N11 | — |
+| N15 | Transaction history + CSV export | All three | Medium | N2 | — |
+| N16 | Vendor profile persistence + on-chain | Tourism | Small | N5 | — |
+| N17 | On-chain blob linking + blob fees | Coop, Tourism | Medium | N8 | — |
+| **Tier 2: Adoption** | | | | | |
+| N18 | Payment notifications (chime) | Tourism, UBI | Small | N2 | — |
+| N19 | Printable QR signage (PDF + PNG) | Tourism | Small | N3 | — |
+| N20 | Sales reporting | Tourism, Coop | Medium | N15 | — |
+| N21 | SSE deposit detection (exchange) | All three | Small | N1 | — |
+| N22 | Prometheus metrics | All three | Medium | N9 | — |
+| N23 | Mobile UI polish | All three | Medium | — | — |
+| **Tier 3: Maturity** | | | | | |
+| N24 | Multi-chain vendor dashboard | Tourism | Medium | N16 | — |
+| N25 | Refutation UI (power user) | All three | Medium | N15 | — |
+| N26 | Exchange trade history + P&L | All three | Medium | N21 | — |
+| N27 | CAA escrow UI in PWA | All three | Large | N11 | — |
+| N28 | Credential issuance UI | All three | Medium | — | — |
+| N29 | External anchoring (off-disk) | All three | Medium | — | — |
+| N30 | BLOB_POLICY in genesis | Coop, Tourism | Medium | N17 | — |
+| N31 | Blob pruning + audit endpoints | Coop, Tourism | Medium | N30 | — |
+| **Tier 4: Strategic** | | | | | |
+| N32 | Cooperative metadata UI | Coop | Large | N17 | — |
+| N33 | Hot-standby recorder | All three | Large | N10 (F3) | — |
+
+N1–N8 complete. N9 partially complete (installers remaining; Prometheus now tracked as N22). N10 complete except F3 (deferred). N11 in progress. N12–N33 derived from [specs/UnmetNeedsReport.md](specs/UnmetNeedsReport.md) and [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md).
+
+Remaining hardware-dependent acceptance tests from earlier phases: two-device <3s latency, iOS/Android PWA install, Pi stress tests, Lighthouse PWA audit.
+
+---
+
+## Tier 1: Pilot-Ready UX
+
+These items must ship before handing the system to real vendors and consumers. All are small-to-medium effort with no external dependencies. Analysis: [specs/UnmetNeedsReport.md](specs/UnmetNeedsReport.md) §1–2, [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md).
+
+### N12: Transfer Confirmation Screen — *All Three*
+
+Split the transfer flow into build → preview → confirm. `buildAssignment()` already returns the constructed DataItem — extract amounts for display before calling `submitBlock()`.
+
+**Deliverables:**
+- Confirmation modal/step showing: amount sent, fee, change returned, recipient pubkey (truncated), attachment count.
+- "Edit" to go back, "Confirm & Send" to submit.
+- No new dependencies — pure UI change in `ConsumerView.tsx`.
+
+### N13: Wallet Backup/Restore UX — *All Three*
+
+File-based encrypted backup using existing `buildFullExportPayload()` from `walletSync.ts`. Cloud backup deferred to when cloud vault (WalletSync.md §5) is implemented.
+
+**Deliverables:**
+- Settings panel: "Export Wallet Backup" → password prompt → downloads encrypted JSON file.
+- Settings panel: "Import Wallet Backup" → file picker + password → decrypts and merges keys into IndexedDB.
+- Warning on first wallet creation: "No backup exists. Back up now?"
+- Periodic reminder if no backup in 30 days.
+
+**Depends on:** N11 (wallet sync IndexedDB infrastructure).
+
+### N14: Offline Balance Cache — *All Three*
+
+Display cached balance from IndexedDB immediately on app load. `walletDb.ts` already stores `amount` per key; `chainBalance()` already sums unspent keys.
+
+**Deliverables:**
+- On app load: display cached balance with "last verified: {time}" indicator.
+- When online: validate against recorder, update IndexedDB, refresh.
+- Stale badge: yellow "unverified" when last validation > 1 hour.
+
+**Depends on:** N11 (IndexedDB wallet state).
+
+### N15: Transaction History + CSV Export — *All Three*
+
+Scrollable list of past transfers with date, amount, direction, counterparty, and blob indicators. Simple CSV export initially; modular design to support future accounting standards.
+
+**Deliverables:**
+- `TransactionHistory.tsx` component. Walks blocks from recorder, filters for assignments involving user's public keys.
+- Displays: timestamp, amount (coins), direction (sent/received), counterparty pubkey (truncated), blob attachment indicator (when N17 ships).
+- IndexedDB cache of processed transactions for offline access.
+- CSV export: date, time, amount (coins), amount (shares), counterparty, block height, seq ID.
+- Modular export architecture supporting future standard formats (identified candidates: SA-BAS for South African small business, OFX for personal finance import, XBRL-CSV for regulatory reporting). Infrastructure must support adding all three as options without current implementation.
+
+**Depends on:** Recorder block pagination API (exists).
+
+### N16: Vendor Profile Persistence + On-Chain Records — *Tourism*
+
+Profiles survive recorder restarts. On-chain `VENDOR_PROFILE` (type 36) recording for tamper-proof audit trail.
+
+**Deliverables:**
+- `vendor_profiles` SQLite table: `(chain_id, name, description, lat, lng, updated_at)`.
+- `POST /chain/{id}/profile` writes to SQLite. `GET /chain/{id}/profile` reads from SQLite.
+- On-chain recording: vendor submits profile as `VENDOR_PROFILE` separable item in an assignment. SQLite serves as fast-access cache.
+- PWA `VendorView` profile editor unchanged — persistence is transparent.
+
+**Depends on:** N5 (existing profile infrastructure).
+
+### N17: On-Chain Blob Linking + Pre-Substitution Fees — *Coop + Tourism*
+
+Close the gap between blob uploads and on-chain proof. Compute recording fees against pre-substitution assignment size so blob storage costs are covered by the existing fee mechanism. Design: [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md) §2.4 and §5.5.
+
+**Deliverables:**
+- Extend `buildAssignment()` (TypeScript + Rust) to accept `DATA_BLOB` children.
+- Fee calculation on pre-substitution byte count: `ceil(full_size × FEE_RATE_num × SHARES_OUT / FEE_RATE_den)`. Then `substituteSeparable()` replaces blobs with hashes. Existing `FEE_RATE` scales naturally — no new genesis parameters.
+- Update `ConsumerView.tsx` to wire attachments into assignment building (resolves TODO at line 283).
+- Recorder-side fee validation: reconstruct expected pre-substitution size from post-substitution assignment + blob metadata, reject underpaid assignments.
+- Round-trip tests: build with blobs, verify fee, sign, verify hash, verify recorder accepts.
+
+**Depends on:** N8 (blob infrastructure).
+
+---
+
+## Tier 2: Adoption Features
+
+### N18: Payment Notifications — *Tourism + UBI*
+
+Audio chime on incoming payments via SSE. Configurable UX. Web Push server deferred — SSE-while-open model for now.
+
+**Deliverables:**
+- Audio chime on VendorView SSE payment event (`new Audio('chime.mp3').play()`).
+- Notification settings panel: sound style selector, volume slider, time-window muting (e.g. "silent 10pm–8am"), quick-mute button with duration picker (15min/1hr/until tomorrow), manual on/off toggle.
+- Settings persisted in localStorage.
+- Future: Web Push API integration (far down roadmap, requires VAPID server).
+
+**Depends on:** SSE subscription (exists).
+
+### N19: Printable QR Signage — *Tourism*
+
+Print-optimized QR for physical vendor signage. Output as PDF and PNG.
+
+**Deliverables:**
+- "Print QR" button in VendorView / ChainDetail.
+- Print layout: high-DPI QR (SVG for scalability), chain symbol in large text, business name, "Scan to pay" label.
+- Output options: browser print dialog (CSS `@media print`), download as PDF (via browser print-to-PDF or `jspdf`), download as PNG (canvas export).
+- Size guidance: minimum 3×3 cm for arm's-length scanning, 6×6 cm for countertop.
+
+### N20: Sales Reporting — *Tourism + Coop*
+
+Daily/weekly/monthly revenue aggregation with CSV export for vendor bookkeeping.
+
+**Deliverables:**
+- `SalesReport.tsx` component (or tab in VendorView).
+- Fetches blocks, aggregates: daily/weekly/monthly totals (coins), transaction count, average size.
+- Date range picker. IndexedDB cache for offline access.
+- CSV export with modular format (same architecture as N15).
+
+**Depends on:** N15 (transaction history infrastructure and CSV architecture).
+
+### N21: SSE Deposit Detection for Exchange — *All Three*
+
+Upgrade ao-exchange from polling to SSE subscription for faster trade settlement.
+
+**Deliverables:**
+- Subscribe to `GET /chain/{id}/events` SSE on each watched chain.
+- On new block: immediately check for deposits matching pending trades.
+- Fall back to polling if SSE connection drops.
+- Config: `deposit_detection = "sse"` (default) or `"polling"` (legacy).
+
+**Depends on:** Recorder SSE endpoint (exists).
+
+### N22: Prometheus Metrics — *All Three*
+
+Standard monitoring integration for ao-recorder and ao-validator.
+
+**Deliverables:**
+- `prometheus` crate dependency. `GET /metrics` endpoint (optional, behind feature flag).
+- Instruments: block submissions (counter + latency histogram), blob uploads (counter + size histogram), validation runs (counter + result label), SSE connections (gauge), active chains (gauge).
+- Example Grafana dashboard JSON in `2026/ops/`.
+
+### N23: Mobile UI Polish — *All Three*
+
+Mobile-first CSS audit and touch optimization.
+
+**Deliverables:**
+- Audit all views at 375px width. Fix horizontal overflow, font scaling, input focus issues.
+- Touch targets ≥ 44×44px for all interactive elements.
+- iOS Safari: safe area insets, prevent zoom on input focus.
+- Lighthouse audit targeting ≥ 90 mobile performance score.
+
+---
+
+## Tier 3: Maturity Features
+
+### N24: Multi-Chain Vendor Dashboard — *Tourism*
+
+Unified view for vendors with multiple product lines (e.g. BCG + RMF).
+
+**Deliverables:**
+- Chain selector/summary bar in VendorView showing all vendor-owned chains.
+- Per-chain cards: symbol, today's revenue, last transaction time, SSE status.
+- Tap card to expand into single-chain detail. Combined revenue summary.
+
+**Depends on:** N16 (persistent profiles to identify owned chains).
+
+### N25: Refutation UI — *All Three* (power user)
+
+PWA interface for disputing fraudulent or late assignments. Shipped behind a settings toggle.
+
+**Deliverables:**
+- "Dispute" button on transaction history entries or UTXO detail view.
+- Builds refutation DataItem, signs with user's key, submits to recorder.
+- Confirmation dialog explaining consequences.
+
+**Depends on:** N15 (transaction history for discoverability).
+
+### N26: Exchange Trade History + P&L Dashboard — *All Three*
+
+Exchange operator tools: trade history, inventory tracking, profit/loss.
+
+**Deliverables:**
+- New `ao-exchange` endpoint: `GET /trades?from=&to=` (requires `trade_history` SQLite table in exchange daemon).
+- `ExchangeDashboard.tsx`: trade list, inventory levels per chain with low-stock warnings, realized P&L.
+
+**Depends on:** N21 (SSE detection makes trade data more complete).
+
+### N27: CAA Escrow UI in PWA — *All Three*
+
+Peer-to-peer atomic swap interface without exchange intermediary.
+
+**Deliverables:**
+- `EscrowView.tsx`: "Propose Swap" form (source chain + amount, destination chain + amount, deadline).
+- Pending escrow list with status indicators (STARTED, TRANSFERRED, FINALIZED, CANCELED, TIMED_OUT).
+- Accept/Cancel buttons. Timeout countdown. Real-time SSE on both chains.
+
+**Depends on:** CAA protocol (Phase 6, done), `ao-exchange` HTTP API (exists).
+
+### N28: Credential Issuance UI — *All Three*
+
+Face-to-face and friends-of-friends trust model. Self-issued credentials only for now — no centralized authority, no complex DID resolution.
+
+**Deliverables:**
+- Credential issuance workflow: review vendor profile → issue credential (sign `CREDENTIAL_REF` with own key) → record on vendor's chain.
+- PWA `TrustIndicator` extended to display credential details on tap.
+- Revocation: submit revocation entry. `TrustIndicator` checks status.
+- Trust model: face-to-face issuer identity. No institutional authority required.
+
+### N29: External Anchoring — *All Three*
+
+Phased approach to off-disk anchor durability. Pluggable anchor trait already exists.
+
+**Deliverables (phased):**
+1. **Replicate anchor file** to a second location (S3, SFTP, or second machine). Addresses disk-failure risk.
+2. **Public transparency log** or Nostr relay (timestamped, signed). Lower cost than Bitcoin.
+3. **Bitcoin OP_RETURN** for high-value chains. Batch multiple chain anchors into single Merkle root per TX.
+
+Phase 1 is the near-term target. Phases 2–3 are later.
+
+### N30: BLOB_POLICY in Genesis — *Coop + Tourism*
+
+Machine-readable blob retention policy as a genesis DataItem child. Non-separable type codes. Design: [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md) §2.2.
+
+**Deliverables:**
+- Allocate non-separable type codes for `BLOB_POLICY`, `BLOB_RULE`, and children (`MIME_PATTERN`, `RETENTION_SECS`, `CAPACITY_LIMIT`, `THROTTLE_THRESHOLD`). Exact codes allocated during implementation against type code registry.
+- Extend genesis builder (ao-chain, ao-cli, PWA genesis creator) to accept optional `BLOB_POLICY`.
+- Recorder `BlobStore` enforces active chain's policy on upload.
+- `GET /chain/{id}/blob-policy` endpoint. PWA displays policy in `ChainDetail`.
+- Chains without policy: best-effort default, "no retention guarantee" indicator in PWA.
+
+**Depends on:** N17 (on-chain blob linking).
+
+### N31: Blob Pruning + Audit Endpoints — *Coop + Tourism*
+
+Automated lifecycle management for blob storage. Design: [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md) §3–4.
+
+**Deliverables:**
+- `blob_meta` SQLite table: `(hash, chain_id, mime, size, uploaded_at)`. Populated on upload; backfilled from filesystem.
+- Background pruning task (configurable interval, default daily): evaluates retention rules, deletes expired blobs, returns **410 Gone** for pruned hashes.
+- `ao-recorder prune --dry-run` command.
+- `HEAD /chain/{id}/blob/{hash}` — existence/age check without body transfer.
+- `GET /chain/{id}/blobs/manifest` — paginated JSON metadata list.
+- PWA `BlobViewer` handles 410 gracefully.
+- Optional `ao-validator` blob audit mode: walk chain blocks, HEAD-check blob hashes, alert on premature pruning.
+
+**Depends on:** N30 (BLOB_POLICY for retention rules).
+
+---
+
+## Tier 4: Strategic
+
+### N32: Cooperative Metadata UI — *Coop*
+
+Specialized PWA view for agricultural cooperative workflows. Not first pilot, but developed and simulated as if live.
+
+**Deliverables:**
+- `CooperativeView.tsx`: forms for delivery entry (crop, weight, grade, lot), sale recording, cost allocation, advance payments.
+- Records as `NOTE` (type 32) separable items with structured `key:value` content per [specs/CooperativeMetadata.md](specs/CooperativeMetadata.md).
+- Provenance viewer: trace lot from farmer delivery to consumer sale.
+- Photo attachments via blob infrastructure (N17).
+- Sim scenario exercising full cooperative workflow.
+
+**Depends on:** N17 (on-chain blob linking for photo receipts).
+
+### N33: Hot-Standby Recorder — *All Three*
+
+Progressive approach to recorder availability. Quick-restart (systemd auto-restart + SQLite WAL recovery) is the near-term target. Hot standby is later.
+
+**Deliverables (phased):**
+1. **Quick-restart resilience (now):** Document and test systemd `Restart=always` + `WatchdogSec`. Verify SQLite WAL recovery after unclean shutdown. Measure restart-to-serving latency.
+2. **Hot standby (later):** Second recorder subscribes to primary's SSE, mirrors blocks + blobs. DNS/load-balancer failover on primary failure. No simultaneous writes.
+3. **Signed recorder identity (prerequisite for standby):** Implements F3 from N10. Clients verify recorder legitimacy without pre-shared config.
+
+Phase 1 sufficient for pilot scale (single vendor, single Pi). Phase 2 for production deployments.
+
+**Depends on:** N10 F3 (signed recorder identity) for Phase 2.
+
+---
+
+## Deferred
+
+Items identified but not scheduled. Develop as resources become available.
+
+**Fiat on/off-ramp tooling** — Exchange agent documentation, PWA deep-link format for payment pages, API webhooks for fiat receipt confirmation. Targets need identification first.
+
+**LoRa mesh transport** — Meshtastic serial/BLE bridge daemon forwarding AO messages between LoRa radio and local recorder. Aspirational; protocol must remain compact enough for LoRa but dedicated implementation deferred.
+
+**Installer hardware testing** — .deb and .msi install tests on real Debian/Windows/Pi hardware. Will be tested manually as resources become available. 72-hour Pi stress test requires dedicated hardware.
+
+**Web Push notification server** — VAPID key infrastructure for system-level push notifications. Far down roadmap; SSE-while-open + audio chime (N18) covers near-term needs.
+
+**Cloud wallet backup** — Encrypted vault backup per WalletSync.md §5. Requires cloud infrastructure. File-based backup (N13) covers near-term needs.
 
 ---
 

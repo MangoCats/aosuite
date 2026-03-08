@@ -48,6 +48,10 @@ pub struct CaaResult {
     pub caa_hash: String,
     /// Per-chain recording proof JSON values (one per chain, in order).
     pub proofs: Vec<serde_json::Value>,
+    /// Per-chain first_seq values (one per chain, in order).
+    pub first_seqs: Vec<u64>,
+    /// Per-chain seq_count values (one per chain, in order).
+    pub seq_counts: Vec<u64>,
 }
 
 /// Fetched chain parameters needed for building assignments.
@@ -126,6 +130,8 @@ pub async fn execute_caa(
 
     // 4. Ouroboros recording sequence
     let mut proofs: Vec<serde_json::Value> = Vec::new();
+    let mut first_seqs: Vec<u64> = Vec::new();
+    let mut seq_counts: Vec<u64> = Vec::new();
 
     for (i, comp) in components.iter().enumerate() {
         let chain_id_hex = hex::encode(comp.chain_id);
@@ -141,6 +147,8 @@ pub async fn execute_caa(
             .with_context(|| format!("caa_submit failed on chain {}", chain_id_hex))?;
 
         proofs.push(result.proof_json);
+        first_seqs.push(result.first_seq);
+        seq_counts.push(result.seq_count);
     }
 
     // 5. Submit binding proofs to chains 0..N-2
@@ -158,6 +166,8 @@ pub async fn execute_caa(
     Ok(CaaResult {
         caa_hash: caa_hash_hex,
         proofs,
+        first_seqs,
+        seq_counts,
     })
 }
 

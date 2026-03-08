@@ -4,11 +4,11 @@
 [simulation]
 name = "audit-adversarial"
 title = "Security Testing — Validator vs Attackers"
-description = "Four attackers try different exploits against the blockchain: double-spending, key reuse, expired UTXOs, and direct database tampering. Victor the validator monitors chain integrity. All attacks should fail."
+description = "Five attackers try different exploits against the blockchain: double-spending, key reuse, expired UTXOs, refutation of recorded agreements, and direct database tampering. Victor the validator monitors chain integrity. All attacks should fail."
 what_to_watch = [
     "Click any red attacker to see their attempts vs rejections — 'unexpected accepts' should stay at zero",
     "Eve tampers with the recorder's database directly — Victor detects the hash mismatch",
-    "Enable the Audit overlay to see green halos turn red when Eve corrupts chain data",
+    "Fiona refutes recorded assignments then tries to re-spend — refutation can't undo a recorded transfer",
     "Alice continues normal purchases throughout — legitimate commerce is unaffected",
 ]
 recorder_port = 0
@@ -151,3 +151,17 @@ lon = -63.0520
 attack = "chain_tamper"
 target_vendor = "Bob"
 attack_interval_secs = 30
+
+# ── Fiona: refutation attacker ─────────────────────────────────────
+
+[[agent]]
+name = "Fiona"
+role = "attacker"
+blurb = "Refutation attacker — refutes recorded agreements, then tries to re-spend"
+lat = 18.2025
+lon = -63.0555
+
+[agent.attacker]
+attack = "refute"
+target_vendor = "Bob"
+attack_interval_secs = 20

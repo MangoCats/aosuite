@@ -143,6 +143,8 @@ pub struct CaaProofResult {
     pub chain_id: String,
     pub block_height: u64,
     pub block_hash: String,
+    pub first_seq: u64,
+    pub seq_count: u64,
     pub proof_json: serde_json::Value,
 }
 

@@ -125,6 +125,70 @@ impl RecorderClient {
         }
         resp.json().await.context("invalid get_blocks response")
     }
+
+    /// POST /chain/{id}/profile — set vendor profile metadata.
+    pub async fn set_profile(
+        &self,
+        chain_id: &str,
+        profile: &serde_json::Value,
+    ) -> Result<()> {
+        let resp = self.client
+            .post(format!("{}/chain/{}/profile", self.base_url, chain_id))
+            .json(profile)
+            .send()
+            .await
+            .context("failed to connect to recorder")?;
+
+        if !resp.status().is_success() {
+            let err: ErrorResponse = resp.json().await
+                .unwrap_or(ErrorResponse { error: "unknown".into() });
+            bail!("set_profile failed: {}", err.error);
+        }
+        Ok(())
+    }
+
+    /// POST /chain/{id}/exchange-agent — register exchange agent on a chain.
+    pub async fn register_exchange_agent(
+        &self,
+        chain_id: &str,
+        agent: &serde_json::Value,
+    ) -> Result<()> {
+        let resp = self.client
+            .post(format!("{}/chain/{}/exchange-agent", self.base_url, chain_id))
+            .json(agent)
+            .send()
+            .await
+            .context("failed to connect to recorder")?;
+
+        if !resp.status().is_success() {
+            let err: ErrorResponse = resp.json().await
+                .unwrap_or(ErrorResponse { error: "unknown".into() });
+            bail!("register_exchange_agent failed: {}", err.error);
+        }
+        Ok(())
+    }
+
+    /// POST /chain/{id}/refute — submit a refutation for an agreement hash.
+    pub async fn refute(
+        &self,
+        chain_id: &str,
+        agreement_hash: &str,
+    ) -> Result<()> {
+        let body = serde_json::json!({ "agreement_hash": agreement_hash });
+        let resp = self.client
+            .post(format!("{}/chain/{}/refute", self.base_url, chain_id))
+            .json(&body)
+            .send()
+            .await
+            .context("failed to connect to recorder")?;
+
+        if !resp.status().is_success() {
+            let err: ErrorResponse = resp.json().await
+                .unwrap_or(ErrorResponse { error: "unknown".into() });
+            bail!("refute failed: {}", err.error);
+        }
+        Ok(())
+    }
 }
 
 #[derive(Deserialize, Debug, Clone)]

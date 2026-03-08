@@ -388,6 +388,17 @@ pub async fn run_vendor(
     let chain_id = chain_info.chain_id.clone();
     info!("{}: Created chain {} ({})", name, vendor_cfg.symbol, &chain_id[..12]);
 
+    // Register vendor profile with the recorder (enables PWA discovery)
+    let profile = serde_json::json!({
+        "name": name,
+        "description": vendor_cfg.description,
+        "lat": config.lat,
+        "lon": config.lon,
+    });
+    if let Err(e) = client.set_profile(&chain_id, &profile).await {
+        warn!("{}: failed to set vendor profile: {}", name, e);
+    }
+
     // Register chain + issuer UTXO
     {
         let mut dir = directory.write().await;
@@ -513,6 +524,25 @@ pub async fn run_exchange(
             } else {
                 warn!("{}: trading pair {}↔{} — chain not found yet, skipping", name, pair.sell, pair.buy);
             }
+        }
+    }
+
+    // Register this exchange agent on each chain we hold inventory on (enables PWA discovery)
+    for chain_id in my_chains.keys() {
+        let pairs_json: Vec<serde_json::Value> = exchange_cfg.pairs.iter()
+            .map(|p| serde_json::json!({
+                "sell_symbol": p.sell,
+                "buy_symbol": p.buy,
+                "rate": p.rate,
+            }))
+            .collect();
+        let agent_json = serde_json::json!({
+            "name": name,
+            "pairs": pairs_json,
+            "ttl": 3600,
+        });
+        if let Err(e) = client.register_exchange_agent(chain_id, &agent_json).await {
+            warn!("{}: failed to register exchange agent on {}: {}", name, &chain_id[..12], e);
         }
     }
 
@@ -946,29 +976,26 @@ async fn handle_atomic_buy(
     // Mark old UTXOs as spent
     wallet.mark_spent(&sell_utxo.pubkey);
 
-    // Register exchange's new UTXOs
-    // Component 0 (pay_chain): exchange_pay_recv is receiver 0 → first_seq from proof 0
-    // Component 1 (sell_chain): exchange_sell_change is receiver 1 → first_seq + 1 from proof 1
-    // Note: we don't get exact seq_ids from CaaResult — we need to query chain info
-    // For now, use the chain's next_seq_id to figure out what was assigned
+    // Register exchange's new UTXOs using first_seq from CaaResult (deterministic, no guessing)
+    // Component 0 (pay_chain): receivers got seq_ids first_seqs[0], first_seqs[0]+1
+    let pay_first = caa_result.first_seqs[0];
+    let pay_exchange_seq = pay_first;       // receiver 0: exchange receives payment
+    let pay_change_seq = pay_first + 1;     // receiver 1: consumer change
+    wallet.register_utxo(&exchange_pay_recv.pubkey, pay_exchange_seq, components[0].receivers[0].amount.clone());
+
+    // Component 1 (sell_chain): receivers got seq_ids first_seqs[1], first_seqs[1]+1
+    let sell_first = caa_result.first_seqs[1];
+    let sell_consumer_seq = sell_first;     // receiver 0: consumer receives shares
+    let sell_change_seq = sell_first + 1;   // receiver 1: exchange change
+    wallet.register_utxo(&exchange_sell_change.pubkey, sell_change_seq, components[1].receivers[1].amount.clone());
+
+    // Get block heights from chain info (lightweight query, no seq_id guessing needed)
     let pay_info = ao_exchange::client::RecorderClient::new(recorder_url)
         .chain_info(&request.pay_chain_id).await
         .context("failed to get pay chain info after CAA")?;
     let sell_info = ao_exchange::client::RecorderClient::new(recorder_url)
         .chain_info(&request.sell_chain_id).await
         .context("failed to get sell chain info after CAA")?;
-
-    // Exchange received on pay_chain (receiver 0 of component 0)
-    // The CAA created 2 UTXOs per component: next_seq_id was advanced by 2 per component
-    // Component 0: receivers got seq_ids (pay_next - 2) and (pay_next - 1)
-    let pay_exchange_seq = pay_info.next_seq_id - 2;
-    let pay_change_seq = pay_info.next_seq_id - 1;
-    wallet.register_utxo(&exchange_pay_recv.pubkey, pay_exchange_seq, components[0].receivers[0].amount.clone());
-
-    // Exchange change on sell_chain (receiver 1 of component 1)
-    let sell_consumer_seq = sell_info.next_seq_id - 2;
-    let sell_change_seq = sell_info.next_seq_id - 1;
-    wallet.register_utxo(&exchange_sell_change.pubkey, sell_change_seq, components[1].receivers[1].amount.clone());
 
     Ok(AtomicBuyResult {
         caa_hash: caa_result.caa_hash,
@@ -1740,6 +1767,7 @@ pub async fn run_attacker(
             "key_reuse" => attempt_key_reuse(&name, &mut wallet, &client, &directory, &attacker_cfg.target_vendor, &chain_id).await,
             "expired_utxo" => attempt_expired_utxo(&name, &mut wallet, &client, &chain_id).await,
             "chain_tamper" => attempt_chain_tamper(&name, &chain_id, &recorder_state).await,
+            "refute" => attempt_refute(&name, &mut wallet, &client, &directory, &attacker_cfg.target_vendor, &chain_id).await,
             other => {
                 warn!("{}: unknown attack type: {}", name, other);
                 Err(anyhow::anyhow!("unknown attack type"))
@@ -1973,6 +2001,67 @@ async fn attempt_chain_tamper(
     // Return false — tampering is not a vulnerability (the validator should catch it).
     // If the validator fails to detect it, that's a separate issue visible in Victor's alerts.
     Ok(false)
+}
+
+/// Attempt refutation: do a valid transfer, then refute the recorded agreement.
+/// After refutation, attempt to re-spend the same UTXO — should still fail because
+/// the transfer was already recorded. Refutation prevents late recording of *unrecorded*
+/// agreements, not already-recorded ones.
+/// Returns Ok(true) if re-spend after refutation was accepted (bad), Ok(false) if rejected (good).
+async fn attempt_refute(
+    _name: &str,
+    wallet: &mut Wallet,
+    client: &RecorderClient,
+    _directory: &Arc<RwLock<AgentDirectory>>,
+    _vendor_name: &str,
+    chain_id: &str,
+) -> Result<bool> {
+    let utxo = wallet.find_unspent(chain_id)
+        .ok_or_else(|| anyhow::anyhow!("no UTXO for refute attack"))?;
+
+    let recv1 = wallet.generate_key(chain_id);
+    let recv2 = wallet.generate_key(chain_id);
+
+    let giver_pubkey = utxo.pubkey;
+    let giver_seq_id = utxo.seq_id;
+    let giver_amount = utxo.amount.clone();
+    let giver_seed = utxo.seed;
+
+    // First: do a valid transfer
+    let giver = transfer::Giver {
+        seq_id: giver_seq_id,
+        amount: giver_amount.clone(),
+        seed: giver_seed,
+    };
+    let mut receivers = vec![transfer::Receiver {
+        pubkey: recv1.pubkey,
+        seed: recv1.seed,
+        amount: giver_amount.clone(),
+    }];
+    let result = transfer::execute_transfer(client, chain_id, &[giver], &mut receivers).await?;
+    wallet.mark_spent(&giver_pubkey);
+    wallet.register_utxo(&recv1.pubkey, result.first_seq, receivers[0].amount.clone());
+
+    // Second: refute the recorded assignment using its block hash as agreement_hash
+    // (In practice refutation targets an unrecorded agreement hash, but we test
+    // that refuting a recorded one doesn't un-spend the UTXO)
+    let _ = client.refute(chain_id, &result.hash).await;
+
+    // Third: try to re-spend the same (now spent) UTXO — should still be rejected
+    let giver2 = transfer::Giver {
+        seq_id: giver_seq_id,
+        amount: giver_amount,
+        seed: giver_seed,
+    };
+    let mut receivers2 = vec![transfer::Receiver {
+        pubkey: recv2.pubkey,
+        seed: recv2.seed,
+        amount: BigInt::from(0), // will be fee-adjusted
+    }];
+    match transfer::execute_transfer(client, chain_id, &[giver2], &mut receivers2).await {
+        Ok(_) => Ok(true),   // accepted after refutation = bad
+        Err(_) => Ok(false),  // still rejected = good
+    }
 }
 
 // ── Shared helpers ──────────────────────────────────────────────────

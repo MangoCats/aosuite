@@ -314,12 +314,8 @@ const MAX_BLOCK_RANGE: u64 = 1000;
 
 /// Build the Axum router for a recorder with the given state.
 pub fn build_router(state: Arc<AppState>) -> Router {
-    // Blob routes get a separate, larger body limit (5 MB).
-    let blob_routes = Router::new()
-        .route("/chain/{id}/blob", axum::routing::post(blob::upload_blob))
-        .layer(DefaultBodyLimit::max(MAX_BLOB_SIZE));
-
-    Router::new()
+    // Standard routes get the default 256 KB body limit.
+    let standard_routes = Router::new()
         .route("/chains", get(list_chains).post(create_chain))
         .route("/chain/{id}/info", get(chain_info))
         .route("/chain/{id}/utxo/{seq_id}", get(get_utxo))
@@ -334,8 +330,15 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/chain/{id}/caa/{caa_hash}", get(caa_status))
         .route("/chain/{id}/profile", get(get_vendor_profile).post(set_vendor_profile))
         .route("/chain/{id}/blob/{hash}", get(blob::get_blob))
+        .layer(DefaultBodyLimit::max(MAX_BODY_SIZE));
+
+    // Blob upload route gets a separate, larger body limit (5 MB).
+    let blob_routes = Router::new()
+        .route("/chain/{id}/blob", axum::routing::post(blob::upload_blob))
+        .layer(DefaultBodyLimit::max(MAX_BLOB_SIZE));
+
+    standard_routes
         .merge(blob_routes)
-        .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .with_state(state)
 }
 
@@ -810,6 +813,8 @@ struct RecordingProofResponse {
     chain_id: String,
     block_height: u64,
     block_hash: String,
+    first_seq: u64,
+    seq_count: u64,
     proof_json: serde_json::Value,
 }
 
@@ -857,11 +862,17 @@ async fn caa_submit(
                 let bh = store.get_block_hash(existing.block_height)
                     .map_err(|e| RecorderError::Internal(e.to_string()))?
                     .unwrap_or([0u8; 32]);
+                let recv_ids = store.get_caa_utxo_ids(&caa_hash, "receiver")
+                    .map_err(|e| RecorderError::Internal(e.to_string()))?;
+                let first_seq = recv_ids.iter().copied().min().unwrap_or(0);
+                let seq_count = recv_ids.len() as u64;
                 return Ok(RecordingProofResponse {
                     caa_hash: hex::encode(caa_hash),
                     chain_id: hex::encode(meta.chain_id),
                     block_height: existing.block_height,
                     block_hash: hex::encode(bh),
+                    first_seq,
+                    seq_count,
                     proof_json,
                 });
             }
@@ -997,6 +1008,8 @@ async fn caa_submit(
                 chain_id: hex::encode(meta.chain_id),
                 block_height: height,
                 block_hash: hex::encode(block_hash),
+                first_seq,
+                seq_count,
                 proof_json,
             })
         })();

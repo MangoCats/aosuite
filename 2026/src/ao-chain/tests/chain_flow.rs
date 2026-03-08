@@ -70,6 +70,7 @@ fn build_genesis(issuer_key: &SigningKey) -> DataItem {
 
 /// Build a signed AUTHORIZATION, computing receiver_amount as giver_amount - actual_fee.
 /// Uses iterative approach: build the auth, compute page size, compute fee, rebuild with correct amounts.
+#[allow(clippy::too_many_arguments)]
 fn build_authorization(
     giver_key: &SigningKey,
     giver_seq_id: u64,
@@ -113,6 +114,7 @@ fn build_authorization(
     (auth, receiver_amount)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_auth_inner(
     giver_key: &SigningKey,
     giver_seq_id: u64,

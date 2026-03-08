@@ -28,6 +28,7 @@ pub mod config;
 pub mod dashboard;
 pub mod health;
 pub mod mqtt;
+pub mod security;
 
 // ── Error type ──────────────────────────────────────────────────────
 
@@ -52,17 +53,33 @@ pub enum RecorderError {
     BadRequest(String),
     #[error("{0}")]
     Internal(String),
+    #[error("service unavailable")]
+    Unavailable,
 }
 
 impl IntoResponse for RecorderError {
     fn into_response(self) -> axum::response::Response {
-        let status = match &self {
-            RecorderError::LockPoisoned(_) | RecorderError::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
-            RecorderError::ChainNotFound | RecorderError::ChainNotLoaded | RecorderError::NotFound(_) => StatusCode::NOT_FOUND,
-            RecorderError::ChainConflict => StatusCode::CONFLICT,
-            RecorderError::BadRequest(_) => StatusCode::BAD_REQUEST,
+        let (status, public_msg) = match &self {
+            RecorderError::LockPoisoned(detail) => {
+                tracing::error!("lock poisoned: {}", detail);
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+            }
+            RecorderError::Internal(detail) => {
+                tracing::error!("internal error: {}", detail);
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal error")
+            }
+            RecorderError::ChainNotFound | RecorderError::ChainNotLoaded => {
+                (StatusCode::NOT_FOUND, "chain not found")
+            }
+            RecorderError::NotFound(_) => (StatusCode::NOT_FOUND, "not found"),
+            RecorderError::ChainConflict => (StatusCode::CONFLICT, "chain already hosted"),
+            RecorderError::BadRequest(detail) => {
+                tracing::debug!("bad request: {}", detail);
+                (StatusCode::BAD_REQUEST, "invalid request")
+            }
+            RecorderError::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "service unavailable"),
         };
-        (status, Json(ErrorResponse { error: self.to_string() })).into_response()
+        (status, Json(ErrorResponse { error: public_msg.to_string() })).into_response()
     }
 }
 
@@ -109,7 +126,7 @@ impl ExchangeAgentEntry {
         if let Some(registered_at) = self.registered_at {
             let now = std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
-                .expect("system clock")
+                .unwrap_or_default()
                 .as_secs();
             now > registered_at + self.ttl
         } else {
@@ -165,6 +182,8 @@ pub struct AppState {
     vendor_profiles: RwLock<HashMap<String, VendorProfile>>,
     /// Optional content-addressed blob storage.
     pub blob_store: Option<blob::BlobStore>,
+    /// Semaphore limiting concurrent SSE/WebSocket connections. None = unlimited.
+    pub connection_semaphore: Option<Arc<tokio::sync::Semaphore>>,
 }
 
 /// Cached result from polling a validator's GET /validate/{chain_id}.
@@ -198,6 +217,7 @@ impl AppState {
             known_recorders: std::collections::HashMap::new(),
             vendor_profiles: RwLock::new(HashMap::new()),
             blob_store: None,
+            connection_semaphore: None,
         }
     }
 
@@ -213,6 +233,7 @@ impl AppState {
             known_recorders: std::collections::HashMap::new(),
             vendor_profiles: RwLock::new(HashMap::new()),
             blob_store: None,
+            connection_semaphore: None,
         }
     }
 
@@ -228,9 +249,11 @@ impl AppState {
         }
     }
 
-    /// Register a chain.
+    /// Register a chain. Panics if the chains lock is poisoned (unrecoverable).
     pub fn add_chain(&self, chain_id: String, chain_state: Arc<ChainState>) {
-        self.chains.write().expect("chains write lock").insert(chain_id, chain_state);
+        self.chains.write()
+            .expect("chains write lock poisoned — server state corrupt")
+            .insert(chain_id, chain_state);
     }
 
     /// Get a chain by ID, or RecorderError::ChainNotFound.
@@ -243,9 +266,48 @@ impl AppState {
     }
 }
 
+// Stream wrapper that holds a semaphore permit, releasing it when the stream ends.
+pin_project_lite::pin_project! {
+    struct PermitStream<S> {
+        #[pin]
+        inner: S,
+        _permit: Option<tokio::sync::OwnedSemaphorePermit>,
+    }
+}
+
+impl<S: tokio_stream::Stream> tokio_stream::Stream for PermitStream<S> {
+    type Item = S::Item;
+    fn poll_next(self: std::pin::Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> std::task::Poll<Option<Self::Item>> {
+        self.project().inner.poll_next(cx)
+    }
+}
+
+/// Try to acquire a connection permit. Returns 503 if limit reached.
+fn acquire_connection_permit(state: &AppState) -> Result<Option<tokio::sync::OwnedSemaphorePermit>, RecorderError> {
+    if let Some(sem) = &state.connection_semaphore {
+        sem.clone().try_acquire_owned()
+            .map(Some)
+            .map_err(|_| RecorderError::Unavailable)
+    } else {
+        Ok(None)
+    }
+}
+
 fn lock_store(chain: &ChainState) -> Result<std::sync::MutexGuard<'_, ChainStore>, RecorderError> {
     chain.store.lock()
         .map_err(|e| RecorderError::LockPoisoned(format!("store lock: {}", e)))
+}
+
+/// Current wall-clock time as an AO raw timestamp. Returns RecorderError if the
+/// system clock is before the Unix epoch or outside the AO timestamp range.
+fn current_wall_timestamp() -> Result<i64, RecorderError> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    Timestamp::try_from_unix_seconds(now)
+        .ok_or_else(|| RecorderError::Internal("system clock out of AO timestamp range".into()))
+        .map(|ts| ts.raw())
 }
 
 // ── Data types ──────────────────────────────────────────────────────
@@ -314,8 +376,17 @@ const MAX_BLOB_SIZE: usize = 5_242_880;
 /// Maximum number of blocks returned by a single GET /blocks request.
 const MAX_BLOCK_RANGE: u64 = 1000;
 
-/// Build the Axum router for a recorder with the given state.
+/// Maximum raw block size to deserialize (1 MB). Blocks larger than this
+/// are skipped with an error entry rather than risking OOM.
+const MAX_BLOCK_DESERIALIZE_SIZE: usize = 1_048_576;
+
+/// Build the Axum router for a recorder with the given state and config.
 pub fn build_router(state: Arc<AppState>) -> Router {
+    build_router_with_config(state, &config::Config::default())
+}
+
+/// Build the Axum router with explicit config for security middleware.
+pub fn build_router_with_config(state: Arc<AppState>, cfg: &config::Config) -> Router {
     // Standard routes get the default 256 KB body limit.
     let standard_routes = Router::new()
         .route("/health", get(health::health))
@@ -341,22 +412,42 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/chain/{id}/blob", axum::routing::post(blob::upload_blob))
         .layer(DefaultBodyLimit::max(MAX_BLOB_SIZE));
 
-    standard_routes
+    let mut app: Router = standard_routes
         .merge(blob_routes)
-        .with_state(state)
+        .with_state(state);
+
+    // Apply rate limiting if configured
+    if cfg.write_rate_limit > 0.0 {
+        let limiter = security::RateLimiter::new(cfg.write_rate_limit);
+        // Spawn periodic cleanup task
+        let cleanup_limiter = limiter.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                interval.tick().await;
+                cleanup_limiter.cleanup();
+            }
+        });
+        app = app.layer(axum::middleware::from_fn(move |req, next| {
+            let l = limiter.clone();
+            security::rate_limit(l, req, next)
+        }));
+    }
+
+    // Apply API key authentication if configured
+    if !cfg.api_keys.is_empty() {
+        let keys = security::ApiKeys::new(cfg.api_keys.clone());
+        app = app.layer(axum::middleware::from_fn(move |req, next| {
+            let k = keys.clone();
+            security::require_api_key(k, req, next)
+        }));
+    }
+
+    app
 }
 
 async fn method_not_allowed() -> StatusCode {
     StatusCode::METHOD_NOT_ALLOWED
-}
-
-/// Initialize chain state: load genesis if needed, return chain_id hex.
-pub fn init_chain(store: &ChainStore, genesis_item: &DataItem) -> String {
-    let meta = match store.load_chain_meta().expect("failed to query chain metadata") {
-        Some(m) => m,
-        None => genesis::load_genesis(store, genesis_item).expect("failed to load genesis"),
-    };
-    hex::encode(meta.chain_id)
 }
 
 // ── Handlers ────────────────────────────────────────────────────────
@@ -593,6 +684,11 @@ async fn get_blocks(
             if let Some(data) = store.get_block(h)
                 .map_err(|e| RecorderError::Internal(e.to_string()))?
             {
+                if data.len() > MAX_BLOCK_DESERIALIZE_SIZE {
+                    return Err(RecorderError::Internal(
+                        format!("block {} exceeds size limit ({} bytes)", h, data.len()),
+                    ));
+                }
                 match DataItem::from_bytes(&data) {
                     Ok(item) => blocks.push(ao_json::to_json(&item)),
                     Err(e) => return Err(RecorderError::Internal(
@@ -619,13 +715,7 @@ async fn submit_assignment(
     let authorization = ao_json::from_json(&json_value)
         .map_err(|e| RecorderError::BadRequest(format!("invalid DataItem: {}", e)))?;
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock before epoch")
-        .as_secs() as i64;
-    let wall_ts = Timestamp::try_from_unix_seconds(now)
-        .ok_or_else(|| RecorderError::Internal("system clock out of AO timestamp range".into()))?
-        .raw();
+    let wall_ts = current_wall_timestamp()?;
 
     let chain = state.get_chain_or_err(&chain_id_hex)?;
 
@@ -677,16 +767,24 @@ async fn sse_events(
     Path(chain_id_hex): Path<String>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<sse::Event, Infallible>>>, RecorderError> {
     let chain = state.get_chain_or_err(&chain_id_hex)?;
+
+    // Enforce connection limit
+    let permit = acquire_connection_permit(&state)?;
+
     let rx = chain.block_tx.subscribe();
     let stream = BroadcastStream::new(rx).filter_map(|result| {
         match result {
             Ok(info) => {
                 let json = serde_json::to_string(&info).expect("BlockInfo always serializable");
-                Some(Ok(sse::Event::default().event("block").data(json)))
+                Some(Ok::<_, Infallible>(sse::Event::default().event("block").data(json)))
             }
-            Err(_) => None, // lagged — skip
+            Err(tokio_stream::wrappers::errors::BroadcastStreamRecvError::Lagged(n)) => {
+                Some(Ok(sse::Event::default().event("lagged").data(format!("{}", n))))
+            }
         }
     });
+    // Hold permit for the lifetime of the stream (dropped when stream ends)
+    let stream = PermitStream { inner: stream, _permit: permit };
     Ok(Sse::new(stream).keep_alive(sse::KeepAlive::default()))
 }
 
@@ -697,7 +795,8 @@ async fn ws_handler(
     ws: WebSocketUpgrade,
 ) -> Result<axum::response::Response, RecorderError> {
     let chain = state.get_chain_or_err(&chain_id_hex)?;
-    Ok(ws.on_upgrade(move |socket| ws_connection(socket, chain)))
+    let permit = acquire_connection_permit(&state)?;
+    Ok(ws.on_upgrade(move |socket| ws_connection(socket, chain, permit)))
 }
 
 /// POST /chain/{id}/exchange-agent — register an exchange agent for a chain.
@@ -715,7 +814,7 @@ async fn register_exchange_agent(
     // Stamp registration time
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock")
+        .unwrap_or_default()
         .as_secs();
     entry.registered_at = Some(now);
 
@@ -835,13 +934,7 @@ async fn caa_submit(
     let caa_item = ao_json::from_json(&json_value)
         .map_err(|e| RecorderError::BadRequest(format!("invalid DataItem: {}", e)))?;
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock before epoch")
-        .as_secs() as i64;
-    let wall_ts = Timestamp::try_from_unix_seconds(now)
-        .ok_or_else(|| RecorderError::Internal("system clock out of AO timestamp range".into()))?
-        .raw();
+    let wall_ts = current_wall_timestamp()?;
 
     let chain = state.get_chain_or_err(&chain_id_hex)?;
     let known_recorders = state.known_recorders.clone();
@@ -1020,7 +1113,11 @@ async fn caa_submit(
 
         match &result {
             Ok(_) => store.commit().map_err(|e| RecorderError::Internal(e.to_string()))?,
-            Err(_) => { let _ = store.rollback(); }
+            Err(_) => {
+                if let Err(rb_err) = store.rollback() {
+                    tracing::error!("transaction rollback failed: {}", rb_err);
+                }
+            }
         }
         result
     }).await?;
@@ -1059,13 +1156,7 @@ async fn caa_bind(
         proofs.push(proof_item);
     }
 
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock before epoch")
-        .as_secs() as i64;
-    let wall_ts = Timestamp::try_from_unix_seconds(now)
-        .ok_or_else(|| RecorderError::Internal("system clock out of AO timestamp range".into()))?
-        .raw();
+    let wall_ts = current_wall_timestamp()?;
 
     let chain = state.get_chain_or_err(&chain_id_hex)?;
     let known_recorders = state.known_recorders.clone();
@@ -1119,7 +1210,11 @@ async fn caa_bind(
 
         match &result {
             Ok(_) => store.commit().map_err(|e| RecorderError::Internal(e.to_string()))?,
-            Err(_) => { let _ = store.rollback(); }
+            Err(_) => {
+                if let Err(rb_err) = store.rollback() {
+                    tracing::error!("transaction rollback failed: {}", rb_err);
+                }
+            }
         }
         result
     }).await?;
@@ -1213,6 +1308,7 @@ pub async fn poll_validators(state: Arc<AppState>, validators: Vec<config::Valid
         for chain_id in &chain_ids {
             let mut endorsements = Vec::new();
             for v in &validators {
+                // chain_id is hex-encoded (alphanumeric only), safe for URL paths
                 let url = format!("{}/validate/{}", v.url.trim_end_matches('/'), chain_id);
                 let result = http.get(&url).timeout(std::time::Duration::from_secs(10)).send().await;
                 let now = std::time::SystemTime::now()
@@ -1258,7 +1354,11 @@ pub async fn poll_validators(state: Arc<AppState>, validators: Vec<config::Valid
     }
 }
 
-async fn ws_connection(mut socket: ws::WebSocket, chain: Arc<ChainState>) {
+async fn ws_connection(
+    mut socket: ws::WebSocket,
+    chain: Arc<ChainState>,
+    _permit: Option<tokio::sync::OwnedSemaphorePermit>,
+) {
     let mut rx = chain.block_tx.subscribe();
     loop {
         tokio::select! {
@@ -1270,7 +1370,13 @@ async fn ws_connection(mut socket: ws::WebSocket, chain: Arc<ChainState>) {
                             break;
                         }
                     }
-                    Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        // Notify client about lag
+                        let msg = format!("{{\"event\":\"lagged\",\"skipped\":{}}}", n);
+                        if socket.send(ws::Message::Text(msg.into())).await.is_err() {
+                            break;
+                        }
+                    }
                     Err(broadcast::error::RecvError::Closed) => break,
                 }
             }

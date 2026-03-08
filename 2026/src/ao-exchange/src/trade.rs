@@ -78,7 +78,7 @@ impl TradeManager {
     pub fn expire_stale(&mut self) -> usize {
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system clock")
+            .unwrap_or_default()
             .as_secs();
 
         let expired: Vec<String> = self.trades.iter()

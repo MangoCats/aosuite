@@ -57,7 +57,7 @@ pub async fn execute_transfer(
 
     let now_secs = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock before epoch")
+        .unwrap_or_default()
         .as_secs() as i64;
 
     // Iterative fee convergence (3 rounds)

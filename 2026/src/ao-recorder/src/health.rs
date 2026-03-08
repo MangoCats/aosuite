@@ -219,6 +219,7 @@ pub struct AlertConfig {
     pub disk_error_percent: f64,
     pub stale_chain_seconds: u64,
     pub memory_log_interval_seconds: u64,
+    pub check_interval_seconds: u64,
     pub webhook_url: Option<String>,
 }
 
@@ -231,6 +232,7 @@ impl AlertConfig {
                 disk_error_percent: alerts.disk_error_percent,
                 stale_chain_seconds: alerts.stale_chain_seconds,
                 memory_log_interval_seconds: alerts.memory_log_interval_seconds,
+                check_interval_seconds: alerts.check_interval_seconds,
                 webhook_url: alerts.webhook_url.clone(),
             }
         } else {
@@ -246,6 +248,7 @@ impl Default for AlertConfig {
             disk_error_percent: 5.0,
             stale_chain_seconds: 86400, // 24 hours
             memory_log_interval_seconds: 3600, // 1 hour
+            check_interval_seconds: 60,
             webhook_url: None,
         }
     }
@@ -253,7 +256,7 @@ impl Default for AlertConfig {
 
 /// Run periodic operational alerts. Call from a spawned task.
 pub async fn run_alerts(state: Arc<AppState>, config: AlertConfig) {
-    let interval = std::time::Duration::from_secs(60); // check every minute
+    let interval = std::time::Duration::from_secs(config.check_interval_seconds);
     let mut memory_last_logged = Instant::now();
 
     // Log initial memory baseline
@@ -326,7 +329,10 @@ async fn check_disk_space(dir: &std::path::Path, config: &AlertConfig) {
 async fn check_stale_chains(state: &AppState, config: &AlertConfig) {
     let chain_refs: Vec<(String, Arc<crate::ChainState>)> = match state.chains.read() {
         Ok(chains) => chains.iter().map(|(id, cs)| (id.clone(), Arc::clone(cs))).collect(),
-        Err(_) => return,
+        Err(e) => {
+            tracing::error!("chains read lock poisoned in stale check: {}", e);
+            return;
+        }
     };
 
     let now_unix = std::time::SystemTime::now()
@@ -338,7 +344,10 @@ async fn check_stale_chains(state: &AppState, config: &AlertConfig) {
         let age = {
             let store = match cs.store.lock() {
                 Ok(s) => s,
-                Err(_) => continue,
+                Err(e) => {
+                    tracing::warn!(chain_id = %id, "store lock poisoned in stale check: {}", e);
+                    continue;
+                }
             };
             store.last_block_timestamp()
                 .ok()
@@ -418,6 +427,7 @@ mod tests {
         assert!((cfg.disk_error_percent - 5.0).abs() < f64::EPSILON);
         assert_eq!(cfg.stale_chain_seconds, 86400);
         assert_eq!(cfg.memory_log_interval_seconds, 3600);
+        assert_eq!(cfg.check_interval_seconds, 60);
         assert!(cfg.webhook_url.is_none());
     }
 

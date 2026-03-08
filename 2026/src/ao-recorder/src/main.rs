@@ -8,7 +8,7 @@ use ao_types::dataitem::DataItem;
 use ao_crypto::sign::SigningKey;
 use ao_chain::store::ChainStore;
 
-use ao_recorder::{AppState, ChainState, blob, build_router, config, health, mqtt, poll_validators};
+use ao_recorder::{AppState, ChainState, blob, build_router_with_config, config, health, mqtt, poll_validators};
 
 fn load_blockmaker_key(seed_hex: &str) -> Result<SigningKey> {
     let seed_bytes: Vec<u8> = hex::decode(seed_hex.trim())
@@ -42,7 +42,7 @@ fn load_chain(db_path: &str, genesis_path: &str, blockmaker_key: &SigningKey) ->
         }
     };
 
-    let _ = blockmaker_key; // used by caller
+    let _ = blockmaker_key; // validated, used by caller for ChainState
     Ok((hex::encode(meta.chain_id), store))
 }
 
@@ -99,6 +99,9 @@ async fn main() -> Result<()> {
 
     let mut state_inner = AppState::new_multi(data_dir, SigningKey::from_seed(default_key.seed()));
     state_inner.blob_store = blob_store;
+    if cfg.max_connections > 0 {
+        state_inner.connection_semaphore = Some(Arc::new(tokio::sync::Semaphore::new(cfg.max_connections)));
+    }
     let state = Arc::new(state_inner);
 
     // Load single-chain config (backward compatible)
@@ -154,7 +157,7 @@ async fn main() -> Result<()> {
     let chain_count = state.chains.read()
         .map_err(|e| anyhow::anyhow!("chains lock poisoned: {}", e))?
         .len();
-    let app = build_router(state);
+    let app = build_router_with_config(state, &cfg);
 
     let bind_addr = format!("{}:{}", cfg.host, cfg.port);
     info!(%bind_addr, chain_count, "Starting AO Recorder");
@@ -386,6 +389,12 @@ data_dir = "data"
 # stale_chain_seconds = 86400
 # memory_log_interval_seconds = 3600
 # webhook_url = "https://example.com/webhook"
+
+# Security (optional):
+# api_keys = ["secret-key-1", "secret-key-2"]
+# read_rate_limit = 100.0   # requests/sec per IP
+# write_rate_limit = 10.0   # requests/sec per IP
+# max_connections = 64       # max concurrent SSE/WebSocket
 "#, pubkey_hex, seed_hex);
 
     std::fs::write(output_path, config_content)

@@ -118,6 +118,7 @@ async fn start_empty_server(blockmaker_key: &SigningKey) -> String {
 }
 
 /// Build a signed AUTHORIZATION with iterative fee calculation.
+#[allow(clippy::too_many_arguments)]
 fn build_authorization(
     giver_key: &SigningKey,
     giver_seq_id: u64,
@@ -158,6 +159,7 @@ fn build_authorization(
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_auth_inner(
     giver_key: &SigningKey,
     giver_seq_id: u64,
@@ -474,7 +476,8 @@ async fn test_double_spend_via_api() {
     assert_eq!(resp2.status(), 400);
 
     let body: serde_json::Value = resp2.json().await.unwrap();
-    assert!(body["error"].as_str().unwrap().contains("already spent"));
+    // Error message is sanitized in production responses (F10)
+    assert!(body["error"].as_str().unwrap().contains("invalid request"));
 }
 
 #[tokio::test]
@@ -961,6 +964,7 @@ async fn start_caa_server(
 }
 
 /// Build a CAA DataItem for a two-chain atomic exchange.
+#[allow(clippy::too_many_arguments)]
 fn build_caa_for_test(
     chain_a_id: &[u8; 32],
     chain_b_id: &[u8; 32],

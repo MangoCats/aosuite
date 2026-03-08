@@ -32,6 +32,22 @@ pub fn genesis_rolled_hash(genesis_block_hash: &[u8; 32]) -> [u8; 32] {
     update_rolled_hash(&[0u8; 32], genesis_block_hash)
 }
 
+/// Extract PREV_HASH from a BLOCK DataItem (inside BLOCK_SIGNED → BLOCK_CONTENTS).
+/// Returns None if the block has no PREV_HASH child (e.g. genesis).
+fn extract_prev_hash(block: &DataItem) -> Option<[u8; 32]> {
+    let block_signed = block.find_child(typecode::BLOCK_SIGNED)?;
+    let block_contents = block_signed.find_child(typecode::BLOCK_CONTENTS)?;
+    let prev_hash_item = block_contents.find_child(typecode::PREV_HASH)?;
+    let bytes = prev_hash_item.as_bytes()?;
+    if bytes.len() == 32 {
+        let mut arr = [0u8; 32];
+        arr.copy_from_slice(bytes);
+        Some(arr)
+    } else {
+        None
+    }
+}
+
 /// Extract the block hash from a BLOCK DataItem.
 ///
 /// Block structure: BLOCK { SHA256(block_hash), BLOCK_SIGNED { ... } }
@@ -102,6 +118,7 @@ pub fn verify_block_batch(
 
     let mut rolled = *prev_rolled_hash;
     let mut last_height = expected_start_height.saturating_sub(1);
+    let mut prev_block_hash: Option<[u8; 32]> = None;
 
     for (i, block_json) in blocks_json.iter().enumerate() {
         let height = expected_start_height + i as u64;
@@ -112,6 +129,19 @@ pub fn verify_block_batch(
         let block_hash = extract_and_verify_block_hash(&block)
             .map_err(|e| anyhow::anyhow!("block {} verification failed: {}", height, e))?;
 
+        // Verify PREV_HASH chain linkage within this batch.
+        // (Cross-batch linkage is verified by the caller tracking prev_block_hash.)
+        if let Some(expected_prev) = prev_block_hash
+            && let Some(claimed_prev) = extract_prev_hash(&block)
+            && claimed_prev != expected_prev
+        {
+            bail!(
+                "block {} PREV_HASH mismatch: claimed {} != expected {}",
+                height, hex::encode(claimed_prev), hex::encode(expected_prev)
+            );
+        }
+
+        prev_block_hash = Some(block_hash);
         rolled = update_rolled_hash(&rolled, &block_hash);
         last_height = height;
     }
@@ -236,13 +266,13 @@ mod tests {
 
         // Tamper with the SHA256 hash inside the block JSON
         let mut json = ao_json::to_json(&block);
-        if let Some(items) = json.get_mut("items").and_then(|v| v.as_array_mut()) {
-            if let Some(hash_item) = items.first_mut() {
-                hash_item.as_object_mut().unwrap().insert(
-                    "value".to_string(),
-                    serde_json::Value::String("ff".repeat(32)),
-                );
-            }
+        if let Some(items) = json.get_mut("items").and_then(|v| v.as_array_mut())
+            && let Some(hash_item) = items.first_mut()
+        {
+            hash_item.as_object_mut().unwrap().insert(
+                "value".to_string(),
+                serde_json::Value::String("ff".repeat(32)),
+            );
         }
 
         let prev = [0u8; 32];

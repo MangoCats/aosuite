@@ -58,6 +58,21 @@ pub struct Config {
     /// Enable the /dashboard HTML page.
     #[serde(default)]
     pub dashboard: bool,
+    /// Optional API keys for authentication. Empty = no auth required.
+    #[serde(default)]
+    pub api_keys: Vec<String>,
+    /// Per-IP rate limit for read endpoints (requests/second). 0 = no limit.
+    #[serde(default)]
+    pub read_rate_limit: f64,
+    /// Per-IP rate limit for write endpoints (requests/second). 0 = no limit.
+    #[serde(default)]
+    pub write_rate_limit: f64,
+    /// Max concurrent SSE/WebSocket connections. 0 = no limit.
+    #[serde(default)]
+    pub max_connections: usize,
+    /// Allow non-HTTPS validator URLs (for local dev only).
+    #[serde(default)]
+    pub allow_insecure_validators: bool,
 }
 
 #[derive(Deserialize, Clone)]
@@ -74,6 +89,9 @@ pub struct AlertsConfig {
     /// Memory baseline logging interval in seconds. Default: 3600 (1h).
     #[serde(default = "default_memory_interval")]
     pub memory_log_interval_seconds: u64,
+    /// Alert check interval in seconds. Default: 60.
+    #[serde(default = "default_check_interval")]
+    pub check_interval_seconds: u64,
     /// Optional webhook URL for alert notifications.
     #[serde(default)]
     pub webhook_url: Option<String>,
@@ -83,6 +101,7 @@ fn default_disk_warn() -> f64 { 10.0 }
 fn default_disk_error() -> f64 { 5.0 }
 fn default_stale_seconds() -> u64 { 86400 }
 fn default_memory_interval() -> u64 { 3600 }
+fn default_check_interval() -> u64 { 60 }
 
 #[derive(Deserialize, Clone)]
 pub struct ValidatorEndpoint {
@@ -91,6 +110,13 @@ pub struct ValidatorEndpoint {
     /// Human-readable label.
     #[serde(default)]
     pub label: Option<String>,
+}
+
+/// Allow non-HTTPS validator URLs (for local development only).
+#[derive(Deserialize, Default, Clone)]
+pub struct SecurityConfig {
+    #[serde(default)]
+    pub allow_insecure_validators: bool,
 }
 
 impl Default for Config {
@@ -108,6 +134,11 @@ impl Default for Config {
             known_recorders: std::collections::HashMap::new(),
             alerts: None,
             dashboard: false,
+            api_keys: Vec::new(),
+            read_rate_limit: 0.0,
+            write_rate_limit: 0.0,
+            max_connections: 0,
+            allow_insecure_validators: false,
         }
     }
 }
@@ -119,6 +150,29 @@ pub fn load_config(path: &str) -> anyhow::Result<Config> {
         .map_err(|e| anyhow::anyhow!("failed to parse {}: {}", path, e))?;
     if config.blockmaker_seed.is_empty() {
         anyhow::bail!("blockmaker_seed is required in {}", path);
+    }
+    // Validate validator URLs
+    for (i, v) in config.validators.iter().enumerate() {
+        let url = v.url.trim_end_matches('/');
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            anyhow::bail!(
+                "validators[{}].url must start with http:// or https://, got: {}",
+                i, v.url
+            );
+        }
+        if !config.allow_insecure_validators && url.starts_with("http://") {
+            // Allow localhost/127.0.0.1/[::1] without HTTPS
+            let host_part = url.strip_prefix("http://").unwrap_or("");
+            let is_local = host_part.starts_with("localhost")
+                || host_part.starts_with("127.")
+                || host_part.starts_with("[::1]");
+            if !is_local {
+                anyhow::bail!(
+                    "validators[{}].url must use HTTPS for non-local hosts (set allow_insecure_validators = true to override): {}",
+                    i, v.url
+                );
+            }
+        }
     }
     Ok(config)
 }

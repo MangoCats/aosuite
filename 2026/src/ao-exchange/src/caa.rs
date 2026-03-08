@@ -356,7 +356,7 @@ fn compute_caa_hash_hex(caa: &DataItem) -> String {
 fn unix_now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock before epoch")
+        .unwrap_or_default()
         .as_secs() as i64
 }
 

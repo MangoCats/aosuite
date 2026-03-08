@@ -103,7 +103,7 @@ async fn run_daemon(config_path: &str) -> Result<()> {
                 Ok(info) => info.block_height,
                 Err(e) => {
                     let (was_ok, prev) = {
-                        let store = state.store.lock().expect("store lock poisoned");
+                        let store = state.store.lock().map_err(|e| anyhow::anyhow!("store lock poisoned: {}", e))?;
                         let prev = store.get_chain_state(&chain_cfg.chain_id)?;
                         let was_ok = prev.as_ref().is_none_or(|s| s.status == "ok");
                         (was_ok, prev)
@@ -121,7 +121,7 @@ async fn run_daemon(config_path: &str) -> Result<()> {
                     }
 
                     if let Some(prev) = prev {
-                        let store = state.store.lock().expect("store lock poisoned");
+                        let store = state.store.lock().map_err(|e| anyhow::anyhow!("store lock poisoned: {}", e))?;
                         store.update_chain_state(
                             &chain_cfg.chain_id, prev.validated_height,
                             &prev.rolled_hash, "unreachable",
@@ -134,7 +134,7 @@ async fn run_daemon(config_path: &str) -> Result<()> {
 
             // Load our state
             let chain_state = {
-                let store = state.store.lock().expect("store lock poisoned");
+                let store = state.store.lock().map_err(|e| anyhow::anyhow!("store lock poisoned: {}", e))?;
                 store.get_chain_state(&chain_cfg.chain_id)?
                     .unwrap_or_else(|| ao_validator::store::ChainValidationState {
                         chain_id: chain_cfg.chain_id.clone(),
@@ -162,7 +162,7 @@ async fn run_daemon(config_path: &str) -> Result<()> {
 
             if recorder_height <= validated {
                 tracing::debug!(chain = %label, height = validated, "up to date");
-                let store = state.store.lock().expect("store lock poisoned");
+                let store = state.store.lock().map_err(|e| anyhow::anyhow!("store lock poisoned: {}", e))?;
                 store.update_chain_state(
                     &chain_cfg.chain_id, validated,
                     &chain_state.rolled_hash, "ok", None,
@@ -218,7 +218,7 @@ async fn run_daemon(config_path: &str) -> Result<()> {
                         };
                         state.alerts.dispatch(&alert).await;
 
-                        let store = state.store.lock().expect("store lock poisoned");
+                        let store = state.store.lock().map_err(|e| anyhow::anyhow!("store lock poisoned: {}", e))?;
                         store.update_chain_state(
                             &chain_cfg.chain_id,
                             current_height.saturating_sub(1),
@@ -232,7 +232,7 @@ async fn run_daemon(config_path: &str) -> Result<()> {
             }
 
             if verification_ok {
-                let store = state.store.lock().expect("store lock poisoned");
+                let store = state.store.lock().map_err(|e| anyhow::anyhow!("store lock poisoned: {}", e))?;
                 store.update_chain_state(
                     &chain_cfg.chain_id,
                     current_height.saturating_sub(1),

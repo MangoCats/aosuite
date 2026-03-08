@@ -259,9 +259,23 @@ sqlite3 /var/lib/ao-recorder/chain.db ".backup /tmp/chain-backup.db"
 
 ## TLS / HTTPS
 
-The recorder serves plain HTTP. For production deployments exposed to the internet, put it behind a reverse proxy with TLS.
+The recorder serves plain HTTP. For production deployments exposed to the internet, put it behind a reverse proxy that terminates TLS. A reverse proxy sits between the internet and your recorder, handling HTTPS certificates and forwarding decrypted requests to the recorder on localhost.
 
-**Recommended: Caddy** (automatic Let's Encrypt certificates):
+For LAN-only deployments (Tia's store, Riuki cooperative), TLS is not required — skip this section.
+
+### Reverse Proxy Options
+
+The three options below are ranked by ease of installation and maintenance, easiest first.
+
+#### 1. Caddy (Recommended)
+
+**Website**: [caddyserver.com](https://caddyserver.com/)
+
+Caddy is the easiest option. It automatically obtains and renews Let's Encrypt certificates with zero configuration beyond specifying your domain name. It is a single static binary with no dependencies. Ideal for sysops who want HTTPS working in under five minutes.
+
+**Pros**: Automatic HTTPS by default, zero certificate management, minimal config, single binary, built-in HTTP/2 and HTTP/3.
+
+**Cons**: Smaller community than nginx, fewer tutorials online, less granular tuning for high-traffic scenarios.
 
 ```
 ao.example.com {
@@ -269,24 +283,125 @@ ao.example.com {
 }
 ```
 
-Save as `Caddyfile`, run `caddy run`. Caddy handles certificate issuance and renewal automatically.
+Save as `Caddyfile`, run `caddy run`. That's it — Caddy handles certificate issuance, renewal, and HTTPS redirection automatically.
 
-**Alternative: nginx** with certbot:
+See [Appendix A](#appendix-a-full-caddy-setup-walkthrough) for a complete step-by-step walkthrough.
+
+#### 2. Nginx + Certbot
+
+**Website**: [nginx.org](https://nginx.org/) / [certbot.eff.org](https://certbot.eff.org/)
+
+Nginx is the most widely deployed reverse proxy. It requires separate certificate management via Certbot (the official Let's Encrypt client). More configuration than Caddy, but well-documented with a vast ecosystem of guides and community support.
+
+**Pros**: Industry standard, battle-tested at scale, huge community, extensive documentation, available in every Linux package manager.
+
+**Cons**: Manual certificate setup via Certbot, more verbose configuration, must set up a cron job or systemd timer for certificate renewal.
+
 ```nginx
+server {
+    listen 80;
+    server_name ao.example.com;
+    return 301 https://$host$request_uri;
+}
+
 server {
     listen 443 ssl;
     server_name ao.example.com;
+
     ssl_certificate /etc/letsencrypt/live/ao.example.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/ao.example.com/privkey.pem;
+
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # WebSocket support for chain event streams
+    location /chain/ {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
     }
 }
 ```
 
-For LAN-only deployments (Tia's store, Riuki cooperative), TLS is not required.
+Install and obtain certificates:
+```bash
+sudo apt install nginx certbot python3-certbot-nginx
+sudo certbot --nginx -d ao.example.com
+```
+
+Certbot installs a systemd timer for automatic renewal. Verify with:
+```bash
+sudo systemctl list-timers | grep certbot
+```
+
+#### 3. Traefik
+
+**Website**: [traefik.io](https://traefik.io/traefik/)
+
+Traefik is a cloud-native reverse proxy designed for dynamic environments and container orchestration. It has built-in Let's Encrypt support (like Caddy) but is configured through labels, files, or API rather than a simple config file. Best for sysops already using Docker or Kubernetes who want their reverse proxy to auto-discover services.
+
+**Pros**: Automatic Let's Encrypt, Docker/Kubernetes-native service discovery, dashboard UI, dynamic reconfiguration without restarts.
+
+**Cons**: More complex initial setup than Caddy, configuration split across multiple files or Docker labels, steeper learning curve for non-container deployments.
+
+Static configuration (`traefik.yml`):
+```yaml
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+  websecure:
+    address: ":443"
+
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: you@example.com
+      storage: /etc/traefik/acme.json
+      httpChallenge:
+        entryPoint: web
+
+providers:
+  file:
+    filename: /etc/traefik/routes.yml
+```
+
+Dynamic route configuration (`routes.yml`):
+```yaml
+http:
+  routers:
+    ao-recorder:
+      rule: "Host(`ao.example.com`)"
+      service: ao-recorder
+      entryPoints:
+        - websecure
+      tls:
+        certResolver: letsencrypt
+  services:
+    ao-recorder:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:3000"
+```
+
+### Which should I pick?
+
+| Scenario | Recommendation |
+|----------|---------------|
+| Single recorder, minimal fuss | **Caddy** |
+| Already familiar with nginx | **Nginx + Certbot** |
+| Running Docker / Kubernetes | **Traefik** |
+| Raspberry Pi with limited RAM | **Caddy** (lowest idle footprint) |
 
 ## Performance Benchmarking
 
@@ -388,3 +503,195 @@ Event types: `disk_warning`, `disk_critical`, `chain_stale`.
 - [ ] Run `ao-recorder doctor`
 - [ ] Run `ao-recorder bench` to re-baseline
 - [ ] Verify dashboard shows expected chain data
+
+---
+
+## Appendix A: Full Caddy Setup Walkthrough
+
+This walkthrough takes you from a fresh Linux server to a working HTTPS reverse proxy in front of your AO Recorder. It assumes your recorder is already running on port 3000.
+
+### Prerequisites
+
+- A domain name (e.g. `ao.example.com`) with a DNS A record pointing to your server's public IP address
+- Ports 80 and 443 open in your firewall and reachable from the internet (Let's Encrypt needs these for certificate validation)
+- The AO Recorder running and reachable at `http://localhost:3000/health`
+
+Verify DNS is set up correctly before proceeding:
+```bash
+dig +short ao.example.com
+# Should return your server's public IP
+```
+
+Verify the recorder is running:
+```bash
+curl http://localhost:3000/health
+# Should return JSON with "status": "ok"
+```
+
+### Step 1: Install Caddy
+
+**Debian / Ubuntu / Raspberry Pi OS:**
+```bash
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update
+sudo apt install caddy
+```
+
+**Fedora / RHEL / CentOS:**
+```bash
+dnf install 'dnf-command(copr)'
+dnf copr enable @caddy/caddy
+dnf install caddy
+```
+
+**Any platform (single binary):**
+```bash
+curl -o /usr/local/bin/caddy -L "https://caddyserver.com/api/download?os=linux&arch=amd64"
+chmod +x /usr/local/bin/caddy
+```
+
+Replace `amd64` with `arm64` for Raspberry Pi and other ARM64 boards.
+
+Verify the installation:
+```bash
+caddy version
+```
+
+### Step 2: Create the Caddyfile
+
+```bash
+sudo mkdir -p /etc/caddy
+```
+
+Write the Caddyfile (replace `ao.example.com` with your actual domain):
+```bash
+sudo tee /etc/caddy/Caddyfile << 'EOF'
+ao.example.com {
+    reverse_proxy localhost:3000
+}
+EOF
+```
+
+That is the entire configuration. Caddy will:
+- Listen on ports 80 and 443
+- Automatically obtain a Let's Encrypt TLS certificate for `ao.example.com`
+- Redirect all HTTP requests to HTTPS
+- Forward HTTPS requests to your recorder on port 3000
+- Automatically renew the certificate before it expires
+
+### Step 3: Open firewall ports
+
+**UFW (Ubuntu / Debian):**
+```bash
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+sudo ufw reload
+```
+
+**firewalld (Fedora / RHEL):**
+```bash
+sudo firewall-cmd --permanent --add-service=http
+sudo firewall-cmd --permanent --add-service=https
+sudo firewall-cmd --reload
+```
+
+If your server is behind a cloud provider firewall (AWS Security Group, DigitalOcean Firewall, etc.), also allow ports 80 and 443 inbound in the cloud console.
+
+### Step 4: Start Caddy
+
+**If installed via package manager (systemd service is already set up):**
+```bash
+sudo systemctl start caddy
+sudo systemctl enable caddy   # start on boot
+```
+
+**If installed as a standalone binary**, create a systemd unit:
+```bash
+sudo tee /etc/systemd/system/caddy.service << 'EOF'
+[Unit]
+Description=Caddy web server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/usr/local/bin/caddy run --config /etc/caddy/Caddyfile
+ExecReload=/usr/local/bin/caddy reload --config /etc/caddy/Caddyfile
+Restart=on-failure
+User=caddy
+Group=caddy
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo useradd --system --home /var/lib/caddy --shell /usr/sbin/nologin caddy
+sudo mkdir -p /var/lib/caddy
+sudo chown caddy:caddy /var/lib/caddy
+
+sudo systemctl daemon-reload
+sudo systemctl start caddy
+sudo systemctl enable caddy
+```
+
+### Step 5: Verify HTTPS
+
+Wait 10–30 seconds for Caddy to obtain the certificate (check logs if it takes longer), then test:
+
+```bash
+curl -v https://ao.example.com/health
+```
+
+You should see:
+- A valid TLS handshake (look for `SSL certificate verify ok`)
+- The familiar `{"status":"ok",...}` JSON response
+
+Open `https://ao.example.com/dashboard` in a browser. The padlock icon in the address bar confirms TLS is working.
+
+### Step 6: Verify automatic renewal
+
+Caddy renews certificates automatically ~30 days before expiry. You can verify the certificate details at any time:
+
+```bash
+curl -vI https://ao.example.com 2>&1 | grep "expire date"
+```
+
+To test that renewal works (dry run):
+```bash
+caddy trust   # installs Caddy's root CA locally (optional, for testing only)
+```
+
+Caddy logs certificate events. Check with:
+```bash
+sudo journalctl -u caddy | grep -i "certificate\|tls\|acme"
+```
+
+### Troubleshooting
+
+**"Permission denied" binding to port 80/443:**
+The caddy process needs `CAP_NET_BIND_SERVICE`. If installed via package manager, this is already configured. For standalone installs:
+```bash
+sudo setcap cap_net_bind_service=+ep /usr/local/bin/caddy
+```
+
+**Certificate issuance fails:**
+- Verify DNS points to this server: `dig +short ao.example.com`
+- Verify ports 80 and 443 are reachable from the internet (use an external port checker)
+- Check Caddy logs: `sudo journalctl -u caddy --since "5 minutes ago"`
+- Let's Encrypt has rate limits: 5 duplicate certificates per week, 50 certificates per domain per week. If you hit rate limits during testing, use the staging endpoint temporarily by adding to your Caddyfile:
+  ```
+  ao.example.com {
+      tls {
+          ca https://acme-staging-v02.api.letsencrypt.org/directory
+      }
+      reverse_proxy localhost:3000
+  }
+  ```
+  Remove the `tls` block once you are ready for a real certificate.
+
+**Recorder unreachable through proxy:**
+- Verify the recorder is running: `curl http://localhost:3000/health`
+- Verify Caddy config: `caddy validate --config /etc/caddy/Caddyfile`
+- Reload after config changes: `sudo systemctl reload caddy`

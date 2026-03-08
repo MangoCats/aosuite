@@ -140,6 +140,7 @@ dependencies = [
  "num-bigint",
  "num-rational",
  "num-traits",
+ "pin-project-lite",
  "reqwest",
  "rumqttc",
  "serde",
@@ -151,6 +152,7 @@ dependencies = [
  "tokio-stream",
  "tokio-tungstenite 0.26.2",
  "toml",
+ "tower",
  "tracing",
  "tracing-subscriber",
 ]

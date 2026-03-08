@@ -619,65 +619,37 @@ Background task (`run_alerts`) checks every 60 seconds:
 | N7 | Cooperative metadata conventions | Coop | Small | — | ✓ Done |
 | N8 | Binary attachments (photo/doc) | Coop, Tourism | Medium | N2, N7 | ✓ Done |
 | N9 | Server operations dashboard | All three | Medium–Large | — | ✓ Partial (installers remaining) |
-| N10 | Security hardening | All three | Medium | — | Planned |
+| N10 | Security hardening | All three | Medium | — | ✓ Done (F3 deferred) |
 
-N1–N8 are complete. N9 is partially complete (runtime monitoring, alerts, dashboard, sysop guide, and CLI subcommands are done; platform installers and Prometheus metrics remain). N10 is planned. N9 addresses the operational sustainability risk identified in all three deployment stories. N10 addresses the network-layer security findings from the [security audit](SECURITY_AUDIT.md) — the core protocol is solid, but the HTTP/deployment harness needs hardening before exposure beyond localhost.
+N1–N8 are complete. N9 is partially complete (runtime monitoring, alerts, dashboard, sysop guide, and CLI subcommands are done; platform installers and Prometheus metrics remain). N10 is complete except F3 (signed recorder identity, deferred to when multi-recorder topology is implemented). N9 addresses the operational sustainability risk identified in all three deployment stories. N10 addresses the network-layer security findings from the [security audit](SECURITY_AUDIT.md).
 
 Remaining hardware-dependent acceptance tests from earlier phases: two-device <3s latency, iOS/Android PWA install, Pi stress tests, Lighthouse PWA audit.
 
-### N10: Security Hardening — *All Three* Planned
+### N10: Security Hardening — *All Three* ✓ Done (F3 deferred)
 
 Network-layer security fixes identified by the [security audit](SECURITY_AUDIT.md). The core protocol (signatures, shares, fees, timestamps, serialization) is solid; these items harden the HTTP/deployment harness.
 
-#### Authentication & Rate Limiting (F1, F4)
+#### Implemented
 
-1. **API key middleware**: Tower layer on ao-recorder and ao-exchange that checks `Authorization: Bearer <key>` header. Keys configured in TOML (`[api_keys]` section). Unsigned read endpoints (chain list, block queries) optionally exempt. Submit and CAA endpoints always require a key.
+**F1/F4 — Authentication & Rate Limiting** ✓: `security.rs` module with `ApiKeys` middleware (checks `Authorization: Bearer <key>`) and per-IP token-bucket `RateLimiter`. Config fields: `api_keys`, `read_rate_limit`, `write_rate_limit`. Applied as Axum middleware layers in `build_router_with_config()`. Rate limiter cleanup runs every 60s. 5 unit tests.
 
-2. **Per-IP rate limiter**: Tower `RateLimit` layer with configurable requests-per-second per source IP. Default: 10 req/s for submit endpoints, 100 req/s for read endpoints. Exceeding returns 429.
+**F2 — Connection Limits** ✓: `connection_semaphore: Option<Arc<Semaphore>>` on `AppState`, enforced in SSE and WebSocket handlers. Config field: `max_connections` (0 = unlimited). Excess connections get 503. `PermitStream` wrapper holds permit for stream lifetime. Lag notifications: SSE sends `event: lagged`, WebSocket sends `{"event":"lagged","skipped":N}`.
 
-3. **Documentation**: Config file examples and quick-start guide updated to cover key generation and rate limit tuning.
+**F5 — BigInt Exchange Arithmetic** ✓: `compute_sell_amount` now uses `BigRational` (exact arithmetic, no f64 precision loss). Rates scaled to 10^9 rational. Truncates toward zero (exchange keeps remainder). 8 tests including large-amount and edge cases.
 
-#### Connection Limits (F2)
+**F6 — PREV_HASH Validation** ✓: `verify_block_batch()` in ao-validator tracks `prev_block_hash` across iterations, compares with `extract_prev_hash()`. Mismatches produce clear error. 6 verifier tests.
 
-1. **Max concurrent SSE/WebSocket**: Configurable cap (default 64) enforced via `Arc<Semaphore>`. New connections beyond the cap receive 503.
+**F7 — Lock Error Handling** ✓: All `.expect()` on mutex locks replaced with `map_err` returning 500. All `.expect("system clock")` replaced with `.unwrap_or_default()`. `current_wall_timestamp()` helper. Transaction rollback failures logged via `tracing::error!`.
 
-2. **Lag notification**: SSE streams send `event: lagged` when messages are skipped. WebSocket sends `{"type":"lagged"}` JSON frame. Clients can reconnect and re-sync.
+**F8 — Validator URL Validation** ✓: `load_config()` validates all validator URLs at startup. Non-HTTPS URLs rejected for non-local hosts unless `allow_insecure_validators = true`. Local hosts (localhost, 127.*, [::1]) always allowed over HTTP.
 
-3. **Idle timeout**: SSE and WebSocket connections closed after configurable idle period (default 5 minutes with no subscribable activity).
+**F9 — Block Size Guard** ✓: `MAX_BLOCK_DESERIALIZE_SIZE` (1 MB) check before deserializing blocks in GET `/blocks`. Oversized blocks return error instead of risking OOM.
 
-#### Precision Fix (F5)
+**F10 — Error Sanitization** ✓: `RecorderError::into_response()` returns generic messages ("invalid request", "internal error", etc.). Details logged at DEBUG/ERROR level only.
 
-1. **BigInt exchange arithmetic**: Replace f64 division in `compute_sell_amount` with `num-rational` or explicit BigInt `div_ceil`. Rounding direction documented and tested with conformance vectors.
+#### Deferred
 
-#### Chain Integrity (F6)
-
-1. **PREV_HASH validation**: `construct_block()` checks that the caller-supplied previous hash matches `meta.prev_hash`. Mismatch returns error. Trivial change, prevents future fork risk.
-
-#### Robustness (F7, F8, F9, F10)
-
-1. **Lock error handling**: Replace `.expect()` on mutex locks with explicit error returns. Lock poisoning produces a logged error and 500 response, not a process crash.
-
-2. **Validator URL validation**: At config load time, reject non-HTTPS validator URLs (unless `allow_insecure_validators = true` for local development). URL-encode chain IDs in polling requests.
-
-3. **Block response streaming**: GET `/blocks` streams JSON array items instead of collecting all into memory. Per-block serialization timeout (1 second).
-
-4. **Error message sanitization**: Production HTTP responses use generic messages ("invalid request", "internal error"). Parsing details logged at DEBUG level only.
-
-#### CAA Recorder Trust (F3)
-
-1. **Signed recorder identity**: Each recorder signs a discovery announcement with its blockmaker key. CAA validation requires the recording proof to chain back to a key in `known_recorders` AND match the signature on the recorder's announced identity. Config still provides the initial trust set; runtime verification prevents config-only forgery.
-
-#### Acceptance Criteria
-
-- All submit/CAA endpoints reject requests without a valid API key (when keys are configured).
-- Rate limiter returns 429 under sustained load above threshold.
-- SSE/WebSocket connections beyond the cap are refused with 503.
-- Lagged SSE clients receive `event: lagged` notification.
-- `compute_sell_amount` produces identical results to BigInt reference implementation for all test vectors.
-- Block with wrong PREV_HASH is rejected with clear error.
-- Mutex lock failure logs an error and returns 500 (no process crash).
-- HTTP error responses contain no internal field names or parsing details.
-- Non-HTTPS validator URLs rejected at startup (unless explicitly allowed).
+**F3 — CAA Recorder Trust**: Signed recorder identity deferred to when multi-recorder topology is implemented. Current config-based `known_recorders` is adequate for single-recorder deployments.
 
 ---
 

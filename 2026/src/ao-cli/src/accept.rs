@@ -82,7 +82,7 @@ async fn run_async(args: AcceptArgs) {
     // Current timestamp
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .expect("system clock before epoch")
+        .unwrap_or_default()
         .as_secs() as i64;
     let ts = Timestamp::from_unix_seconds(now);
 

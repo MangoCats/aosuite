@@ -3,6 +3,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Result, bail};
 use num_bigint::BigInt;
+use num_rational::BigRational;
 use tracing::info;
 
 use crate::client::RecorderClient;
@@ -42,19 +43,39 @@ pub struct ExchangeEngine {
 }
 
 /// Convert a buy amount to sell amount using rate and spread.
+/// Uses BigRational for exact arithmetic — no f64 precision loss.
 /// Returns None if the result is non-positive (too small to trade).
+///
+/// Rate and spread are converted to rationals by scaling to 1e9 precision,
+/// which covers all practical exchange configurations.
 fn compute_sell_amount(buy_amount: &BigInt, rate: f64, spread: f64) -> Option<BigInt> {
-    let buy_f64 = buy_amount.to_string().parse::<f64>().unwrap_or(0.0);
-    let effective_rate = rate * (1.0 + spread / 2.0);
-    if effective_rate <= 0.0 {
+    if !rate.is_finite() || rate <= 0.0 || !spread.is_finite() {
         return None;
     }
-    let sell_f64 = buy_f64 / effective_rate;
-    // Guard: f64 values beyond i64 range would wrap silently
-    if sell_f64 < 1.0 || sell_f64 > i64::MAX as f64 {
+    // Scale float to rational: multiply by 10^9, round to integer, denominator is 10^9.
+    let scale = BigInt::from(1_000_000_000i64);
+    let rate_num = BigInt::from((rate * 1e9) as i64);
+    let spread_num = BigInt::from((spread * 1e9) as i64);
+
+    // effective_rate = rate * (1 + spread/2) as rational
+    let rate_r = BigRational::new(rate_num, scale.clone());
+    let spread_half = BigRational::new(spread_num, &scale * BigInt::from(2));
+    let one = BigRational::from_integer(BigInt::from(1));
+    let effective_rate = &rate_r * (&one + &spread_half);
+
+    if effective_rate <= BigRational::from_integer(BigInt::from(0)) {
         return None;
     }
-    Some(BigInt::from(sell_f64 as i64))
+
+    // sell = buy / effective_rate, truncated toward zero (exchange keeps remainder)
+    let buy_r = BigRational::from_integer(buy_amount.clone());
+    let sell_r = &buy_r / &effective_rate;
+    let sell = sell_r.to_integer(); // truncates toward zero
+
+    if sell < BigInt::from(1) {
+        return None;
+    }
+    Some(sell)
 }
 
 impl ExchangeEngine {
@@ -141,9 +162,8 @@ impl ExchangeEngine {
     ) -> Result<(u64, BigInt)> {
         let pair = &self.pairs[pair_index];
 
-        // Calculate sell amount using f64 arithmetic. Exchange rates are inherently
-        // approximate (configured as floats, subject to spread), and this is a
-        // unilateral agent decision — not consensus-critical like on-chain fee math.
+        // Calculate sell amount using exact BigRational arithmetic.
+        // Truncates toward zero — the exchange keeps the fractional remainder.
         let sell_amount = compute_sell_amount(pay_amount, pair.rate, pair.spread)
             .ok_or_else(|| anyhow::anyhow!("sell amount too small after rate conversion"))?;
 
@@ -270,7 +290,7 @@ impl ExchangeEngine {
 
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
-            .expect("system clock")
+            .unwrap_or_default()
             .as_secs();
 
         let trade_id = uuid::Uuid::new_v4().to_string();
@@ -410,12 +430,24 @@ mod tests {
     #[test]
     fn test_compute_sell_amount_normal() {
         // rate=2.0, spread=0.02: effective_rate = 2.0 * 1.01 = 2.02
-        // sell = 1000 / 2.02 ≈ 495
+        // sell = 1000 / 2.02 = 495.049... → truncated to 495
         let result = compute_sell_amount(&BigInt::from(1000), 2.0, 0.02);
-        assert!(result.is_some());
-        let sell = result.unwrap();
-        assert!(sell > BigInt::from(0));
-        assert!(sell < BigInt::from(1000));
+        assert_eq!(result, Some(BigInt::from(495)));
+    }
+
+    #[test]
+    fn test_compute_sell_amount_exact_division() {
+        // rate=2.0, spread=0.0: sell = 1000 / 2.0 = 500 exactly
+        let result = compute_sell_amount(&BigInt::from(1000), 2.0, 0.0);
+        assert_eq!(result, Some(BigInt::from(500)));
+    }
+
+    #[test]
+    fn test_compute_sell_amount_large_amount() {
+        // Amounts larger than f64 can represent exactly (>2^53)
+        let big = BigInt::from(10_000_000_000_000_000i64); // 10 quadrillion
+        let result = compute_sell_amount(&big, 1.0, 0.0);
+        assert_eq!(result, Some(big));
     }
 
     #[test]
@@ -434,6 +466,18 @@ mod tests {
     #[test]
     fn test_compute_sell_amount_negative_rate() {
         let result = compute_sell_amount(&BigInt::from(1000), -1.0, 0.0);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_compute_sell_amount_nan_spread() {
+        let result = compute_sell_amount(&BigInt::from(1000), 2.0, f64::NAN);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_compute_sell_amount_inf_rate() {
+        let result = compute_sell_amount(&BigInt::from(1000), f64::INFINITY, 0.0);
         assert!(result.is_none());
     }
 }

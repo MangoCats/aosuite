@@ -63,9 +63,23 @@ This is where the architecture we built matters.
 
 Now when Nalu walks in needing a fishing reel ($35) and a bag of rice ($12), he sends 47 ENRA tokens from his wallet. Mako's exchange agent automatically credits Nalu with 47 TGS on Tia's chain. Tia sees the payment on her tablet. She hands Nalu his goods. For the first time, a retail purchase on Likiep has been recorded on a transparent, verifiable ledger.
 
-**Tia's chain is independent.** It is not a sidechain. It is not a layer-2. It is not a smart contract on someone else's platform. Tia's chain represents Tia's store, Tia's inventory, Tia's credit relationships. If the government's ENRA system goes down, Tia's chain keeps running -- her customers can still buy goods with TGS credits, and she can settle up with ENRA later.
+## Why Not Just Accept ENRA Directly?
+
+A reasonable question: why doesn't Tia just accept ENRA tokens in her Lomalo wallet and skip the complexity of her own chain? She could sell goods for ENRA, accumulate ENRA, and remit taxes in ENRA. The tax loop would still close. No Raspberry Pi, no nephew, no exchange agent.
+
+She could. And for a shopkeeper in Majuro with reliable internet and a simple cash-register business, that might be enough. But Tia is on Likiep, and her situation has three features that a Lomalo wallet can't handle:
+
+**She needs to work offline.** ENRA runs on Stellar. Stellar requires an internet connection to confirm transactions. On Likiep, the satellite link drops during storms, overloads during school hours, and disappears entirely during typhoons. Tia's Raspberry Pi processes TGS transactions locally. Her store keeps operating when the satellite is down. When connectivity returns, Mako's exchange agent settles the accumulated TGS against ENRA. If Tia relied solely on ENRA, every satellite outage would shut down her digital payments -- and on an atoll that gets hit by tropical storms, that's not a theoretical risk.
+
+**She already extends credit, and needs a ledger for it.** Tia's ruled notebook tracks who owes what. Some debts get repaid. Some don't. She has no way to distinguish reliable borrowers from chronic defaulters except her memory. Her own chain turns informal credit into recorded obligations. When Nalu buys rice on credit, the TGS chain records the debt. When he pays it back, the chain records the repayment. Over time, Tia gets something she never had: a credit history for each customer. ENRA tokens are bearer instruments -- they can represent a payment, but they can't represent "Nalu owes me $15 for last week's rice."
+
+**She gets a business ledger, not just a balance.** A Lomalo wallet shows Tia how many tokens she holds. It does not show her daily revenue, her most popular products, her seasonal patterns, or her profit margin. Her own chain records every sale as a transaction. At tax time, she doesn't need to reconstruct her income from a notebook -- the chain *is* her books. For a government trying to implement VAT on remote atolls, this is equally valuable: Tia's chain provides the transparent audit trail that makes tax compliance straightforward rather than adversarial.
+
+**Tia's chain is independent.** It is not a sidechain. It is not a layer-2. It is not a smart contract on someone else's platform. Tia's chain represents Tia's store, Tia's inventory, Tia's credit relationships. If the government's ENRA system changes terms, gets delayed, or goes down entirely, Tia's chain keeps running -- her customers can still buy goods with TGS credits, and she can settle up with ENRA when it's back.
 
 **Mako's exchange agent bridges the gap.** He holds inventory in both ENRA tokens and TGS credits. When Nalu spends ENRA, Mako receives ENRA and sends TGS. When Tia wants to convert accumulated TGS back to ENRA (to pay the supply boat, or to remit taxes), Mako does the reverse. He earns a small spread for this service. This is a human role, not a smart contract -- Mako's reputation as Tia's nephew and an IT professional on Majuro is his collateral.
+
+The extra complexity of Tia's own chain is not complexity for its own sake. It is the difference between a payment terminal and a business. A payment terminal processes transactions on someone else's infrastructure, subject to someone else's uptime and someone else's rules. A business owns its own records, extends its own credit, and keeps operating when the network goes down.
 
 ## Closing the Loop
 

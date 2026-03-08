@@ -152,7 +152,7 @@ Build `ao-chain` and `ao-recorder`, plus complete CLI tools.
 
 **ao-cli** — [src/ao-cli/](src/ao-cli/) ✓: 9 commands — `ao keygen`, `ao genesis`, `ao inspect` (Phase 1), plus `ao balance` (UTXO query with coin display), `ao assign` (build assignment with iterative fee estimation), `ao accept` (sign + submit authorization), `ao refute` (submit refutation to recorder), `ao history` (block range summary), `ao export` (blocks as JSON).
 
-**Tests:** 115 tests total across all crates (42 ao-types + 13 ao-crypto + 17 ao-chain + 10 ao-chain integration + 6 ao-exchange + 16 ao-recorder + 11 ao-validator). Edge cases: expired UTXO rejection, double-spend rejection, key reuse rejection, timestamp ordering enforcement, multi-receiver assignment with fee convergence, two-block chain flow with UTXO state transitions, late recording allowed/rejected with refutation, before-deadline refutation bypass. HTTP API tests: chain info, UTXO lookup, block retrieval, assignment submission, invalid JSON, double-spend via API, SSE/WebSocket real-time notifications.
+**Tests:** 34 tests at Phase 2 completion (ao-types, ao-crypto, ao-chain, ao-recorder); see Phase 6 for cumulative totals. Edge cases: expired UTXO rejection, double-spend rejection, key reuse rejection, timestamp ordering enforcement, multi-receiver assignment with fee convergence, two-block chain flow with UTXO state transitions, late recording allowed/rejected with refutation, before-deadline refutation bypass. HTTP API tests: chain info, UTXO lookup, block retrieval, assignment submission, invalid JSON, double-spend via API, SSE/WebSocket real-time notifications.
 
 **Deployment** ✓: [Dockerfile](Dockerfile) (multi-stage, non-root, bookworm-slim). [ao-recorder.service](ao-recorder.service) (systemd hardened). [GitHub Actions CI](../.github/workflows/ci.yml) (build + test + clippy on x86_64, cross-build aarch64 with gcc-aarch64-linux-gnu).
 
@@ -637,10 +637,65 @@ One-step installers for each target environment. The operator should not need to
 | N7 | Cooperative metadata conventions | Coop | Small | — | ✓ Done |
 | N8 | Binary attachments (photo/doc) | Coop, Tourism | Medium | N2, N7 | Planned |
 | N9 | Server operations dashboard | All three | Medium–Large | — | Planned |
+| N10 | Security hardening | All three | Medium | — | Planned |
 
-N1–N7 are complete. N8 and N9 are the next deployment-readiness gaps. N8 builds the infrastructure that the cooperative metadata spec (N7) and promo articles assume exists. N9 addresses the operational sustainability risk identified in all three deployment stories — the "what happens when Mako moves away" problem requires that the system be monitorable and diagnosable by someone with basic IT skills.
+N1–N7 are complete. N8–N10 are the remaining deployment-readiness gaps. N8 builds the infrastructure that the cooperative metadata spec (N7) and promo articles assume exists. N9 addresses the operational sustainability risk identified in all three deployment stories. N10 addresses the network-layer security findings from the [security audit](SECURITY_AUDIT.md) — the core protocol is solid, but the HTTP/deployment harness needs hardening before exposure beyond localhost.
 
 Remaining hardware-dependent acceptance tests from earlier phases: two-device <3s latency, iOS/Android PWA install, Pi stress tests, Lighthouse PWA audit.
+
+### N10: Security Hardening — *All Three* Planned
+
+Network-layer security fixes identified by the [security audit](SECURITY_AUDIT.md). The core protocol (signatures, shares, fees, timestamps, serialization) is solid; these items harden the HTTP/deployment harness.
+
+#### Authentication & Rate Limiting (F1, F4)
+
+1. **API key middleware**: Tower layer on ao-recorder and ao-exchange that checks `Authorization: Bearer <key>` header. Keys configured in TOML (`[api_keys]` section). Unsigned read endpoints (chain list, block queries) optionally exempt. Submit and CAA endpoints always require a key.
+
+2. **Per-IP rate limiter**: Tower `RateLimit` layer with configurable requests-per-second per source IP. Default: 10 req/s for submit endpoints, 100 req/s for read endpoints. Exceeding returns 429.
+
+3. **Documentation**: Config file examples and quick-start guide updated to cover key generation and rate limit tuning.
+
+#### Connection Limits (F2)
+
+1. **Max concurrent SSE/WebSocket**: Configurable cap (default 64) enforced via `Arc<Semaphore>`. New connections beyond the cap receive 503.
+
+2. **Lag notification**: SSE streams send `event: lagged` when messages are skipped. WebSocket sends `{"type":"lagged"}` JSON frame. Clients can reconnect and re-sync.
+
+3. **Idle timeout**: SSE and WebSocket connections closed after configurable idle period (default 5 minutes with no subscribable activity).
+
+#### Precision Fix (F5)
+
+1. **BigInt exchange arithmetic**: Replace f64 division in `compute_sell_amount` with `num-rational` or explicit BigInt `div_ceil`. Rounding direction documented and tested with conformance vectors.
+
+#### Chain Integrity (F6)
+
+1. **PREV_HASH validation**: `construct_block()` checks that the caller-supplied previous hash matches `meta.prev_hash`. Mismatch returns error. Trivial change, prevents future fork risk.
+
+#### Robustness (F7, F8, F9, F10)
+
+1. **Lock error handling**: Replace `.expect()` on mutex locks with explicit error returns. Lock poisoning produces a logged error and 500 response, not a process crash.
+
+2. **Validator URL validation**: At config load time, reject non-HTTPS validator URLs (unless `allow_insecure_validators = true` for local development). URL-encode chain IDs in polling requests.
+
+3. **Block response streaming**: GET `/blocks` streams JSON array items instead of collecting all into memory. Per-block serialization timeout (1 second).
+
+4. **Error message sanitization**: Production HTTP responses use generic messages ("invalid request", "internal error"). Parsing details logged at DEBUG level only.
+
+#### CAA Recorder Trust (F3)
+
+1. **Signed recorder identity**: Each recorder signs a discovery announcement with its blockmaker key. CAA validation requires the recording proof to chain back to a key in `known_recorders` AND match the signature on the recorder's announced identity. Config still provides the initial trust set; runtime verification prevents config-only forgery.
+
+#### Acceptance Criteria
+
+- All submit/CAA endpoints reject requests without a valid API key (when keys are configured).
+- Rate limiter returns 429 under sustained load above threshold.
+- SSE/WebSocket connections beyond the cap are refused with 503.
+- Lagged SSE clients receive `event: lagged` notification.
+- `compute_sell_amount` produces identical results to BigInt reference implementation for all test vectors.
+- Block with wrong PREV_HASH is rejected with clear error.
+- Mutex lock failure logs an error and returns 500 (no process crash).
+- HTTP error responses contain no internal field names or parsing details.
+- Non-HTTPS validator URLs rejected at startup (unless explicitly allowed).
 
 ---
 

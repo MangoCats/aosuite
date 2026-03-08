@@ -108,7 +108,7 @@ function App() {
   }, [relayUrl, setWalletKeyCount, setUnsyncedKeyCount, setRelayConnected]);
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', maxWidth: 960, margin: '0 auto' }}>
+    <div className="app-root">
       {showPassphrase && (
         <PassphrasePrompt
           isSetup={!hasEncryptedKeys}
@@ -131,12 +131,12 @@ function App() {
       {isInvestor ? (
         <ViewContent />
       ) : (
-        <div style={{ display: 'flex', gap: 0 }}>
-          <div style={{ width: 280, borderRight: '1px solid #ddd', minHeight: 400 }}>
+        <div className="app-layout">
+          <div className="app-sidebar">
             <ChainList />
             <Settings />
           </div>
-          <div style={{ flex: 1 }}>
+          <div className="app-main">
             <ChainDetail />
             <ViewContent />
           </div>

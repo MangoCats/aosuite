@@ -8,10 +8,10 @@ export function Header({ onSyncClick }: HeaderProps) {
   const { view, setView, walletLabel, connected, recorderUrl, unsyncedKeyCount } = useStore();
 
   return (
-    <header style={{ padding: '12px 16px', borderBottom: '1px solid #ddd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+    <header className="app-header">
+      <div className="header-left">
         <h1 style={{ margin: 0, fontSize: 18 }}>Assign Onward</h1>
-        <nav style={{ display: 'flex', gap: 8 }}>
+        <nav className="header-nav">
           <button
             onClick={() => setView('consumer')}
             style={{ fontWeight: view === 'consumer' ? 'bold' : 'normal' }}
@@ -32,7 +32,7 @@ export function Header({ onSyncClick }: HeaderProps) {
           </button>
         </nav>
       </div>
-      <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 13 }}>
+      <div className="header-right">
         {unsyncedKeyCount > 0 && (
           <button
             onClick={onSyncClick}
@@ -48,7 +48,7 @@ export function Header({ onSyncClick }: HeaderProps) {
         <span style={{ color: connected ? '#090' : '#c00' }}>
           {connected ? 'Connected' : 'Disconnected'}
         </span>
-        <span style={{ color: '#666' }}>{recorderUrl}</span>
+        <span style={{ color: '#666', wordBreak: 'break-all' }}>{recorderUrl}</span>
         {walletLabel && (
           <span title={useStore.getState().publicKeyHex ?? undefined}>
             {walletLabel}

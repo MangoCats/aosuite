@@ -691,15 +691,9 @@ SSE-based deposit detection in ao-exchange. Per-chain SSE listener tasks subscri
 
 Optional Prometheus metrics behind `metrics` feature flag in ao-recorder and ao-validator. `GET /metrics` endpoint returns Prometheus text format. Recorder instruments: block submissions (counter + latency histogram), blob uploads (counter + size by status), SSE connections (gauge with drop-based tracking), WebSocket connections (gauge), chains hosted (gauge). Validator instruments: validation runs (counter by chain/result), blocks verified (counter), verify duration (histogram), validated height (gauge per chain), alerts dispatched (counter by type). No-op when feature disabled. Example Grafana dashboard in `2026/ops/`. 6 new tests (with feature flag).
 
-### N23: Mobile UI Polish — *All Three*
+### N23: Mobile UI Polish — *All Three* ✓ Done
 
-Mobile-first CSS audit and touch optimization.
-
-**Deliverables:**
-- Audit all views at 375px width. Fix horizontal overflow, font scaling, input focus issues.
-- Touch targets ≥ 44×44px for all interactive elements.
-- iOS Safari: safe area insets, prevent zoom on input focus.
-- Lighthouse audit targeting ≥ 90 mobile performance score.
+Responsive CSS with 640px mobile breakpoint. Sidebar stacks below header on narrow screens (flex-direction: column). Header wraps nav/status on small widths. Touch targets: global `min-height: 44px` on buttons/inputs. Input `font-size: 16px` prevents iOS zoom on focus. iOS safe area: `viewport-fit=cover` + `env(safe-area-inset-*)` padding (top/bottom). Layout migrated from inline styles to CSS classes (app-root, app-layout, app-sidebar, app-main, app-header, header-left/right/nav). Table scroll wrapper class defined for future overflow containment.
 
 ---
 

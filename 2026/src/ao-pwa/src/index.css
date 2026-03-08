@@ -8,23 +8,133 @@
 body {
   margin: 0;
   min-width: 320px;
+  /* iOS safe area insets — top/bottom only to avoid landscape side padding */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
 button {
   border-radius: 4px;
   border: 1px solid #ccc;
-  padding: 6px 12px;
+  padding: 10px 16px;
   font-size: 14px;
   font-family: inherit;
   background: #f5f5f5;
   cursor: pointer;
+  min-height: 44px;
+  min-width: 44px;
 }
 
 button:hover {
   background: #e8e8e8;
 }
 
-input {
+input, select, textarea {
   font-family: inherit;
-  font-size: 14px;
+  font-size: 16px; /* Prevents iOS zoom on focus */
+  padding: 8px;
+  min-height: 44px;
+  box-sizing: border-box;
+}
+
+/* ── Responsive layout ─────────────────────────────────────────────── */
+
+.app-root {
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+/* Header */
+.app-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid #ddd;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.header-left {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.header-nav {
+  display: flex;
+  gap: 4px;
+}
+
+.header-right {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+/* Sidebar + main layout */
+.app-layout {
+  display: flex;
+  gap: 0;
+}
+
+.app-sidebar {
+  width: 280px;
+  border-right: 1px solid #ddd;
+  min-height: 400px;
+  flex-shrink: 0;
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Tables: prevent horizontal overflow */
+table {
+  max-width: 100%;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 640px) {
+  .app-layout {
+    flex-direction: column;
+  }
+
+  .app-sidebar {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #ddd;
+    min-height: auto;
+  }
+
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .header-left {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .header-right {
+    font-size: 12px;
+    gap: 8px;
+  }
+
+  .header-nav button {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  .app-root {
+    max-width: 100%;
+  }
 }

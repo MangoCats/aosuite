@@ -1,7 +1,11 @@
 import { useStore } from '../store/useStore.ts';
 
-export function Header() {
-  const { view, setView, walletLabel, connected, recorderUrl } = useStore();
+interface HeaderProps {
+  onSyncClick?: () => void;
+}
+
+export function Header({ onSyncClick }: HeaderProps) {
+  const { view, setView, walletLabel, connected, recorderUrl, unsyncedKeyCount } = useStore();
 
   return (
     <header style={{ padding: '12px 16px', borderBottom: '1px solid #ddd', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -29,6 +33,18 @@ export function Header() {
         </nav>
       </div>
       <div style={{ display: 'flex', gap: 12, alignItems: 'center', fontSize: 13 }}>
+        {unsyncedKeyCount > 0 && (
+          <button
+            onClick={onSyncClick}
+            style={{
+              background: '#fff3cd', border: '1px solid #ffc107', borderRadius: 12,
+              padding: '2px 10px', fontSize: 12, cursor: 'pointer',
+            }}
+            title="Unsynced keys — tap to sync"
+          >
+            Sync: {unsyncedKeyCount}
+          </button>
+        )}
         <span style={{ color: connected ? '#090' : '#c00' }}>
           {connected ? 'Connected' : 'Disconnected'}
         </span>

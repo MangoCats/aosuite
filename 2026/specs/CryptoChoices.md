@@ -190,6 +190,16 @@ Ed25519 key pairs are generated from 32 bytes of cryptographically secure random
 
 No deterministic key derivation (BIP-32, etc.) is used. Each key is independently random. This simplifies the security model at the cost of requiring explicit backup of each key.
 
+### 5.4 Multi-Device Key Sync
+
+When users access the same wallet from multiple devices, private key seeds must be transferred securely between devices. Three mechanisms are specified in [WalletSync.md](WalletSync.md):
+
+1. **QR/NFC transfer (default):** Seeds are encrypted with the wallet passphrase (§4.1–4.2), then encoded as a QR payload. Air-gapped — seeds never transit a network.
+2. **Paired-device relay:** Seeds are double-encrypted — inner layer with wallet passphrase (§4.1–4.2), outer layer with a shared `group_key` (X25519 key agreement + HKDF-SHA256) for relay transport. The relay server sees only opaque ciphertext.
+3. **Cloud vault (optional):** Full wallet state encrypted with a vault passphrase (same Argon2id + XChaCha20-Poly1305 as §4.1–4.2) and stored as a single blob.
+
+In all cases, private key seeds are encrypted before leaving the originating device. The wallet passphrase provides at-rest protection; the relay/vault layer provides in-transit protection. Neither the relay server nor the cloud storage endpoint ever sees plaintext seeds.
+
 ---
 
 ## 6. Divergence from 2018 Spec

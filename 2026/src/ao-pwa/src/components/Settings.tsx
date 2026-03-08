@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../store/useStore.ts';
 import { QrScanner } from './QrScanner.tsx';
+import { PairedDevices } from './PairedDevices.tsx';
 
 /** Parse a chain info URL into recorder base URL and chain ID.
  *  Accepts: http://host:port/chain/{id}/info or http://host:port/chain/{id}
@@ -15,6 +16,7 @@ export function Settings() {
   const { recorderUrl, setRecorderUrl, selectChain } = useStore();
   const [url, setUrl] = useState(recorderUrl);
   const [scanning, setScanning] = useState(false);
+  const [showPairing, setShowPairing] = useState(false);
 
   function handleScanResult(data: string) {
     setScanning(false);
@@ -56,6 +58,14 @@ export function Settings() {
           onClose={() => setScanning(false)}
         />
       )}
+
+      {/* Paired Devices */}
+      <div style={{ marginTop: 16, borderTop: '1px solid #eee', paddingTop: 12 }}>
+        <button onClick={() => setShowPairing(!showPairing)} style={{ fontSize: 13 }}>
+          {showPairing ? 'Hide' : 'Paired Devices'}
+        </button>
+        {showPairing && <PairedDevices onClose={() => setShowPairing(false)} />}
+      </div>
     </div>
   );
 }

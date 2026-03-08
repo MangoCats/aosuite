@@ -29,12 +29,29 @@ export interface AppState {
   chainInfo: ChainInfo | null;
   setChainInfo: (info: ChainInfo | null) => void;
 
-  // Wallet — seed persisted to localStorage
+  // Active key — session-only cache of the current IndexedDB key.
+  // No longer persisted to localStorage (IndexedDB is the source of truth).
   walletLabel: string | null;
   publicKeyHex: string | null;
   seedHex: string | null;
   setWallet: (label: string, publicKeyHex: string, seedHex: string) => void;
   clearWallet: () => void;
+
+  // Multi-key wallet state (IndexedDB-backed, see core/walletDb.ts)
+  walletKeyCount: number;
+  unsyncedKeyCount: number;
+  setWalletKeyCount: (count: number) => void;
+  setUnsyncedKeyCount: (count: number) => void;
+
+  // Wallet passphrase (session-only, never persisted)
+  walletPassphrase: string | null;
+  setWalletPassphrase: (passphrase: string | null) => void;
+
+  // Relay sync
+  relayUrl: string;
+  relayConnected: boolean;
+  setRelayUrl: (url: string) => void;
+  setRelayConnected: (connected: boolean) => void;
 
   // Multi-recorder connections for investor view
   recorderUrls: string[];
@@ -63,21 +80,31 @@ export const useStore = create<AppState>((set) => ({
   chainInfo: null,
   setChainInfo: (chainInfo) => set({ chainInfo }),
 
-  walletLabel: loadString('ao_wallet_label'),
-  publicKeyHex: loadString('ao_wallet_pubkey'),
-  seedHex: loadString('ao_wallet_seed'),
+  walletLabel: null,
+  publicKeyHex: null,
+  seedHex: null,
   setWallet: (walletLabel, publicKeyHex, seedHex) => {
-    saveString('ao_wallet_label', walletLabel);
-    saveString('ao_wallet_pubkey', publicKeyHex);
-    saveString('ao_wallet_seed', seedHex);
     set({ walletLabel, publicKeyHex, seedHex });
   },
   clearWallet: () => {
-    saveString('ao_wallet_label', null);
-    saveString('ao_wallet_pubkey', null);
-    saveString('ao_wallet_seed', null);
     set({ walletLabel: null, publicKeyHex: null, seedHex: null });
   },
+
+  walletKeyCount: 0,
+  unsyncedKeyCount: 0,
+  setWalletKeyCount: (walletKeyCount) => set({ walletKeyCount }),
+  setUnsyncedKeyCount: (unsyncedKeyCount) => set({ unsyncedKeyCount }),
+
+  walletPassphrase: null,
+  setWalletPassphrase: (walletPassphrase) => set({ walletPassphrase }),
+
+  relayUrl: loadString('ao_relay_url') ?? 'ws://localhost:3001',
+  relayConnected: false,
+  setRelayUrl: (relayUrl) => {
+    saveString('ao_relay_url', relayUrl);
+    set({ relayUrl });
+  },
+  setRelayConnected: (relayConnected) => set({ relayConnected }),
 
   recorderUrls: [],
   setRecorderUrls: (recorderUrls) => set({ recorderUrls }),

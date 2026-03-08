@@ -12,6 +12,8 @@ import * as offlineQueue from '../core/offlineQueue.ts';
 import { VendorMap, type VendorPin } from './VendorMap.tsx';
 import { AttachmentPicker } from './AttachmentPicker.tsx';
 import type { AttachedBlob } from '../core/blob.ts';
+import * as walletDb from '../core/walletDb.ts';
+import { validateKeysOnChain } from '../core/walletSync.ts';
 
 /** Scan chain for unspent UTXOs owned by the given pubkey hex. */
 async function scanUtxos(
@@ -37,8 +39,9 @@ async function scanUtxos(
 export function ConsumerView() {
   const {
     recorderUrl, selectedChainId, chainInfo, chains,
-    seedHex: storedSeedHex, publicKeyHex,
+    seedHex: storedSeedHex, publicKeyHex, walletPassphrase,
     setWallet, clearWallet,
+    setUnsyncedKeyCount, setWalletKeyCount,
   } = useStore();
 
   // Wallet management
@@ -56,6 +59,9 @@ export function ConsumerView() {
   const [loading, setLoading] = useState(false);
   const [queuedCount, setQueuedCount] = useState(0);
   const [attachments, setAttachments] = useState<AttachedBlob[]>([]);
+
+  // Validation alerts
+  const [validationAlert, setValidationAlert] = useState('');
 
   // Auto-flush offline queue when online
   useEffect(() => {
@@ -79,12 +85,89 @@ export function ConsumerView() {
     };
   }, []);
 
+  // Validate held keys against recorder when chain is selected (WalletSync §2)
+  // Also subscribe to SSE block events for real-time monitoring.
+  useEffect(() => {
+    if (!selectedChainId || !recorderUrl) return;
+    const client = new RecorderClient(recorderUrl);
+
+    function runValidation() {
+      validateKeysOnChain(client, selectedChainId!).then(result => {
+        if (result.unknownSpends.length > 0) {
+          const keys = result.unknownSpends.map(k =>
+            `seq #${k.seqId} (${k.amount ?? '?'} shares)`
+          ).join(', ');
+          setValidationAlert(
+            `Warning: ${result.unknownSpends.length} key(s) spent by unknown device: ${keys}. ` +
+            'If you did not authorize this, your key may be compromised. ' +
+            'Consider transferring remaining coins to fresh keys.'
+          );
+        } else {
+          setValidationAlert('');
+        }
+        if (result.newlySpent > 0) {
+          setStatus(prev => prev
+            ? `${prev}\nValidation: ${result.newlySpent} key(s) found spent since last check.`
+            : `Validation: ${result.newlySpent} key(s) found spent since last check.`
+          );
+        }
+      }).catch(() => {
+        // Validation failure is non-fatal — balance may be stale
+      });
+    }
+
+    // Initial validation
+    runValidation();
+
+    // Subscribe to SSE block events — revalidate when new blocks arrive
+    let es: EventSource | null = null;
+    try {
+      es = client.subscribeBlocks(selectedChainId, (_blockInfo) => {
+        runValidation();
+      });
+    } catch {
+      // SSE unavailable — fall back to initial validation only
+    }
+
+    return () => {
+      if (es) es.close();
+    };
+  }, [selectedChainId, recorderUrl]);
+
+  // Helper: refresh wallet key counts in global store
+  async function refreshKeyCounts() {
+    const all = await walletDb.getKeys();
+    setWalletKeyCount(all.length);
+    const unsynced = await walletDb.getUnsyncedKeys();
+    setUnsyncedKeyCount(unsynced.length);
+  }
+
   // ── Wallet Actions ────────────────────────────────────────────────
   async function handleGenerate() {
     const key = await generateSigningKey();
     const hex = bytesToHex(key.seed);
     const pubHex = bytesToHex(key.publicKey);
     setWallet('Wallet', pubHex, hex);
+
+    // Store in IndexedDB — encrypt seed if passphrase is set
+    const deviceId = await walletDb.getDeviceId();
+    const storedSeed = walletPassphrase
+      ? await walletDb.encryptSeedHex(hex, walletPassphrase)
+      : hex;
+    await walletDb.importKeyIfNew({
+      chainId: selectedChainId ?? '',
+      publicKey: pubHex,
+      seedHex: storedSeed,
+      seedEncrypted: !!walletPassphrase,
+      seqId: null,
+      amount: null,
+      status: 'unconfirmed',
+      acquiredAt: new Date().toISOString(),
+      acquiredBy: deviceId,
+      synced: false,
+    });
+    await refreshKeyCounts();
+
     setUtxos([]);
     setSelectedUtxo(null);
   }
@@ -97,7 +180,28 @@ export function ConsumerView() {
     }
     try {
       const key = await signingKeyFromSeed(hexToBytes(importSeed));
-      setWallet('Wallet', bytesToHex(key.publicKey), importSeed);
+      const pubHex = bytesToHex(key.publicKey);
+      setWallet('Wallet', pubHex, importSeed);
+
+      // Store in IndexedDB — encrypt seed if passphrase is set
+      const deviceId = await walletDb.getDeviceId();
+      const storedSeed = walletPassphrase
+        ? await walletDb.encryptSeedHex(importSeed, walletPassphrase)
+        : importSeed;
+      await walletDb.importKeyIfNew({
+        chainId: selectedChainId ?? '',
+        publicKey: pubHex,
+        seedHex: storedSeed,
+        seedEncrypted: !!walletPassphrase,
+        seqId: null,
+        amount: null,
+        status: 'unconfirmed',
+        acquiredAt: new Date().toISOString(),
+        acquiredBy: deviceId,
+        synced: false,
+      });
+      await refreshKeyCounts();
+
       setImportSeed('');
       setUtxos([]);
       setSelectedUtxo(null);
@@ -111,6 +215,7 @@ export function ConsumerView() {
     setUtxos([]);
     setSelectedUtxo(null);
     setStatus('');
+    setValidationAlert('');
   }
 
   // ── UTXO Scanning ────────────────────────────────────────────────
@@ -225,6 +330,55 @@ export function ConsumerView() {
       try {
         const result = await client.submit(selectedChainId, authJson);
 
+        // Save new keys to IndexedDB for multi-device sync
+        const deviceId = await walletDb.getDeviceId();
+        const now = new Date().toISOString();
+
+        // Mark spent key
+        await walletDb.markKeySpent(publicKeyHex!, deviceId);
+
+        // Save receiver key (if we generated it)
+        if (!recipientPubkey && recipientKey) {
+          const recvSeedHex = bytesToHex(recipientKey.seed);
+          const recvStored = walletPassphrase
+            ? await walletDb.encryptSeedHex(recvSeedHex, walletPassphrase)
+            : recvSeedHex;
+          await walletDb.importKeyIfNew({
+            chainId: selectedChainId,
+            publicKey: bytesToHex(recipientKey.publicKey),
+            seedHex: recvStored,
+            seedEncrypted: !!walletPassphrase,
+            seqId: null, // will be discovered on next scan
+            amount: receivers[0].amount.toString(),
+            status: 'unconfirmed',
+            acquiredAt: now,
+            acquiredBy: deviceId,
+            synced: false,
+          });
+        }
+
+        // Save change key
+        if (needsChange) {
+          const changeSeedHex = bytesToHex(changeKey.seed);
+          const changeStored = walletPassphrase
+            ? await walletDb.encryptSeedHex(changeSeedHex, walletPassphrase)
+            : changeSeedHex;
+          await walletDb.importKeyIfNew({
+            chainId: selectedChainId,
+            publicKey: bytesToHex(changeKey.publicKey),
+            seedHex: changeStored,
+            seedEncrypted: !!walletPassphrase,
+            seqId: null,
+            amount: receivers[receivers.length - 1].amount.toString(),
+            status: 'unconfirmed',
+            acquiredAt: now,
+            acquiredBy: deviceId,
+            synced: false,
+          });
+        }
+
+        await refreshKeyCounts();
+
         let msg = `Block ${result.height} recorded! Hash: ${result.hash.slice(0, 16)}...\n`;
         msg += `Sent: ${receivers[0].amount} shares\n`;
         if (!recipientPubkey && recipientKey) {
@@ -299,6 +453,19 @@ export function ConsumerView() {
         <div style={{ marginBottom: 16 }}>
           <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>Nearby Vendors</div>
           <VendorMap vendors={vendorPins} height={220} />
+        </div>
+      )}
+
+      {/* Unknown Spend Alert (WalletSync §7.1) */}
+      {validationAlert && (
+        <div style={{ marginBottom: 12, padding: 8, background: '#fee', border: '1px solid #c00', borderRadius: 4, fontSize: 12, color: '#900' }}>
+          {validationAlert}
+          <button
+            onClick={() => setValidationAlert('')}
+            style={{ marginLeft: 8, fontSize: 11, color: '#666' }}
+          >
+            Dismiss
+          </button>
         </div>
       )}
 

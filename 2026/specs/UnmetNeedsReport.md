@@ -31,6 +31,8 @@ bookkeeping.
 **Depends on:** N8a (on-chain blob linking) for attachment indicators. Can ship
 without it — just omit attachment column initially.
 
+**Add to Roadmap** now.
+
 ---
 
 ### 1.2 No wallet backup/restore UX
@@ -58,6 +60,9 @@ cleared browser or lost phone = permanent fund loss without this.
 **Depends on:** Wallet sync infrastructure (`walletDb.ts`, `walletSync.ts`) which
 is already implemented.
 
+**Add to Roadmap** now for file backup and add another roadmap item for user backup to cloud
+when cloud implementation is available.
+
 ---
 
 ### 1.3 No transfer confirmation screen
@@ -80,6 +85,8 @@ submission.
 
 **Depends on:** Nothing. Pure UI change.
 
+**Add to Roadmap** now.
+
 ---
 
 ### 1.4 No offline balance cache
@@ -100,6 +107,8 @@ theirs regardless of connectivity. Seeing a zero balance offline erodes trust.
 
 **Depends on:** Wallet sync migration (already done — `migrateFromLocalStorage()`
 populates IndexedDB).
+
+**Add to Roadmap** now.
 
 ---
 
@@ -126,6 +135,8 @@ feature behind a settings toggle initially.
 
 **Depends on:** Transaction history (§1.1) for discoverability. Can also be
 triggered from UTXO detail view independently.
+
+**Add to Roadmap** now, as a "power user" feature.
 
 ---
 
@@ -154,6 +165,8 @@ avoids embedding fiat rails.
 **Depends on:** Exchange agent infrastructure (Phase 4, done). The gap is
 operational tooling, not protocol.
 
+**Add to Roadmap** later.  On/off ramp targets need to be identified first.
+
 ---
 
 ## 2. Vendor (AOS) — "I run a business and accept AO shares"
@@ -178,6 +191,8 @@ Vendor disappears from map and discovery until they re-enter their info.
 
 **Depends on:** Nothing. Straightforward persistence change in `ao-recorder`.
 
+**Add to Roadmap** now, including on-chain records.
+
 ---
 
 ### 2.2 No printable QR signage
@@ -199,6 +214,8 @@ physical size for scanning distance.
   length; 6 cm × 6 cm for countertop signage.
 
 **Depends on:** Nothing. Pure frontend feature.
+
+**Add to Roadmap** now, include output as a .pdf file and .png images as options.
 
 ---
 
@@ -222,6 +239,8 @@ transaction count, average transaction size. CSV export for tax/accounting purpo
 
 **Depends on:** Recorder block pagination API (already exists:
 `GET /chain/{id}/blocks?from=&to=`).
+
+**Add to Roadmap** now.
 
 ---
 
@@ -252,6 +271,8 @@ first, add push later.
 
 **Depends on:** SSE subscription (already working).
 
+**Add to Roadmap** now.  UX notes: these notifications must be configurable for style, volume, time windows for muting, a mute now for specified duration quick silence option, and manual toggle off/on.
+
 ---
 
 ### 2.5 No multi-chain dashboard for vendors
@@ -273,6 +294,8 @@ breakdown, single-screen overview.
 **Depends on:** The vendor knowing which chains they own. Currently determined by
 which chain's genesis key matches their wallet. With wallet sync (`walletDb.ts`),
 this is discoverable from IndexedDB.
+
+**Add to Roadmap** now.
 
 ---
 
@@ -306,6 +329,8 @@ centralization pressure.
 **Depends on:** `ao-exchange` HTTP API (`POST /trade/request`, `GET /trade/{id}`)
 which already exists.
 
+**Add to Roadmap** now.
+
 ---
 
 ### 3.2 No spread/P&L dashboard
@@ -329,6 +354,8 @@ when inventory is low.
 currently tracks `PendingTrade` states but may not persist completed trade history.
 Needs a `trade_history` SQLite table.
 
+**Add to Roadmap** now.
+
 ---
 
 ### 3.3 Polling-only deposit detection
@@ -346,6 +373,8 @@ up to 5 seconds of unnecessary latency per trade leg.
 - Configuration: `deposit_detection = "sse"` (default) or `"polling"` (legacy).
 
 **Depends on:** Recorder SSE endpoint (already exists and is used by the PWA).
+
+**Add to Roadmap** now.
 
 ---
 
@@ -370,6 +399,8 @@ SSE connection count.
 - Example Grafana dashboard JSON in `2026/ops/` directory.
 
 **Depends on:** Nothing. Additive change.
+
+**Add to Roadmap** now.
 
 ---
 
@@ -398,6 +429,8 @@ per-anchor transaction fees (~$1-5 per anchor at current rates). Transparency lo
 for the anchor backend). Adding a new backend is a matter of implementing the
 trait.
 
+**Add to Roadmap** now.
+
 ---
 
 ### 4.3 No credential issuance UI
@@ -424,6 +457,8 @@ consumer sees trust badge.
 
 **Depends on:** Validator key management (validator has its own Ed25519 keypair,
 already configured in `ao-validator`).
+
+**Add to Roadmap** now.
 
 ---
 
@@ -460,6 +495,8 @@ without introducing consensus complexity.
 **Depends on:** Recorder SSE feed (exists). Signed recorder identity (F3, not yet
 implemented — needed to prevent rogue replicas).
 
+**Add to Roadmap** now - put future elements further down the roadmap in appropriate priority.
+
 ---
 
 ### 5.2 Installers untested on real hardware
@@ -483,6 +520,8 @@ their target hardware.
   and any issues found.
 
 **Depends on:** Physical hardware access. Cannot be automated in CI alone.
+
+**Add to Roadmap** not at this time.  Will be tested manually as resources become available.
 
 ---
 
@@ -518,6 +557,8 @@ needed — the gap is purely UI.
 **Depends on:** On-chain blob linking (N8a) for photo receipts. Core NOTE-based
 metadata recording works without it.
 
+**Add to Roadmap** now.
+
 ---
 
 ## 7. Cross-Cutting Concerns
@@ -543,6 +584,8 @@ readable text at default font size, no horizontal scrolling, fast load on 3G.
 - iOS Safari-specific: safe area insets, prevent zoom on input focus.
 
 **Depends on:** Nothing. CSS and testing work.
+
+**Add to Roadmap** now.
 
 ---
 
@@ -570,6 +613,9 @@ talks to `ao-recorder` via HTTP — no changes to the recorder itself.
 
 **Priority:** Niche but high-impact for the target market (Caribbean islands,
 rural cooperatives). Could be a community contribution or a dedicated sprint.
+
+**Add to Roadmap** not at this time.  Note it as an item to develop as resources
+become avaialble.
 
 ---
 
@@ -648,23 +694,50 @@ U20 (cooperative) ← N8a (blob linking)        ┘
    If vendor + consumer only, Tier 1 + U6/U7 may be sufficient. If exchange agents
    are included, U9 and U15 move to Tier 1.
 
+   Pilot would be vendor + consumer only, but exchange agents are already live in
+   the sims and should be fully developed to make the sims as realistic and
+   informative as possible.
+
 2. **Cooperative UI priority:** Is the cooperative use case (§6.1) targeted for
    the first pilot, or is it a later vertical? This significantly affects scope.
+
+   Not first pilot, but definitely a sim target, so again: develop as if it were
+   in the field and develop sims to test/exercise it as if it were in the field.
 
 3. **Push notification infrastructure:** Are we willing to run a push notification
    server (VAPID + endpoint), or should we rely on the audio chime and SSE-while-
    open model? Push adds operational complexity but is the expected UX for mobile.
 
+   Far down the roadmap, a push notification server could become part of the
+   system, but not in early pilots, not in the sims.  SSE-while-open now, server
+   later. 
+
 4. **Hot standby vs. "just restart quickly":** For the target scale (single vendor,
    single recorder on a Pi), is hot standby overkill? A systemd auto-restart with
    SQLite WAL recovery might be "good enough" availability for a first deployment.
 
+   Just restart quickly is a now target.  Hot standby is a later target.
+
 5. **LoRa priority:** Is there a concrete deployment scenario (e.g. a specific
    island or rural cooperative) that justifies LoRa work now, or is it aspirational?
+
+   LoRa is aspirational, but that should never be an excuse to bloat the protocol
+   making it slower than necessary over LoRa or any other communication links.
 
 6. **Credential trust model:** Who issues credentials in the first deployment?
    A local business association? The software developer? A government agency?
    This affects the credential UI design and the validator's authority model.
 
+   The pilot deployments will be face-to-face trust based.  People issue their
+   own credentials.  Beyond that, it will vary from one scenario to the next and
+   all possible sources of trust-basis are on the table.  Do not implement anything
+   specific beyond face-to-face and friends-of-friends type trust models now.
+
 7. **CSV export format:** Should transaction/sales CSV follow any specific
    accounting standard, or is a simple date/amount/counterparty format sufficient?
+
+   Simple for now.  Keep it modular so that standards can be implemented / applied
+   as they are identified as real needs.  Identify three likely standards for
+   potential implementation and be sure that the system infrastructure supports
+   adding all three as options, but do not take any of them to actual implementation
+   yet.

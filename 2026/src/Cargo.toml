@@ -8,4 +8,5 @@ members = [
     "ao-recorder",
     "ao-exchange",
     "ao-validator",
+    "ao-relay",
 ]

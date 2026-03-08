@@ -4,6 +4,7 @@ import { RecorderClient } from '../api/client.ts';
 import type { BlockInfo } from '../api/client.ts';
 import { playChime, isInQuietHours, isQuickMuted } from '../core/chime.ts';
 import { PrintableQr } from './PrintableQr.tsx';
+import { SalesReport } from './SalesReport.tsx';
 import { signingKeyFromSeed } from '../core/sign.ts';
 import { bytesToHex, hexToBytes } from '../core/hex.ts';
 import * as tc from '../core/typecodes.ts';
@@ -28,6 +29,12 @@ export function VendorView() {
             recorderUrl={recorderUrl}
             chainId={selectedChainId}
             symbol={chainInfo.symbol}
+          />
+          <SalesReport
+            recorderUrl={recorderUrl}
+            chainId={selectedChainId}
+            symbol={chainInfo.symbol}
+            coinCount={chainInfo.coin_count}
           />
           <QrSignage
             recorderUrl={recorderUrl}

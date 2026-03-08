@@ -679,17 +679,9 @@ Web Audio API chime on VendorView SSE payment events. Three sound styles (bell, 
 
 Collapsible "Print QR Signage" section in VendorView. SVG QR code preview with chain symbol, business name (from vendor profile), and "Scan to pay" label. Print/PDF via browser print dialog (opens in new window, auto-closes after print). PNG download at 4x scale (1600px). Size guidance displayed. Filename sanitized.
 
-### N20: Sales Reporting — *Tourism + Coop*
+### N20: Sales Reporting — *Tourism + Coop* ✓ Done
 
-Daily/weekly/monthly revenue aggregation with CSV export for vendor bookkeeping.
-
-**Deliverables:**
-- `SalesReport.tsx` component (or tab in VendorView).
-- Fetches blocks, aggregates: daily/weekly/monthly totals (coins), transaction count, average size.
-- Date range picker. IndexedDB cache for offline access.
-- CSV export with modular format (same architecture as N15).
-
-**Depends on:** N15 (transaction history infrastructure and CSV architecture).
+SalesReport component in VendorView. Aggregates received transactions daily/weekly/monthly with totals (coins), transaction count, average per-tx. UTC-based period keys (daily YYYY-MM-DD, weekly ISO YYYY-Wnn, monthly YYYY-MM). Date range picker (default 30 days). Incremental block scanning with IndexedDB cache (reuses N15 txHistory). CSV export with coin amounts and averages.
 
 ### N21: SSE Deposit Detection for Exchange — *All Three*
 

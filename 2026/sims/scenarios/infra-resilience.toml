@@ -1,0 +1,135 @@
+# Sim: White-Hat Infrastructure Resilience Testing
+#
+# Tests N10 server-level security hardening — NOT protocol correctness.
+# All agents in this scenario are clearly labeled white-hat testers
+# that verify the recorder properly enforces rate limits, auth guards,
+# payload limits, connection limits, and error sanitization.
+#
+# The recorder_security section enables N10 features so the testers
+# can verify they work. Without these, some tests simply confirm
+# the recorder accepts all traffic (which is also a valid baseline).
+#
+# To run without security features (baseline mode):
+#   Remove or comment out the [simulation.recorder_security] section.
+
+[simulation]
+name = "infra-resilience"
+title = "White-Hat Infrastructure Resilience — N10 Security Verification"
+description = "Five infrastructure testers probe the recorder's server-level defenses: request flooding, oversized payloads, authentication bypass, connection exhaustion, and error message sanitization. All tests are defensive — they verify protections WORK, not that they can be bypassed."
+what_to_watch = [
+    "FloodProbe sends 50 concurrent requests — watch latency stats and whether rate limiting kicks in (429s)",
+    "PayloadProbe submits 2MB blocks — the recorder should reject them (400/413), not crash",
+    "AuthProbe tests missing/invalid/valid API keys — unauthenticated requests should get 401",
+    "ConnProbe opens 50 simultaneous SSE streams — excess connections should get 503",
+    "ErrorProbe sends malformed requests — error responses should be generic, not leak internals",
+]
+recorder_port = 0
+speed = 1.0
+duration_secs = 120     # 2 minutes
+
+[simulation.recorder_security]
+api_keys = ["sim-test-key-alpha", "sim-test-key-beta"]
+read_rate_limit = 20.0      # 20 req/sec per IP
+write_rate_limit = 10.0     # 10 req/sec per IP
+max_connections = 10        # max 10 concurrent SSE/WS
+
+# ── Bob: vendor (provides a valid chain for testers to target) ─────
+
+[[agent]]
+name = "Bob"
+role = "vendor"
+blurb = "Curry goat vendor — provides a live chain for infrastructure tests"
+lat = 18.2027
+lon = -63.0490
+
+[agent.vendor]
+symbol = "BCG"
+description = "Bob's Curry Goat"
+coins = "1000000000"
+shares = "2^40"
+plate_price = 25
+initial_float = 50
+
+# ── Gene: recorder operator (embedded) ──────────────────────────────
+
+[[agent]]
+name = "Gene"
+role = "recorder"
+blurb = "Recorder with N10 security hardening enabled"
+
+# ── FloodProbe: request flood tester ────────────────────────────────
+
+[[agent]]
+name = "FloodProbe"
+role = "infra_tester"
+blurb = "[WHITE-HAT] Sends 50 concurrent requests to test rate limiting and server responsiveness"
+lat = 18.2010
+lon = -63.0470
+
+[agent.infra_tester]
+test = "flood"
+target_vendor = "Bob"
+probe_interval_secs = 15
+concurrency = 50
+api_key = "sim-test-key-alpha"
+
+# ── PayloadProbe: oversized payload tester ──────────────────────────
+
+[[agent]]
+name = "PayloadProbe"
+role = "infra_tester"
+blurb = "[WHITE-HAT] Submits 2MB payloads to test body size guards — should be rejected, not crash"
+lat = 18.2090
+lon = -63.0510
+
+[agent.infra_tester]
+test = "oversized_payload"
+target_vendor = "Bob"
+probe_interval_secs = 20
+api_key = "sim-test-key-alpha"
+
+# ── AuthProbe: authentication bypass tester ─────────────────────────
+
+[[agent]]
+name = "AuthProbe"
+role = "infra_tester"
+blurb = "[WHITE-HAT] Tests API key enforcement — missing/invalid keys should get 401"
+lat = 18.2070
+lon = -63.0545
+
+[agent.infra_tester]
+test = "auth_bypass"
+target_vendor = "Bob"
+probe_interval_secs = 15
+api_key = "sim-test-key-alpha"
+
+# ── ConnProbe: connection exhaustion tester ──────────────────────────
+
+[[agent]]
+name = "ConnProbe"
+role = "infra_tester"
+blurb = "[WHITE-HAT] Opens 50 simultaneous SSE streams to test connection limits"
+lat = 18.2040
+lon = -63.0460
+
+[agent.infra_tester]
+test = "connection_exhaustion"
+target_vendor = "Bob"
+probe_interval_secs = 20
+concurrency = 50
+api_key = "sim-test-key-alpha"
+
+# ── ErrorProbe: error sanitization tester ───────────────────────────
+
+[[agent]]
+name = "ErrorProbe"
+role = "infra_tester"
+blurb = "[WHITE-HAT] Sends malformed requests to verify error messages don't leak internal details"
+lat = 18.2055
+lon = -63.0530
+
+[agent.infra_tester]
+test = "error_probe"
+target_vendor = "Bob"
+probe_interval_secs = 15
+api_key = "sim-test-key-alpha"

@@ -17,7 +17,7 @@ use tokio::sync::{mpsc, RwLock, watch};
 use tracing::info;
 
 use ao_crypto::sign::SigningKey;
-use ao_recorder::{AppState, build_router};
+use ao_recorder::{AppState, build_router, build_router_with_config};
 
 use agents::{AgentDirectory, AgentMessage, PauseFlag, SharedSpeed, ViewerState};
 use client::RecorderClient;
@@ -116,6 +116,7 @@ async fn main() -> Result<()> {
         scenario.simulation.recorder_port,
         blockmaker_key,
         known_recorders,
+        scenario.simulation.recorder_security.as_ref(),
     ).await;
     info!("Recorder running at {}", recorder_url);
 
@@ -266,6 +267,19 @@ async fn main() -> Result<()> {
                     }
                 })
             }
+            "infra_tester" => {
+                let Some(infra_cfg) = agent_cfg.infra_tester.clone() else {
+                    bail!("infra_tester {} missing [agent.infra_tester] config", name);
+                };
+                let recorder_url = recorder_url_shared.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = agents::run_infra_tester(
+                        agent_cfg, infra_cfg, recorder_url, directory, state_tx, mailbox, speed, agent_paused,
+                    ).await {
+                        tracing::error!("{}: infra_tester error: {}", name, e);
+                    }
+                })
+            }
             "recorder" => {
                 // Recorder is embedded — no agent loop needed.
                 info!("{}: recorder (embedded, no agent loop)", name);
@@ -313,15 +327,29 @@ async fn main() -> Result<()> {
 }
 
 /// Start an embedded ao-recorder server. Returns the base URL and shared state.
+/// When `security` is provided, configures N10 features (API keys, rate limits, etc.).
 async fn start_recorder(
     port: u16,
     blockmaker_key: SigningKey,
     known_recorders: HashMap<[u8; 32], [u8; 32]>,
+    security: Option<&config::RecorderSecurityConfig>,
 ) -> (String, Arc<AppState>) {
     let mut state = AppState::new_multi(None, blockmaker_key);
-    state.known_recorders = known_recorders;
+    state.known_recorders = known_recorders.into();
     let state = Arc::new(state);
-    let app = build_router(state.clone());
+
+    let app = if let Some(sec) = security {
+        let mut cfg = ao_recorder::config::Config::default();
+        cfg.api_keys = sec.api_keys.clone();
+        cfg.read_rate_limit = sec.read_rate_limit;
+        cfg.write_rate_limit = sec.write_rate_limit;
+        cfg.max_connections = sec.max_connections;
+        info!("Recorder security: api_keys={}, read_rate={}, write_rate={}, max_conn={}",
+            cfg.api_keys.len(), cfg.read_rate_limit, cfg.write_rate_limit, cfg.max_connections);
+        build_router_with_config(state.clone(), &cfg)
+    } else {
+        build_router(state.clone())
+    };
 
     let bind_addr = format!("127.0.0.1:{}", port);
     let listener = tokio::net::TcpListener::bind(&bind_addr).await

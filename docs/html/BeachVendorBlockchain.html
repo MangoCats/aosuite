@@ -1,0 +1,135 @@
+<!doctype html>
+<!--
+ MIT License — Copyright (c) 2026 Assign Onward
+ See https://github.com/assignonward/aosuite for full license text.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>What If Every Beach Vendor Had Their Own Blockchain? — Assign Onward</title>
+  <link rel="stylesheet" href="article.css">
+  <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+</head>
+<body>
+
+<header class="article-header">
+  <img src="AO.png" alt="Assign Onward" class="ao-logo">
+  <h1>What If Every Beach Vendor Had Their Own Blockchain?</h1>
+  <p class="subtitle">A running simulation of informal-economy payments on a Caribbean beach.</p>
+</header>
+
+<article class="article-body">
+
+<p>Bob sells curry goat on Sandy Ground beach in Anguilla. He does about $200 a day in sales when a cruise ship is in port. He has no credit card terminal&mdash;the monthly fee alone would eat his margin. He takes cash only, keeps receipts in a cigar box, and has never been able to get a bank loan because he can&rsquo;t document his income.</p>
+
+<p>Patrice sells handmade jewelry from a blanket ten meters away. Same story. Lucia rents kayaks down by the water. Same story. Sharon sells fruit smoothies. Same.</p>
+
+<p>These four vendors collectively move maybe $600 a day in tourist spending. Visa and Mastercard will never notice them. They are too small, too informal, too cash-dependent to matter to the global payments industry. And yet they <em>are</em> the economy of Sandy Ground beach.</p>
+
+<h2>The Simulation</h2>
+
+<p>We built a simulation of Sandy Ground&rsquo;s economy. Not a whitepaper. Not a pitch deck. A running system.</p>
+
+<p>Twelve independent software agents&mdash;vendors, tourists, exchange agents, a validator&mdash;trade across seven blockchains on a map of Anguilla. Bob&rsquo;s Curry Goat chain (BCG) issues shares representing plates of food. Rita&rsquo;s Mango Futures chain (RMF) represents seasonal fruit. Dave&rsquo;s E-Bikes chain (DEB) represents rental hours. Each vendor controls their own chain. Nobody else can issue shares on Bob&rsquo;s chain. Nobody can inflate Rita&rsquo;s mango supply.</p>
+
+<p>Charlie, a launch captain who ferries tourists from cruise ships to shore, runs an exchange. He issues Charlie&rsquo;s Cruise Credits (CCC), buys inventory on vendor chains, and sells to tourists. When Alice steps off the launch, she buys CCC from Charlie with her credit card. She spends CCC at Bob&rsquo;s stall, at Patrice&rsquo;s blanket, at Lucia&rsquo;s kayak stand. At the end of the day, vendors cash out through Charlie.</p>
+
+<p>Ziggy runs a competing exchange. He undercuts Charlie&rsquo;s rates. The simulation shows their prices converging as they compete for the same customers&mdash;real market dynamics emerging from simple agent rules.</p>
+
+<div class="pullquote">
+<p>You can watch all of this happen on a map, in real time, with time controls that let you speed up, slow down, or scrub through the history. Click any agent to see their wallet, their transaction log, their perspective on the economy.</p>
+</div>
+
+<h2>What&rsquo;s Actually Different</h2>
+
+<p>Every blockchain project claims to fix payments. Most of them are solving a problem that Visa already solved, badly, while adding speculation on top. This is different in a few specific ways:</p>
+
+<p><strong>One chain per vendor, not one chain for everything.</strong> Bob&rsquo;s Curry Goat chain is <em>Bob&rsquo;s</em>. It represents his food, his production capacity, his business reputation. It&rsquo;s not a token on someone else&rsquo;s platform. It&rsquo;s not a smart contract on Ethereum. It&rsquo;s a standalone blockchain that Bob could run on a Raspberry Pi in his kitchen if he wanted to. This matters because it means Bob&rsquo;s business records can&rsquo;t be censored, inflated, or shut down by a platform operator. If the exchange agent disappears, Bob still has his chain and his transaction history.</p>
+
+<p><strong>Shares represent real goods, not speculative tokens.</strong> One BCG coin equals one plate of curry goat. The shares have value because Bob makes good curry goat and people want to eat it. There is no secondary market. There is no price speculation. There is no &ldquo;BCG to the moon.&rdquo; When shares expire (configurable&mdash;think of it like a gift card expiration), the value returns to the community of remaining shareholders rather than being lost.</p>
+
+<p><strong>Exchange agents are humans with skin in the game, not automated market makers.</strong> Charlie bridges the gap between tourist credit cards and local vendor chains. He earns a spread (about 5%) for providing this service. He takes the credit card risk on the tourist side. He holds inventory in vendor chains. If he cheats, vendors stop selling to him and tourists stop buying from him. His reputation is his business.</p>
+
+<p><strong>No proof of work. No mining. No energy waste.</strong> The recorder is a lightweight Rust application running on commodity hardware. The entire Sandy Ground economy runs on a Raspberry Pi with a cloud backup. Recording fees&mdash;tiny per-byte charges paid in retired shares&mdash;cover the infrastructure costs.</p>
+
+<p><strong>Designed for low bandwidth.</strong> A typical transaction is a few hundred bytes. The wire format was designed for LoRa mesh networks running at 22 kbps, not for fiber-optic data centers. The entire day&rsquo;s transactions for a beach market fit in the bandwidth of a single low-resolution photo.</p>
+
+<h2>The Economics</h2>
+
+<details>
+<summary>What vendors pay now (credit cards)</summary>
+<div class="detail-content">
+<ul>
+<li>3.2% per transaction</li>
+<li>EC$50/month terminal fee</li>
+<li>3&ndash;5 day settlement delay</li>
+<li>Chargeback risk (average cost: $191 per incident)</li>
+<li>Most beach vendors can&rsquo;t afford this, so they&rsquo;re cash-only</li>
+</ul>
+</div>
+</details>
+
+<details>
+<summary>What vendors would pay with this system</summary>
+<div class="detail-content">
+<ul>
+<li>~0.1% recording fee per transaction</li>
+<li>~5% exchange spread to Charlie (negotiable, drops with competition)</li>
+<li>No monthly fixed costs</li>
+<li>Instant settlement</li>
+<li>No chargebacks (transactions are final)</li>
+</ul>
+</div>
+</details>
+
+<p>The exchange spread is higher than a card fee for a single transaction. But it includes the currency exchange service (tourists arriving with USD, vendors pricing in EC$), and it has no fixed monthly component. For a vendor doing $50/day, the card terminal&rsquo;s $50/month fee alone is a 3.3% tax before a single transaction is processed. And vendors who couldn&rsquo;t accept cards at all&mdash;Patrice, Lucia, Sharon&mdash;now have access to tourist spending they were previously shut out of.</p>
+
+<h3>Infrastructure Costs</h3>
+
+<table>
+<thead>
+<tr><th>Item</th><th>Cost</th></tr>
+</thead>
+<tbody>
+<tr><td>Raspberry Pi + SSD + UPS</td><td>~$150 one-time</td></tr>
+<tr><td>Cloud backup</td><td>~$10/month</td></tr>
+<tr><td>Validator anchoring</td><td>~$2&ndash;5/month</td></tr>
+<tr><td>Domain name</td><td>~$12/year</td></tr>
+<tr><td><strong>Total ongoing</strong></td><td><strong>~$15&ndash;20/month</strong></td></tr>
+</tbody>
+</table>
+
+<p>Someone has to front the Pi and the first few months of cloud costs. After that, the system pays for itself through transaction fees. This is not free&mdash;but it&rsquo;s cheaper than the monthly credit card terminal fee that most beach vendors can&rsquo;t afford in the first place.</p>
+
+<h2>What It&rsquo;s Not</h2>
+
+<p>This is <strong>not a cryptocurrency</strong>. BCG tokens are not traded on exchanges. They&rsquo;re not an investment vehicle. They&rsquo;re closer to a gift card for Bob&rsquo;s curry goat stand&mdash;a prepaid credit redeemable for a specific good from a specific vendor.</p>
+
+<p>This is <strong>not DeFi</strong>. There are no smart contracts, no yield farming, no liquidity pools, no governance tokens. The &ldquo;protocol&rdquo; is: Bob makes food, issues shares representing food, people buy shares, people eat food.</p>
+
+<p>This is <strong>not a platform</strong>. There is no Assign Onward Inc. taking a cut. The software is MIT-licensed. Anyone can run a recorder. Anyone can run an exchange. The protocol is open.</p>
+
+<p>This is <strong>not going to replace Visa</strong>. It&rsquo;s not trying to. It&rsquo;s for the vendors that Visa will never serve&mdash;the ones whose $200/day in sales doesn&rsquo;t justify the infrastructure costs of the global payments network. The ones keeping receipts in cigar boxes.</p>
+
+<div class="article-cta">
+<h3>Try It</h3>
+<p>The entire system&mdash;agents, recorder, exchange logic, viewer&mdash;is open source and written in Rust.</p>
+<p>If you know a beach vendor, a market stallholder, or a tourism economy that could use transparent, low-cost payment infrastructure&mdash;this is what we built it for.</p>
+<p><a href="https://github.com/assignonward/aosuite">GitHub: assignonward/aosuite</a></p>
+</div>
+
+</article>
+
+<footer class="article-footer">
+<p class="license">Assign Onward is an open-source project. The software is MIT-licensed. There is no token sale. There is no ICO. There is no company. The code is the product.</p>
+<nav class="nav-links">
+<a href="TourismVendors.html">Sandy Ground Deployment Story</a>
+<a href="IslandUBI.html">Island UBI Story</a>
+<a href="FarmingCooperatives.html">Farming Cooperatives Story</a>
+<a href="index.html">Assign Onward Home</a>
+</nav>
+</footer>
+
+</body>
+</html>

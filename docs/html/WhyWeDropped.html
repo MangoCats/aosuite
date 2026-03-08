@@ -1,0 +1,146 @@
+<!doctype html>
+<!--
+ MIT License — Copyright (c) 2026 Assign Onward
+ See https://github.com/assignonward/aosuite for full license text.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Why We Dropped Proof of Work, Token Launches, and DeFi — Assign Onward</title>
+  <link rel="stylesheet" href="article.css">
+  <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+</head>
+<body>
+
+<header class="article-header">
+  <img src="AO.png" alt="Assign Onward" class="ao-logo">
+  <h1>Why We Dropped Proof of Work, Token Launches, and DeFi</h1>
+  <p class="subtitle">The anti-pitch. What we left out, and why leaving it out is the point.</p>
+</header>
+
+<article class="article-body">
+
+<p>We started designing this system in 2018. The original documents specified RSA-3072, brainpool-256 ECDSA, and a custom big-integer library binding GMP through C++. There was no proof of work, no token sale, and no plan for one. The project stalled in 2021 with ~15,600 lines of C++ implementing the serialization layer and nothing else.</p>
+
+<p>In 2026, we rewrote everything in Rust. Along the way, we made a series of decisions about what to leave out. These decisions define the project more than what we included.</p>
+
+<h2>No Proof of Work</h2>
+
+<p>Proof of work solves a specific problem: how do you achieve consensus among anonymous, untrusted parties who might be Sybil attackers? The answer is: make it expensive to participate, so that attacking the network costs more than it&rsquo;s worth.</p>
+
+<p>We don&rsquo;t have that problem.</p>
+
+<p>Our chains are not anonymous. Bob&rsquo;s Curry Goat chain has one recorder, operated by Gene, who lives three houses down from Faythe. Amara&rsquo;s tomato chain has one recorder, operated by the Riuki Cooperative, run on a Raspberry Pi in the meeting hall. The recorder is a known entity with a reputation. If Gene starts censoring transactions or rewriting blocks, the validator catches it, the community notices, and Bob moves his chain to a different recorder.</p>
+
+<div class="pullquote">
+<p>The trust model is: the recorder is a service provider, like a web host. You trust your web host not to delete your files, and if they do, you have backups and can switch providers. You don&rsquo;t need to burn gigawatts of electricity to make sure your web host is honest.</p>
+</div>
+
+<p>A chain in this system is a single-writer append-only log, signed by the blockmaker key. There&rsquo;s no mining race because there&rsquo;s no competition for who writes the next block&mdash;the recorder does. Validation is separate: anyone can verify the hash chain and signatures independently.</p>
+
+<p>This means the entire Sandy Ground beach economy&mdash;seven chains, twelve agents, hundreds of transactions per day&mdash;runs on a Raspberry Pi 5 drawing 5 watts. Not a data center. Not a GPU farm. An $80 single-board computer in a closet.</p>
+
+<h2>No Token Sale</h2>
+
+<p>There is no AO token. There is no ICO. There is no pre-mine. There is no governance token. There is no utility token. There is no security token.</p>
+
+<p>Each chain has its own shares. Bob&rsquo;s Curry Goat shares represent plates of curry goat. Rita&rsquo;s Mango Future shares represent seasonal fruit. These shares have value because they&rsquo;re redeemable for specific real-world goods from specific real-world people. They are not tradeable on Coinbase. They are not listed on Uniswap. They have no ticker symbol on CoinGecko.</p>
+
+<div class="pullquote">
+<p>The moment you create a generic platform token, you create a speculative asset. Speculators show up. Price volatility follows. The community of people who want to buy curry goat gets drowned out by the community of people who want to flip curry goat tokens for a profit.</p>
+</div>
+
+<p>Every blockchain project that launched a token eventually discovered that the token&rsquo;s speculative dynamics dominate the system&rsquo;s utility dynamics. We decided to skip that part entirely.</p>
+
+<p>The project is funded by exactly zero dollars of token-sale money. The software is MIT-licensed. If someone wants to deploy it, they buy a Raspberry Pi.</p>
+
+<h2>No Smart Contracts</h2>
+
+<p>There is no virtual machine. There is no scripting language. There is no Turing-complete execution environment. There are no decentralized applications running on a world computer.</p>
+
+<p>Transactions in this system do one thing: transfer shares from givers to receivers, with a recording fee deducted. That&rsquo;s it. The &ldquo;business logic&rdquo; is: Alice gives Bob 12 CCC, Bob gives Alice a plate of curry goat. The plate of curry goat is off-chain. The 12 CCC transfer is on-chain. The recording fee (a few fractions of a cent) goes to the chain&rsquo;s infrastructure costs via share retirement.</p>
+
+<p>Atomic multi-chain exchange (our most complex feature) uses a Conditional Assignment Agreement with an escrow state machine&mdash;proposed, signed, recording, binding, finalized, or expired. It&rsquo;s six states and four transitions, implemented in about 500 lines of Rust. Not a smart contract&mdash;a protocol step that the recorder enforces mechanically.</p>
+
+<p>Smart contracts are general-purpose computation on a replicated state machine. They&rsquo;re powerful and dangerous. They enable flash loan attacks, reentrancy exploits, governance takeovers, and the entire category of DeFi exploits that have cost billions. We don&rsquo;t need general-purpose computation. We need share transfers. So we built share transfers.</p>
+
+<h2>No DeFi</h2>
+
+<p>No liquidity pools. No yield farming. No automated market makers. No lending protocols. No staking rewards. No flash loans. No governance tokens with voting power proportional to holdings.</p>
+
+<p>Exchange agents in this system are humans. Charlie is a launch captain who ferries tourists from cruise ships. He holds inventory in vendor chains and earns a spread converting tourist dollars to local credits. If he sets his spread too high, Ziggy undercuts him. If he runs out of inventory, he buys more from vendors.</p>
+
+<p>The &ldquo;protocol&rdquo; for exchange is: Charlie quotes a rate, Alice agrees, they do a two-leg transfer. No bonding curves. No impermanent loss. No oracle manipulation. Just two people agreeing on a price.</p>
+
+<h2>No Consensus Mechanism (In the Usual Sense)</h2>
+
+<p>There&rsquo;s no Byzantine fault tolerance. No Raft. No Paxos. No Tendermint. No proof of stake. No validator set rotating through slot leaders.</p>
+
+<p>Each chain has one recorder. The recorder writes blocks. Period.</p>
+
+<details>
+<summary>&ldquo;But what if the recorder goes rogue?&rdquo;</summary>
+<div class="detail-content">
+<p>The validator detects it. Every block is hash-chained. Modifying any historical block changes all subsequent hashes. The validator independently verifies the hash chain and can anchor rolled-up hashes to a public chain for anyone to audit. The evidence of tampering is mathematical.</p>
+</div>
+</details>
+
+<details>
+<summary>&ldquo;But what if the recorder censors transactions?&rdquo;</summary>
+<div class="detail-content">
+<p>You move to a different recorder. Your chain is a portable data structure&mdash;an append-only log with a genesis block and a sequence of signed blocks. Any recorder that has the blockmaker key can continue the chain. The recorder is a hosting provider, not a gatekeeper.</p>
+</div>
+</details>
+
+<details>
+<summary>&ldquo;But what about double-spending?&rdquo;</summary>
+<div class="detail-content">
+<p>Each public key is used exactly once for receiving shares. Double-spend checking is a boolean per sequence number: spent or not. When Bob&rsquo;s recorder receives an assignment, it checks whether the source UTXO&rsquo;s key has been spent. Yes/no. No probabilistic finality. No confirmation count. No &ldquo;wait six blocks to be sure.&rdquo; One block, final, done.</p>
+</div>
+</details>
+
+<h2>What We Kept</h2>
+
+<p><strong>Cryptographic integrity.</strong> Ed25519 signatures on every block. SHA2-256 hash chaining. Every transaction is signed by all participants with timestamped signatures. Separable items (large attachments like photos) are replaced by their SHA2-256 hash before signing, so signatures cover the content without including the bulk data.</p>
+
+<p><strong>Share-based accounting.</strong> Shares are arbitrary-precision integers (via <code>num-bigint</code>). Fee calculations use exact rational arithmetic with ceiling rounding. No floating point. No rounding errors. Every node computes identical results.</p>
+
+<p><strong>Expiration.</strong> Shares expire after a configurable period. Lost keys don&rsquo;t lock up value forever&mdash;the abandoned shares get swept, and their value accretes to remaining shareholders. The equivalent of unclaimed gift card value&mdash;it returns to the community instead of vanishing.</p>
+
+<p><strong>Wire format thrift.</strong> Variable Byte Coding for integers, compact DataItem structures, minimal overhead. A typical transaction is a few hundred bytes. The format was designed for LoRa mesh networks at 22 kbps&mdash;if it works over Meshtastic, it works over everything.</p>
+
+<p><strong>Transparency.</strong> All chains are publicly readable. Anyone can verify any transaction. The recorder publishes blocks; the validator verifies them; the community can audit everything.</p>
+
+<h2>The Result</h2>
+
+<p>Seven Rust crates. 136 tests. ~6,500 lines of protocol code. A simulation suite with 19 agents trading across 7 chains on a map. Runs on a Raspberry Pi. MIT license.</p>
+
+<p>No mining. No tokens. No smart contracts. No DeFi. No consensus mechanism. No venture capital. No foundation. No roadmap to decentralization.</p>
+
+<p>Just share transfers between people who agreed on a price, recorded on an append-only log, verified by anyone who cares to look.</p>
+
+<div class="pullquote">
+<p>If that sounds boring, good. Financial infrastructure should be boring. The exciting version has cost people $68 billion in DeFi exploits since 2020. We&rsquo;ll take boring.</p>
+</div>
+
+<div class="article-cta">
+<h3>The Code</h3>
+<p>MIT-licensed. No affiliation with any blockchain platform, exchange, or foundation.</p>
+<p><a href="https://github.com/assignonward/aosuite">GitHub: assignonward/aosuite</a></p>
+</div>
+
+</article>
+
+<footer class="article-footer">
+<p class="license">Assign Onward is an open-source project started in 2018 and rewritten in Rust in 2026. MIT license. The code is the product.</p>
+<nav class="nav-links">
+<a href="RustBlockchainSimulator.html">Rust Simulator Article</a>
+<a href="BeachVendorBlockchain.html">Beach Vendor Article</a>
+<a href="TaxLoopUBI.html">Tax Loop UBI Article</a>
+<a href="index.html">Assign Onward Home</a>
+</nav>
+</footer>
+
+</body>
+</html>

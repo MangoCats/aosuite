@@ -519,11 +519,11 @@ DATA_BLOB payload: `[MIME type as UTF-8, NUL-terminated][raw binary content]`. E
 
 1. **Content-addressed storage**: `BlobStore` struct in [blob.rs](src/ao-recorder/src/blob.rs). Blobs stored at `data_dir/blobs/{sha256hex}` with atomic write (temp file + rename). Idempotent — re-uploading the same content returns the same hash without duplicating files.
 
-2. **Upload endpoint**: `POST /chain/{id}/blob` accepts `application/octet-stream` body. Validates MIME delimiter, checks size limit (5 MB default, separate from 256 KB assignment body limit via per-route `DefaultBodyLimit`). Returns `{"hash": "..."}`.
+2. **Upload endpoint**: `POST /chain/{id}/blob` accepts `application/octet-stream` body. Validates MIME delimiter, enforces MIME allowlist (`image/*`, `application/pdf`), checks size limit (configurable, default 5 MB), enforces per-chain storage quota (configurable, default 100 MB). Returns `{"hash": "..."}`.
 
-3. **Retrieval endpoint**: `GET /chain/{id}/blob/{hash}` returns raw content with `Content-Type` extracted from the MIME prefix. `Cache-Control: public, max-age=31536000, immutable` (content-addressed blobs never change). 404 for missing/pruned blobs.
+3. **Retrieval endpoint**: `GET /chain/{id}/blob/{hash}` returns raw content with `Content-Type` from MIME prefix. Security headers: `X-Content-Type-Options: nosniff`, `Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'none'; script-src 'none'`, `Content-Disposition: inline` (images) or `attachment` (other). `Cache-Control: public, max-age=31536000, immutable`. Chain isolation enforced — blobs only readable by the chain that uploaded them.
 
-4. **Error handling**: `BlobError` enum with `TooLarge`, `NoMimeDelimiter`, `InvalidMime`, `IoError`, `InvalidHash` variants. Maps to appropriate HTTP status codes (413, 400, 404, 500).
+4. **Error handling**: `BlobError` enum with `TooLarge`, `NoMimeDelimiter`, `InvalidMime`, `MimeNotAllowed`, `QuotaExceeded`, `IoError`, `InvalidHash` variants. Maps to HTTP status codes (413, 400, 404, 500).
 
 #### PWA Upload UI
 
@@ -537,9 +537,33 @@ DATA_BLOB payload: `[MIME type as UTF-8, NUL-terminated][raw binary content]`. E
 
 5. **Blob utilities**: [blob.ts](src/ao-pwa/src/core/blob.ts) — `parseBlobPayload()`, `buildBlobPayload()` for MIME+NUL+content wire format encoding/decoding.
 
-**Implementation:** [blob.rs](src/ao-recorder/src/blob.rs) (BlobStore + handlers), [lib.rs](src/ao-recorder/src/lib.rs) (routes + AppState), [main.rs](src/ao-recorder/src/main.rs) (init), [blob.ts](src/ao-pwa/src/core/blob.ts) (utilities), [client.ts](src/ao-pwa/src/api/client.ts) (uploadBlob/getBlob), [AttachmentPicker.tsx](src/ao-pwa/src/components/AttachmentPicker.tsx), [BlobViewer.tsx](src/ao-pwa/src/components/BlobViewer.tsx), [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx) (integration). 6 Rust unit tests + 3 Rust integration tests + 5 PWA unit tests.
+**Implementation:** [blob.rs](src/ao-recorder/src/blob.rs) (BlobStore + handlers), [lib.rs](src/ao-recorder/src/lib.rs) (routes + AppState), [main.rs](src/ao-recorder/src/main.rs) (init), [config.rs](src/ao-recorder/src/config.rs) (blob settings), [blob.ts](src/ao-pwa/src/core/blob.ts) (utilities), [client.ts](src/ao-pwa/src/api/client.ts) (uploadBlob/getBlob), [AttachmentPicker.tsx](src/ao-pwa/src/components/AttachmentPicker.tsx), [BlobViewer.tsx](src/ao-pwa/src/components/BlobViewer.tsx), [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx) (integration). 11 Rust unit tests + 5 Rust integration tests + 5 PWA unit tests.
+
+#### Security Mitigations
+
+1. **Disk exhaustion prevention**: Per-chain blob quota (`blob_quota_per_chain`, default 100 MB) prevents any single chain from consuming unbounded disk. Individual blob size capped (`max_blob_bytes`, default 5 MB). Both configurable in `recorder.toml`.
+
+2. **Stored XSS prevention**: Blob GET responses include `X-Content-Type-Options: nosniff` (prevents browser content sniffing), `Content-Security-Policy: default-src 'none'; script-src 'none'` (blocks all script execution), and `Content-Disposition: attachment` for non-image types (forces download instead of render).
+
+3. **MIME allowlist**: Only `image/*` and `application/pdf` MIME types accepted on upload. Rejects `text/html`, `application/javascript`, and all other types that could enable stored XSS.
+
+4. **Cross-chain isolation**: Blob ownership tracked per chain. `GET /chain/{A}/blob/{hash}` returns 404 if the blob was uploaded by chain B, preventing privacy leakage between independent chains on the same recorder.
+
+5. **Temp file cleanup**: Stale `.tmp_*` files from prior crashes are automatically cleaned up when BlobStore initializes, preventing gradual disk waste from interrupted uploads.
+
+#### Configuration
+
+```toml
+# recorder.toml
+max_blob_bytes = 5242880           # max single blob size (default 5 MB)
+blob_quota_per_chain = 104857600   # per-chain storage quota (default 100 MB)
+```
 
 **Remaining:** On-chain DATA_BLOB DataItem integration in `buildAssignment` (blobs are uploaded but not yet referenced as separable children in the assignment structure). Blob retention/pruning background task. Offline blob queue in IndexedDB.
+
+#### Future: Asymmetric Blob Quota Auto-Tuning
+
+When multi-recorder deployment reveals heterogeneous blob usage across many chains, consider an asymmetric auto-tuner: starts at the configured quota, **shrinks slowly** toward observed usage (EWMA of monthly upload rate + p95 blob size with 2x headroom), but **never grows without human intervention**. An operator must explicitly raise the quota via config or admin API. This prevents attackers from training the tuner upward while letting idle chains tighten automatically. Not needed now — the fixed per-chain quota + operator alerting (`disk_warn_percent`) covers the near-term threat model. Build only if the gap between "one global default" and "explicit per-chain config" proves real in production.
 
 **Unblocks:** Ouma photographing tomato deliveries (Cooperative), crop damage documentation for insurance (Cooperative), vendor product photos (Tourism).
 

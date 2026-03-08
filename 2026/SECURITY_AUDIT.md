@@ -110,6 +110,40 @@ Channel capacity 64 with no overflow handling. If broker is slow, messages are s
 
 ---
 
+### BLOB STORAGE (added 2026-03-08)
+
+#### F13. Blob Disk Exhaustion
+
+**Affected:** ao-recorder blob upload endpoint.
+
+Unbounded blob uploads could fill disk, crashing SQLite and all chain operations. No per-chain quota, no MIME type restriction, no cross-chain isolation.
+
+**Status: Mitigated.**
+- Per-chain blob quota (`blob_quota_per_chain`, default 100 MB, configurable)
+- MIME allowlist: only `image/*` and `application/pdf` accepted
+- Cross-chain isolation: blobs readable only by the chain that uploaded them
+- Individual blob size cap (`max_blob_bytes`, default 5 MB, configurable)
+
+#### F14. Stored XSS via Blob Content-Type
+
+**Affected:** `GET /chain/{id}/blob/{hash}` returned Content-Type from user-supplied MIME prefix.
+
+An attacker could upload `text/html` content with JavaScript, creating stored XSS if anyone navigated to the blob URL in a browser.
+
+**Status: Mitigated.**
+- `X-Content-Type-Options: nosniff` prevents browser content sniffing
+- `Content-Security-Policy: default-src 'none'; script-src 'none'` blocks all script execution
+- `Content-Disposition: attachment` for non-image types forces download
+- MIME allowlist rejects `text/html`, `application/javascript`, etc.
+
+#### F15. Stale Temp File Accumulation
+
+**Affected:** BlobStore atomic write pattern leaves `.tmp_*` files on crash.
+
+**Status: Mitigated.** BlobStore constructor cleans up all `.tmp_*` files on initialization.
+
+---
+
 ## What's Done Well
 
 | Area | Assessment |

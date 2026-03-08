@@ -31,7 +31,7 @@ async fn wait_while_paused(paused: &PauseFlag) {
 }
 
 use crate::client::RecorderClient;
-use crate::config::{AgentConfig, VendorConfig, ExchangeConfig, ConsumerConfig, ValidatorConfig, AttackerConfig, parse_bigint};
+use crate::config::{AgentConfig, VendorConfig, ExchangeConfig, ConsumerConfig, ValidatorConfig, AttackerConfig, InfraTesterConfig, parse_bigint};
 use crate::transfer::{self, Giver, Receiver};
 use crate::wallet::{Wallet, now_ms};
 
@@ -148,6 +148,7 @@ pub struct AgentState {
     pub trading_rates: Vec<TradingRate>,
     pub validator_status: Option<ValidatorStatus>,
     pub attacker_status: Option<AttackerStatus>,
+    pub infra_tester_status: Option<InfraTesterStatus>,
     pub caa_status: Option<CaaExchangeStatus>,
     pub transactions: u64,
     pub last_action: String,
@@ -192,6 +193,18 @@ pub struct AttackerStatus {
     pub rejections: u64,
     pub unexpected_accepts: u64,
     pub last_result: String,
+}
+
+/// Status for white-hat infrastructure resilience testers.
+#[derive(Debug, Clone, Serialize)]
+pub struct InfraTesterStatus {
+    pub test_type: String,
+    pub rounds: u64,
+    pub passed: u64,
+    pub failed: u64,
+    pub last_result: String,
+    /// Per-test-type detail metrics.
+    pub detail: serde_json::Value,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1535,6 +1548,7 @@ pub async fn run_validator(
                 total_blocks_verified: total_verified,
             }),
             attacker_status: None,
+            infra_tester_status: None,
             caa_status: None,
             transactions: 0,
             last_action: last_action.to_string(),
@@ -1735,6 +1749,7 @@ pub async fn run_attacker(
                 unexpected_accepts,
                 last_result: last_result.to_string(),
             }),
+            infra_tester_status: None,
             caa_status: None,
             transactions: attempts,
             last_action: last_result.to_string(),
@@ -2295,6 +2310,7 @@ fn build_state(
         trading_rates: Vec::new(),
         validator_status: None,
         attacker_status: None,
+        infra_tester_status: None,
         caa_status: None,
         transactions,
         last_action: last_action.to_string(),
@@ -2336,12 +2352,473 @@ fn build_multi_state(
         trading_rates: Vec::new(),
         validator_status: None,
         attacker_status: None,
+        infra_tester_status: None,
         caa_status: None,
         transactions,
         last_action: last_action.to_string(),
     }
 }
 
+
+// ── White-hat infrastructure tester agent ───────────────────────────
+//
+// Tests server-level resilience (N10 security hardening features),
+// NOT protocol correctness. Each test type verifies that the recorder
+// properly enforces a specific infrastructure protection.
+//
+// All tests are clearly labeled "infra_tester" in the viewer and logs.
+// These are defensive, white-hat probes — they verify that protections
+// WORK, not that they can be bypassed.
+
+#[allow(clippy::too_many_arguments)]
+pub async fn run_infra_tester(
+    config: AgentConfig,
+    tester_cfg: InfraTesterConfig,
+    recorder_url: String,
+    directory: Arc<RwLock<AgentDirectory>>,
+    state_tx: StateCollector,
+    _mailbox: mpsc::Receiver<AgentMessage>,
+    speed: SharedSpeed,
+    paused: PauseFlag,
+) -> Result<()> {
+    let name = config.name.clone();
+    let (lat, lon) = (config.lat, config.lon);
+    let test_type = tester_cfg.test.clone();
+    let base_interval = tester_cfg.probe_interval_secs as f64;
+    let concurrency = tester_cfg.concurrency;
+
+    let mut rounds: u64 = 0;
+    let mut passed: u64 = 0;
+    let mut failed: u64 = 0;
+    let mut last_result;
+
+    // Wait for target vendor chain
+    let (chain_id, symbol, _plate_price) = wait_for_vendor_chain(&directory, &tester_cfg.target_vendor).await?;
+    info!("{}: [WHITE-HAT INFRA TESTER] Found target chain {} ({}), test type: {}",
+        name, symbol, &chain_id[..12], test_type);
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    let http_client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()?;
+
+    let make_state = |rounds: u64, passed: u64, failed: u64, last_result: &str,
+                      detail: serde_json::Value, paused: &PauseFlag| -> AgentState {
+        AgentState {
+            name: name.clone(),
+            role: "infra_tester".to_string(),
+            status: "active".to_string(),
+            lat, lon,
+            chains: vec![ChainHolding {
+                chain_id: chain_id.clone(),
+                symbol: symbol.clone(),
+                shares: BigInt::zero(),
+                unspent_utxos: 0,
+                coin_count: String::new(),
+                total_shares: String::new(),
+            }],
+            key_summary: Vec::new(),
+            coverage_radius: None,
+            paused: paused.load(Ordering::Relaxed),
+            trading_rates: Vec::new(),
+            validator_status: None,
+            attacker_status: None,
+            infra_tester_status: Some(InfraTesterStatus {
+                test_type: test_type.clone(),
+                rounds,
+                passed,
+                failed,
+                last_result: last_result.to_string(),
+                detail,
+            }),
+            caa_status: None,
+            transactions: rounds,
+            last_action: last_result.to_string(),
+        }
+    };
+
+    let _ = state_tx.send(ViewerEvent::State(Box::new(
+        make_state(0, 0, 0, "ready", serde_json::json!({}), &paused)
+    ))).await;
+
+    loop {
+        wait_while_paused(&paused).await;
+        let interval = std::time::Duration::from_secs_f64(base_interval / read_speed(&speed).max(0.1));
+        tokio::time::sleep(interval).await;
+
+        rounds += 1;
+        let (ok, detail, desc) = match test_type.as_str() {
+            "flood" => infra_test_flood(
+                &http_client, &recorder_url, &chain_id, concurrency,
+            ).await,
+            "oversized_payload" => infra_test_oversized_payload(
+                &http_client, &recorder_url, &chain_id,
+            ).await,
+            "auth_bypass" => infra_test_auth_bypass(
+                &http_client, &recorder_url, &chain_id, tester_cfg.api_key.as_deref(),
+            ).await,
+            "connection_exhaustion" => infra_test_connection_exhaustion(
+                &http_client, &recorder_url, &chain_id, concurrency,
+            ).await,
+            "error_probe" => infra_test_error_probe(
+                &http_client, &recorder_url, &chain_id,
+            ).await,
+            other => {
+                warn!("{}: unknown infra test type: {}", name, other);
+                (false, serde_json::json!({}), format!("unknown test: {}", other))
+            }
+        };
+
+        if ok { passed += 1; } else { failed += 1; }
+        last_result = format!("#{}: {}", rounds, desc);
+        info!("{}: [WHITE-HAT] {} round #{}: {}", name, test_type, rounds, desc);
+
+        let _ = state_tx.send(ViewerEvent::State(Box::new(
+            make_state(rounds, passed, failed, &last_result, detail.clone(), &paused)
+        ))).await;
+        let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+            &chain_id, &symbol, &name, &tester_cfg.target_vendor, 0,
+            &format!("[INFRA] {}: {}", test_type, &last_result),
+        ))).await;
+    }
+}
+
+/// Flood test: send `concurrency` simultaneous GET /chain/{id}/info requests.
+/// PASS if all requests complete (server stays responsive under load).
+/// Reports latency stats (min/max/avg/p99) and any errors.
+async fn infra_test_flood(
+    client: &reqwest::Client,
+    recorder_url: &str,
+    chain_id: &str,
+    concurrency: usize,
+) -> (bool, serde_json::Value, String) {
+    let url = format!("{}/chain/{}/info", recorder_url, chain_id);
+    let mut handles = Vec::with_capacity(concurrency);
+
+    let start = std::time::Instant::now();
+    for _ in 0..concurrency {
+        let c = client.clone();
+        let u = url.clone();
+        handles.push(tokio::spawn(async move {
+            let t0 = std::time::Instant::now();
+            let result = c.get(&u).send().await;
+            let elapsed_ms = t0.elapsed().as_millis() as u64;
+            match result {
+                Ok(resp) => (resp.status().as_u16(), elapsed_ms),
+                Err(_) => (0u16, elapsed_ms),
+            }
+        }));
+    }
+
+    let mut latencies = Vec::with_capacity(concurrency);
+    let mut successes = 0u64;
+    let mut errors = 0u64;
+    let mut rate_limited = 0u64;
+    for h in handles {
+        if let Ok((status, ms)) = h.await {
+            latencies.push(ms);
+            match status {
+                200 => successes += 1,
+                429 => rate_limited += 1,
+                0 => errors += 1,
+                _ => errors += 1,
+            }
+        }
+    }
+    let wall_ms = start.elapsed().as_millis() as u64;
+
+    latencies.sort();
+    let avg = if latencies.is_empty() { 0 } else { latencies.iter().sum::<u64>() / latencies.len() as u64 };
+    let p99 = latencies.get(latencies.len().saturating_sub(1) * 99 / 100).copied().unwrap_or(0);
+    let max = latencies.last().copied().unwrap_or(0);
+    let min = latencies.first().copied().unwrap_or(0);
+
+    let detail = serde_json::json!({
+        "concurrency": concurrency,
+        "wall_ms": wall_ms,
+        "successes": successes,
+        "rate_limited_429": rate_limited,
+        "errors": errors,
+        "latency_min_ms": min,
+        "latency_avg_ms": avg,
+        "latency_p99_ms": p99,
+        "latency_max_ms": max,
+    });
+
+    // PASS: server stayed responsive (no connection errors)
+    let ok = errors == 0;
+    let desc = format!(
+        "{}/{} ok, {} rate-limited, {} errors, avg {}ms p99 {}ms",
+        successes, concurrency, rate_limited, errors, avg, p99
+    );
+    (ok, detail, desc)
+}
+
+/// Oversized payload test: submit a >1MB JSON body to POST /chain/{id}/submit.
+/// PASS if the recorder rejects it (400 or 413) rather than crashing or OOM.
+async fn infra_test_oversized_payload(
+    client: &reqwest::Client,
+    recorder_url: &str,
+    chain_id: &str,
+) -> (bool, serde_json::Value, String) {
+    // Build a payload exceeding the 256KB body limit and the 1MB deserialize guard.
+    // Use a large string field to avoid actual valid block parsing.
+    let big_string = "X".repeat(2 * 1024 * 1024); // 2 MB
+    let payload = serde_json::json!({
+        "type_code": "1",
+        "children": [{"type_code": "99", "value": big_string}]
+    });
+
+    let url = format!("{}/chain/{}/submit", recorder_url, chain_id);
+    match client.post(&url).json(&payload).send().await {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let body: String = resp.text().await.unwrap_or_default();
+            // 413 Payload Too Large or 400 Bad Request are correct rejections.
+            // 200 would mean the guard failed. 500 with OOM would be a crash.
+            let ok = status == 413 || status == 400;
+            let detail = serde_json::json!({
+                "payload_bytes": 2 * 1024 * 1024,
+                "response_status": status,
+                "response_body": &body[..body.len().min(200)],
+            });
+            let desc = format!("2MB payload → {} ({})", status,
+                if ok { "correctly rejected" } else { "UNEXPECTED" });
+            (ok, detail, desc)
+        }
+        Err(e) => {
+            let detail = serde_json::json!({"error": e.to_string()});
+            (false, detail, format!("connection error: {}", e))
+        }
+    }
+}
+
+/// Auth bypass test: send requests with missing, invalid, and valid auth.
+/// PASS if: unauthenticated requests are rejected (401) when keys are configured,
+/// OR all requests pass when no auth is configured (verifying no false blocks).
+async fn infra_test_auth_bypass(
+    client: &reqwest::Client,
+    recorder_url: &str,
+    chain_id: &str,
+    valid_key: Option<&str>,
+) -> (bool, serde_json::Value, String) {
+    let url = format!("{}/chain/{}/info", recorder_url, chain_id);
+
+    // Test 1: no auth header
+    let no_auth = client.get(&url).send().await;
+    let no_auth_status = no_auth.map(|r| r.status().as_u16()).unwrap_or(0);
+
+    // Test 2: invalid auth header
+    let bad_auth = client.get(&url)
+        .header("authorization", "Bearer INVALID-KEY-12345")
+        .send().await;
+    let bad_auth_status = bad_auth.map(|r| r.status().as_u16()).unwrap_or(0);
+
+    // Test 3: valid auth (if key provided)
+    let good_auth_status = if let Some(key) = valid_key {
+        let resp = client.get(&url)
+            .header("authorization", format!("Bearer {}", key))
+            .send().await;
+        resp.map(|r| r.status().as_u16()).unwrap_or(0)
+    } else {
+        0 // not tested
+    };
+
+    let auth_enforced = no_auth_status == 401;
+    let detail = serde_json::json!({
+        "no_auth_status": no_auth_status,
+        "bad_auth_status": bad_auth_status,
+        "good_auth_status": good_auth_status,
+        "auth_enforced": auth_enforced,
+    });
+
+    if auth_enforced {
+        // Auth IS enforced — verify bad key rejected, good key accepted
+        let ok = bad_auth_status == 401 && (valid_key.is_none() || good_auth_status == 200);
+        let desc = format!(
+            "auth enforced: no-auth→{}, bad-key→{}, good-key→{}",
+            no_auth_status, bad_auth_status, good_auth_status
+        );
+        (ok, detail, desc)
+    } else {
+        // Auth is NOT enforced — all requests should succeed
+        let ok = no_auth_status == 200 && bad_auth_status == 200;
+        let desc = format!("no auth configured: all requests → 200 (expected)");
+        (ok, detail, desc)
+    }
+}
+
+/// Connection exhaustion test: open `concurrency` simultaneous SSE streams.
+/// PASS if the recorder handles the load (accepting up to max_connections,
+/// returning 503 for excess, and not crashing).
+async fn infra_test_connection_exhaustion(
+    client: &reqwest::Client,
+    recorder_url: &str,
+    chain_id: &str,
+    concurrency: usize,
+) -> (bool, serde_json::Value, String) {
+    let url = format!("{}/chain/{}/events", recorder_url, chain_id);
+    let mut handles = Vec::with_capacity(concurrency);
+
+    for _ in 0..concurrency {
+        let c = client.clone();
+        let u = url.clone();
+        handles.push(tokio::spawn(async move {
+            match c.get(&u).send().await {
+                Ok(resp) => resp.status().as_u16(),
+                Err(_) => 0,
+            }
+        }));
+    }
+
+    let mut accepted = 0u64;
+    let mut rejected_503 = 0u64;
+    let mut errors = 0u64;
+    for h in handles {
+        if let Ok(status) = h.await {
+            match status {
+                200 => accepted += 1,
+                503 => rejected_503 += 1,
+                0 => errors += 1,
+                _ => errors += 1,
+            }
+        }
+    }
+
+    let detail = serde_json::json!({
+        "concurrency": concurrency,
+        "accepted_200": accepted,
+        "rejected_503": rejected_503,
+        "errors": errors,
+    });
+
+    // PASS: server didn't crash (no connection errors) and either:
+    // - accepted all (no limit configured), or
+    // - accepted some and rejected the rest with 503 (limit enforced)
+    let ok = errors == 0 && (accepted > 0 || rejected_503 > 0);
+    let desc = format!(
+        "{} accepted, {} rejected (503), {} errors",
+        accepted, rejected_503, errors
+    );
+    (ok, detail, desc)
+}
+
+/// Error probe test: send various malformed requests and verify that error
+/// responses don't leak internal details (N10 error sanitization).
+/// PASS if all error responses use generic messages, not stack traces or
+/// internal state descriptions.
+async fn infra_test_error_probe(
+    client: &reqwest::Client,
+    recorder_url: &str,
+    chain_id: &str,
+) -> (bool, serde_json::Value, String) {
+    let mut probes = Vec::new();
+    let mut all_sanitized = true;
+
+    // Probe 1: submit garbage JSON to /submit
+    let resp = client.post(format!("{}/chain/{}/submit", recorder_url, chain_id))
+        .json(&serde_json::json!({"garbage": true}))
+        .send().await;
+    let (status1, body1) = extract_error(resp).await;
+    let clean1 = !leaks_internals(&body1);
+    if !clean1 { all_sanitized = false; }
+    probes.push(serde_json::json!({
+        "probe": "garbage_submit",
+        "status": status1,
+        "body_preview": &body1[..body1.len().min(100)],
+        "sanitized": clean1,
+    }));
+
+    // Probe 2: request nonexistent chain
+    let resp = client.get(format!("{}/chain/0000000000000000/info", recorder_url))
+        .send().await;
+    let (status2, body2) = extract_error(resp).await;
+    let clean2 = !leaks_internals(&body2);
+    if !clean2 { all_sanitized = false; }
+    probes.push(serde_json::json!({
+        "probe": "nonexistent_chain",
+        "status": status2,
+        "body_preview": &body2[..body2.len().min(100)],
+        "sanitized": clean2,
+    }));
+
+    // Probe 3: invalid content type
+    let resp = client.post(format!("{}/chain/{}/submit", recorder_url, chain_id))
+        .header("content-type", "text/plain")
+        .body("not json at all")
+        .send().await;
+    let (status3, body3) = extract_error(resp).await;
+    let clean3 = !leaks_internals(&body3);
+    if !clean3 { all_sanitized = false; }
+    probes.push(serde_json::json!({
+        "probe": "wrong_content_type",
+        "status": status3,
+        "body_preview": &body3[..body3.len().min(100)],
+        "sanitized": clean3,
+    }));
+
+    // Probe 4: GET on POST-only endpoint
+    let resp = client.get(format!("{}/chain/{}/submit", recorder_url, chain_id))
+        .send().await;
+    let (status4, body4) = extract_error(resp).await;
+    let clean4 = !leaks_internals(&body4);
+    if !clean4 { all_sanitized = false; }
+    probes.push(serde_json::json!({
+        "probe": "wrong_method",
+        "status": status4,
+        "body_preview": &body4[..body4.len().min(100)],
+        "sanitized": clean4,
+    }));
+
+    let detail = serde_json::json!({ "probes": probes });
+    let sanitized_count = probes.iter()
+        .filter(|p| p["sanitized"].as_bool().unwrap_or(false))
+        .count();
+    let desc = format!(
+        "{}/{} probes sanitized{}",
+        sanitized_count, probes.len(),
+        if all_sanitized { " (all clean)" } else { " — LEAKS DETECTED" }
+    );
+    (all_sanitized, detail, desc)
+}
+
+/// Extract status code and body text from a response.
+async fn extract_error(resp: Result<reqwest::Response, reqwest::Error>) -> (u16, String) {
+    match resp {
+        Ok(r) => {
+            let status = r.status().as_u16();
+            let body = r.text().await.unwrap_or_default();
+            (status, body)
+        }
+        Err(e) => (0, e.to_string()),
+    }
+}
+
+/// Check if an error response body leaks internal implementation details.
+/// Looks for patterns that indicate stack traces, Rust types, file paths, etc.
+fn leaks_internals(body: &str) -> bool {
+    let lower = body.to_lowercase();
+    // Look for signs of unsanitized error messages
+    let leak_patterns = [
+        "panicked at",
+        "stack backtrace",
+        "thread '",
+        ".rs:",           // Rust source file paths
+        "rwlock",
+        "mutex",
+        "poisoned",
+        "sqlite",         // database internals
+        "rusqlite",
+        "tokio::",
+        "hyper::",
+        "axum::",
+        "at /",           // Unix file paths
+        "at c:\\",        // Windows file paths
+        "core::result",
+        "std::io::error",
+    ];
+    leak_patterns.iter().any(|pat| lower.contains(pat))
+}
 
 fn tx_event(
     chain_id: &str, symbol: &str,

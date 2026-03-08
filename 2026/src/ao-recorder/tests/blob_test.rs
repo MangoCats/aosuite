@@ -161,6 +161,16 @@ async fn test_blob_upload_and_retrieve() {
     let cache_control = resp.headers().get("cache-control").unwrap().to_str().unwrap();
     assert_eq!(cache_control, "public, max-age=31536000, immutable");
 
+    // Security headers: prevent content sniffing and script execution.
+    let nosniff = resp.headers().get("x-content-type-options").unwrap().to_str().unwrap();
+    assert_eq!(nosniff, "nosniff");
+
+    let csp = resp.headers().get("content-security-policy").unwrap().to_str().unwrap();
+    assert!(csp.contains("script-src 'none'"));
+
+    let disposition = resp.headers().get("content-disposition").unwrap().to_str().unwrap();
+    assert!(disposition.starts_with("inline")); // images are inline
+
     let content = resp.bytes().await.unwrap();
     assert_eq!(&content[..], b"\x89PNG fake image content here");
 }
@@ -229,4 +239,27 @@ async fn test_blob_invalid_hash_format_400() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 400);
+}
+
+#[tokio::test]
+async fn test_blob_mime_not_allowed_400() {
+    let issuer_key = SigningKey::generate();
+    let blockmaker_key = SigningKey::generate();
+    let (base_url, chain_id) = start_blob_server(&issuer_key, &blockmaker_key).await;
+
+    let client = reqwest::Client::new();
+
+    // text/html should be rejected by MIME allowlist.
+    let blob_data = b"text/html\0<script>alert('xss')</script>";
+    let resp = client
+        .post(format!("{}/chain/{}/blob", base_url, chain_id))
+        .body(blob_data.to_vec())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let err = body["error"].as_str().unwrap();
+    assert!(err.contains("not allowed"), "expected allowlist error, got: {}", err);
 }

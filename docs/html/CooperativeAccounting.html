@@ -1,0 +1,134 @@
+<!doctype html>
+<!--
+ MIT License — Copyright (c) 2026 Assign Onward
+ See https://github.com/assignonward/aosuite for full license text.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transparent Cooperative Accounting Without Trusting the Treasurer — Assign Onward</title>
+  <link rel="stylesheet" href="article.css">
+  <link rel="shortcut icon" href="favicon.ico" type="image/x-icon">
+</head>
+<body>
+
+<header class="article-header">
+  <img src="AO.png" alt="Assign Onward" class="ao-logo">
+  <h1>Transparent Cooperative Accounting Without Trusting the Treasurer</h1>
+  <p class="subtitle">How a federation of tiny blockchains can replace the treasurer&rsquo;s notebook in a Kenyan farming cooperative.</p>
+</header>
+
+<article class="article-body">
+
+<p>Benson is the treasurer of the Riuki Farmers&rsquo; Cooperative in Kiambu County, Kenya. He is honest. He keeps careful records in a ruled notebook. He has held the position for seven years because nobody else wants the job and because the cooperative&rsquo;s 60 members trust him&mdash;mostly.</p>
+
+<p>The problem is not Benson. The problem is the notebook.</p>
+
+<p>When Amara delivers 200 kilos of tomatoes to the cooperative truck and the truck returns from Wakulima market with KES 18,000 for the load, Amara has no way to verify what price was actually achieved, what the transport cost was, or whether her share of the proceeds is correct. She trusts Benson, mostly, but she&rsquo;s heard stories. A 2023 survey by the Kenya National Bureau of Statistics found that 34% of Sacco members reported concerns about financial transparency. The Sacco Societies Regulatory Authority deregistered over 200 Saccos between 2020 and 2024 for governance failures, many involving misappropriation of member funds.</p>
+
+<div class="pullquote">
+<p>This is not about catching thieves. It&rsquo;s about removing the <em>possibility</em> of theft from the equation entirely.</p>
+</div>
+
+<h2>The Architecture: A Federation of Chains</h2>
+
+<p>Most blockchain proposals for agriculture put all transactions on one shared chain. This is wrong for cooperatives. A cooperative is a federation of independent producers who share resources voluntarily. The accounting system should mirror this structure.</p>
+
+<p>In the Assign Onward model, the Riuki Cooperative runs three types of chains:</p>
+
+<p><strong>1. Individual farmer chains.</strong> Each member gets their own blockchain. Amara&rsquo;s chain is AFT: Amara&rsquo;s Farm Tomatoes. At the start of the season, Amara issues shares representing her expected harvest&mdash;say, 2,000 kilos. Kwame has his cabbage chain. Fatuma has her spinach chain. Peter has his maize chain. Each farmer controls their own chain. Nobody can issue shares on Amara&rsquo;s chain except Amara.</p>
+
+<p><strong>2. The cooperative chain.</strong> RCC: Riuki Cooperative Credits represents the cooperative&rsquo;s pooled resources and shared services. When members contribute produce for the cooperative truck to sell at Wakulima, the transaction is recorded on both the individual farmer&rsquo;s chain (outgoing tomatoes) and the RCC chain (incoming produce for sale). When the truck returns with payment, the distribution is recorded: exactly how much was sold, at what price, minus verifiable transport costs, with each member&rsquo;s share calculated transparently.</p>
+
+<p><strong>3. An exchange chain.</strong> MPC: M-Pesa Credits bridges between the on-chain cooperative economy and Kenya&rsquo;s M-Pesa mobile money system. Wanjiku, Amara&rsquo;s daughter who works as a software developer in Nairobi, acts as the initial exchange agent.</p>
+
+<p>Sixty farmer chains, one cooperative chain, one exchange chain&mdash;all running on a single Raspberry Pi with a cloud backup on a KES 500/month VM in Nairobi.</p>
+
+<h2>A Season on the Chain</h2>
+
+<h3>Planting</h3>
+<p>The cooperative buys bulk seeds and fertilizer. The purchase is recorded on the RCC chain: total cost, supplier, quantity. Each member&rsquo;s advance is recorded on their individual chain: Amara received KES 5,000 worth of inputs, debited against her future harvest. No ambiguity. No disputed notebook entries.</p>
+
+<h3>Harvest</h3>
+<p>Ouma, the collection point operator, weighs tomatoes as they arrive. 180 kilos from Amara, Grade A, received 7:15 AM Thursday. Recorded on Amara&rsquo;s AFT chain. The transaction is small&mdash;a few hundred bytes&mdash;compact enough to transmit even over spotty Safaricom coverage.</p>
+
+<h3>Market Sale</h3>
+<p>The cooperative truck goes to Wakulima. The buyer pays KES 15 per kilo for 1,200 kilos from six farmers. KES 18,000 total. Transport cost: KES 2,000 (documented, on-chain). Net proceeds: KES 16,000, distributed proportionally to each farmer&rsquo;s contribution. Amara contributed 180 of 1,200 kilos (15%), so she receives KES 2,400. This arithmetic is on-chain, verifiable by any member with a phone.</p>
+
+<div class="pullquote">
+<p>Compare this with the notebook system: Benson writes &ldquo;KES 18,000 from Wakulima&rdquo; and distributes cash. Nobody can verify the sale price independently. Nobody knows if the transport cost was really KES 2,000 or KES 3,000.</p>
+</div>
+
+<h2>Diaspora Investment</h2>
+
+<p>James is Amara&rsquo;s brother. He works in Dubai and sends money home&mdash;part of the $205 billion in on-chain crypto value flowing to Sub-Saharan Africa annually, dominated by remittances. Under the old system, James sends KES 30,000 via M-Pesa. Amara uses it to buy seeds and fertilizer. James has no visibility into whether the money was invested productively or spent on other needs.</p>
+
+<p>With Amara&rsquo;s AFT chain, James can see exactly what his sister produced last season, what prices she achieved, and how reliable she was in meeting commitments. He buys KES 30,000 worth of shares in Amara&rsquo;s next season&mdash;pre-purchasing tomatoes at a discount. Amara gets working capital before planting. James gets a claim on a portion of the harvest. The profit (or loss) is transparent on-chain.</p>
+
+<p>This is not charity. It&rsquo;s a documented investment in a verifiable productive enterprise.</p>
+
+<h2>When the Harvest Fails</h2>
+
+<p>In February, a hailstorm destroys 60% of Amara&rsquo;s crop. The damage is documented: Ouma inspects the plot and records the loss on Amara&rsquo;s AFT chain. James, watching from Dubai, can see exactly what happened. The shares representing the destroyed crop lose value&mdash;there&rsquo;s less harvest to redeem them against. But the loss is documented, transparent, and verifiable.</p>
+
+<p>Over time, multi-season on-chain histories of both good and bad harvests become the foundation for actuarial assessment. Affordable crop insurance for smallholders currently covers less than 3% of African farmers. Transparent production data is the prerequisite for changing that.</p>
+
+<h2>The Credit-Building Feedback Loop</h2>
+
+<ol>
+<li>Farmer uses chain for one season&mdash;transparent production record exists</li>
+<li>Record demonstrates reliability&mdash;microfinance institution offers small loan</li>
+<li>Loan + chain for second season&mdash;larger record, better terms</li>
+<li>After several seasons&mdash;portable, verifiable financial identity</li>
+</ol>
+
+<p>Amara has never had a bank loan. Kenya Commercial Bank wants collateral, financial statements, documented income. Amara has a half-acre plot (no title deed&mdash;it&rsquo;s family land), a handful of M-Pesa receipts, and Benson&rsquo;s word. After two seasons on-chain, she has a documented record of production, sales, and income that any lender can verify.</p>
+
+<details>
+<summary>Infrastructure costs</summary>
+<div class="detail-content">
+<table>
+<thead>
+<tr><th>Item</th><th>Cost</th><th>Who Pays</th></tr>
+</thead>
+<tbody>
+<tr><td>Raspberry Pi + SSD + case</td><td>KES 10,000 (~$80)</td><td>Wanjiku or cooperative fund</td></tr>
+<tr><td>Solar battery / UPS</td><td>KES 5,000 (~$40)</td><td>Same</td></tr>
+<tr><td>Safaricom data bundle</td><td>KES 1,000/month (~$8)</td><td>Recording fees</td></tr>
+<tr><td>Cloud backup VM (Nairobi)</td><td>KES 500/month (~$4)</td><td>Recording fees</td></tr>
+<tr><td>Validator anchoring</td><td>KES 300&ndash;600/month (~$2&ndash;5)</td><td>Recording fees</td></tr>
+<tr><td><strong>Total ongoing</strong></td><td><strong>~KES 2,000/month ($15)</strong></td><td></td></tr>
+</tbody>
+</table>
+<p>The biggest operational risk is dependency on a single technical champion. If Wanjiku stops volunteering, the cooperative needs another technically capable person&mdash;and rural Kiambu is not Nairobi.</p>
+</div>
+</details>
+
+<h2>Scale</h2>
+
+<p>Kenya has over 15,000 registered Saccos. Sub-Saharan Africa has 450 million smallholder farmers. The gap between &ldquo;transparent accounting tool exists&rdquo; and &ldquo;450 million farmers use it&rdquo; is enormous.</p>
+
+<p>But the gap between &ldquo;no tool exists&rdquo; and &ldquo;one cooperative uses it&rdquo; is crossable. Each link in the chain matters independently: transparent accounting builds trust whether or not it ever leads to crop insurance. Fair market prices are valuable whether or not diaspora investment follows. Credit history helps whether or not it scales beyond Kiambu.</p>
+
+<div class="article-cta">
+<h3>The Software Exists</h3>
+<p>Seven Rust crates, 349 tests, MIT-licensed. A simulation suite shows cooperative-style multi-chain dynamics running on a map with time controls. The recorder is designed to run on a Raspberry Pi. The wallet runs in a browser.</p>
+<p>If you work with farming cooperatives, Saccos, agricultural finance, or cooperative technology&mdash;and you recognize the trust problem described here&mdash;the architecture is documented, the code is open, and we&rsquo;d like to hear from you.</p>
+<p><a href="https://github.com/assignonward/aosuite">GitHub: assignonward/aosuite</a></p>
+</div>
+
+</article>
+
+<footer class="article-footer">
+<p class="license">Assign Onward is open source (MIT license). There is no token sale, no company, no platform fee. The Kenya research draws on publicly available data from the Kenya National Bureau of Statistics and Sacco Societies Regulatory Authority.</p>
+<nav class="nav-links">
+<a href="FarmingCooperatives.html">Full Cooperative Deployment Story</a>
+<a href="BeachVendorBlockchain.html">Beach Vendor Article</a>
+<a href="TaxLoopUBI.html">Tax Loop UBI Article</a>
+<a href="index.html">Assign Onward Home</a>
+</nav>
+</footer>
+
+</body>
+</html>

@@ -73,6 +73,12 @@ pub struct Config {
     /// Allow non-HTTPS validator URLs (for local dev only).
     #[serde(default)]
     pub allow_insecure_validators: bool,
+    /// Maximum single blob size in bytes. Default: 5 MB (5242880).
+    #[serde(default = "default_max_blob_bytes")]
+    pub max_blob_bytes: usize,
+    /// Per-chain blob storage quota in bytes. Default: 100 MB (104857600).
+    #[serde(default = "default_blob_quota_per_chain")]
+    pub blob_quota_per_chain: u64,
 }
 
 #[derive(Deserialize, Clone)]
@@ -96,6 +102,9 @@ pub struct AlertsConfig {
     #[serde(default)]
     pub webhook_url: Option<String>,
 }
+
+fn default_max_blob_bytes() -> usize { 5_242_880 }
+fn default_blob_quota_per_chain() -> u64 { 100 * 1024 * 1024 }
 
 fn default_disk_warn() -> f64 { 10.0 }
 fn default_disk_error() -> f64 { 5.0 }
@@ -139,6 +148,8 @@ impl Default for Config {
             write_rate_limit: 0.0,
             max_connections: 0,
             allow_insecure_validators: false,
+            max_blob_bytes: default_max_blob_bytes(),
+            blob_quota_per_chain: default_blob_quota_per_chain(),
         }
     }
 }

@@ -66,6 +66,8 @@ pub const RECORDING_PROOF: i64 = 74;
 pub const CAA_HASH: i64 = 75;
 pub const BLOCK_REF: i64 = 76;
 pub const BLOCK_HEIGHT: i64 = 77;
+/// Coordinator bond amount (VBC value) — anti-theft protection for earlier chains in ouroboros.
+pub const COORDINATOR_BOND: i64 = 78;
 
 /// How the data portion of a DataItem is sized.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,7 +104,8 @@ pub fn size_category(code: i64) -> Option<SizeCategory> {
         AMOUNT | RECORDING_BID | COIN_COUNT | FEE_RATE |
         CHAIN_SYMBOL | SHARES_OUT | REFERRAL_FEE |
         NOTE | DATA_BLOB | DESCRIPTION | ICON |
-        CREDENTIAL_URL | ANCHOR_REF => Some(SizeCategory::Variable),
+        CREDENTIAL_URL | ANCHOR_REF |
+        COORDINATOR_BOND => Some(SizeCategory::Variable),
 
         SEQ_ID | PROTOCOL_VER | FIRST_SEQ | SEQ_COUNT |
         LIST_SIZE | PAGE_INDEX | EXPIRY_MODE |
@@ -183,6 +186,7 @@ pub fn type_name(code: i64) -> Option<&'static str> {
         CAA_HASH => Some("CAA_HASH"),
         BLOCK_REF => Some("BLOCK_REF"),
         BLOCK_HEIGHT => Some("BLOCK_HEIGHT"),
+        COORDINATOR_BOND => Some("COORDINATOR_BOND"),
         _ => None,
     }
 }

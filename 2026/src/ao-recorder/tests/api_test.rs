@@ -948,7 +948,7 @@ async fn start_caa_server(
     let chain_id_bytes = meta.chain_id;
 
     let mut state = AppState::new(store, SigningKey::from_seed(blockmaker_key.seed()));
-    state.known_recorders = known_recorders;
+    state.known_recorders = std::sync::RwLock::new(known_recorders);
     let state = Arc::new(state);
 
     let app = build_router(state);
@@ -1059,10 +1059,16 @@ fn build_caa_for_test(
     let giver_b_sig = sign::sign_dataitem(giver_b_key, &assignment_b, giver_b_ts);
     let recv_b_sig = sign::sign_dataitem(receiver_b_key, &assignment_b, recv_b_ts);
 
+    // Build COORDINATOR_BOND for chain A (order 0, non-last) — 10% of giver amount
+    let bond_amount = giver_a_amount / BigInt::from(10);
+    let mut bond_bytes = Vec::new();
+    bigint::encode_bigint(&bond_amount, &mut bond_bytes);
+
     // Build CAA components
     let comp_a = DataItem::container(CAA_COMPONENT, vec![
         DataItem::bytes(CHAIN_REF, chain_a_id.to_vec()),
         DataItem::vbc_value(CHAIN_ORDER, 0),
+        DataItem::bytes(COORDINATOR_BOND, bond_bytes),
         assignment_a,
         DataItem::container(AUTH_SIG, vec![
             DataItem::bytes(ED25519_SIG, giver_a_sig.to_vec()),

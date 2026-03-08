@@ -151,6 +151,7 @@ dependencies = [
  "hex",
  "num-bigint",
  "num-traits",
+ "pin-project-lite",
  "reqwest",
  "rumqttc",
  "serde",
@@ -160,6 +161,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "toml 0.8.23",
+ "tower 0.5.3",
  "tracing",
  "tracing-subscriber",
 ]

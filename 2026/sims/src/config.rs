@@ -31,6 +31,10 @@ pub struct SimulationConfig {
     /// MQTT broker port (0 = disabled).
     #[serde(default)]
     pub mqtt_port: u16,
+    /// Optional recorder security config (N10 features).
+    /// When present, enables API key auth, rate limiting, connection limits.
+    #[serde(default)]
+    pub recorder_security: Option<RecorderSecurityConfig>,
 }
 
 fn default_speed() -> f64 { 1.0 }
@@ -63,6 +67,9 @@ pub struct AgentConfig {
     /// Attacker-specific config.
     #[serde(default)]
     pub attacker: Option<AttackerConfig>,
+    /// White-hat infrastructure tester config.
+    #[serde(default)]
+    pub infra_tester: Option<InfraTesterConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -229,6 +236,49 @@ pub struct AttackerConfig {
 }
 
 fn default_attack_interval() -> u64 { 15 }
+
+/// White-hat infrastructure tester configuration.
+/// These agents test server-level resilience (N10 security hardening),
+/// NOT protocol correctness. They verify that the recorder properly
+/// enforces rate limits, auth, payload guards, and connection limits.
+#[derive(Deserialize, Debug, Clone)]
+pub struct InfraTesterConfig {
+    /// Test type: "flood", "oversized_payload", "auth_bypass",
+    /// "connection_exhaustion", "error_probe".
+    pub test: String,
+    /// Target vendor name (used to find a valid chain_id for requests).
+    pub target_vendor: String,
+    /// Seconds between test rounds (sim time).
+    #[serde(default = "default_infra_interval")]
+    pub probe_interval_secs: u64,
+    /// Number of concurrent requests for flood/connection tests.
+    #[serde(default = "default_concurrency")]
+    pub concurrency: usize,
+    /// API key to use for authenticated requests (empty = test without auth).
+    #[serde(default)]
+    pub api_key: Option<String>,
+}
+
+fn default_infra_interval() -> u64 { 10 }
+fn default_concurrency() -> usize { 50 }
+
+/// Optional recorder security config, embedded in SimulationConfig.
+/// When present, the sim starts the recorder with these N10 features enabled.
+#[derive(Deserialize, Debug, Clone, Default)]
+pub struct RecorderSecurityConfig {
+    /// API keys for authentication. Empty = no auth.
+    #[serde(default)]
+    pub api_keys: Vec<String>,
+    /// Per-IP rate limit for read endpoints (req/sec). 0 = no limit.
+    #[serde(default)]
+    pub read_rate_limit: f64,
+    /// Per-IP rate limit for write endpoints (req/sec). 0 = no limit.
+    #[serde(default)]
+    pub write_rate_limit: f64,
+    /// Max concurrent SSE/WebSocket connections. 0 = no limit.
+    #[serde(default)]
+    pub max_connections: usize,
+}
 
 pub fn parse_bigint(s: &str) -> num_bigint::BigInt {
     use num_traits::One;

@@ -87,8 +87,10 @@ async fn main() -> Result<()> {
 
     let blob_store = if let Some(ref data_dir) = data_dir {
         let blob_dir = data_dir.join("blobs");
-        Some(blob::BlobStore::new(blob_dir, 5_242_880)
-            .context("failed to create blob store")?)
+        let mut store = blob::BlobStore::new(blob_dir, cfg.max_blob_bytes)
+            .context("failed to create blob store")?;
+        store.set_quota(cfg.blob_quota_per_chain);
+        Some(store)
     } else {
         None
     };
@@ -123,6 +125,23 @@ async fn main() -> Result<()> {
         let chain_state = Arc::new(ChainState::new(store, bm_key));
         info!(chain_id = %chain_id, "Registered chain");
         state.add_chain(chain_id, chain_state);
+    }
+
+    // Load known recorder keys from config
+    if !cfg.known_recorders.is_empty() {
+        let mut kr = state.known_recorders.write().expect("known_recorders lock");
+        for (chain_hex, key_hex) in &cfg.known_recorders {
+            if let (Ok(cid), Ok(pk)) = (hex::decode(chain_hex), hex::decode(key_hex))
+                && cid.len() == 32 && pk.len() == 32
+            {
+                let mut chain_id = [0u8; 32];
+                chain_id.copy_from_slice(&cid);
+                let mut pubkey = [0u8; 32];
+                pubkey.copy_from_slice(&pk);
+                kr.insert(chain_id, pubkey);
+                info!(chain = %chain_hex, "Loaded known recorder key from config");
+            }
+        }
     }
 
     // Initialize MQTT if configured
@@ -389,6 +408,10 @@ data_dir = "data"
 # stale_chain_seconds = 86400
 # memory_log_interval_seconds = 3600
 # webhook_url = "https://example.com/webhook"
+
+# Blob storage (optional):
+# max_blob_bytes = 5242880           # max single blob size (default 5 MB)
+# blob_quota_per_chain = 104857600   # per-chain storage quota (default 100 MB)
 
 # Security (optional):
 # api_keys = ["secret-key-1", "secret-key-2"]

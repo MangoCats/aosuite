@@ -59,8 +59,9 @@ All in the second inseparable band (|code| 64–95), continuing from validator c
 | 75 | `CAA_HASH` | 32 | SHA2-256 hash of the CAA (all components, no proofs) |
 | 76 | `BLOCK_REF` | container | Reference to a specific block: chain ID + height + hash |
 | 77 | `BLOCK_HEIGHT` | vbc-value | Block height within a BLOCK_REF |
+| 78 | `COORDINATOR_BOND` | variable | Bond amount declared by coordinator on non-last chains; forfeited on escrow timeout |
 
-All codes 69–77 satisfy `|code| & 0x20 == 0` (inseparable) — correct for protocol-critical data.
+All codes 69–78 satisfy `|code| & 0x20 == 0` (inseparable) — correct for protocol-critical data.
 
 ### 2.2 CAA Structure
 
@@ -71,6 +72,7 @@ CAA (69)
 ├── CAA_COMPONENT (70) [chain 0 — first in ouroboros order]
 │   ├── CHAIN_REF (71): 32-byte chain ID
 │   ├── CHAIN_ORDER (73): 0
+│   ├── COORDINATOR_BOND (78): bond amount (required for non-last chains)
 │   ├── ASSIGNMENT (8): per-chain assignment (givers + receivers + fee bid)
 │   └── AUTH_SIG (30) [per participant on this chain]
 │       ├── ED25519_SIG (2)
@@ -223,6 +225,7 @@ CREATE TABLE IF NOT EXISTS caa_escrows (
     block_height INTEGER NOT NULL,   -- block where CAA component was recorded
     proof_data   BLOB,               -- serialized RECORDING_PROOF for this chain
     total_chains INTEGER NOT NULL DEFAULT 0, -- number of chains in the CAA (for bind validation)
+    bond_amount  BLOB NOT NULL DEFAULT x'00', -- coordinator bond (VBC-encoded BigInt); forfeited on timeout
     PRIMARY KEY (caa_hash)
 );
 
@@ -233,6 +236,21 @@ CREATE TABLE IF NOT EXISTS caa_utxos (
     PRIMARY KEY (caa_hash, seq_id),
     FOREIGN KEY (caa_hash) REFERENCES caa_escrows(caa_hash)
 );
+
+CREATE TABLE IF NOT EXISTS caa_giver_history (
+    pubkey     BLOB NOT NULL,       -- 32-byte Ed25519 public key
+    caa_hash   BLOB NOT NULL,       -- references caa_escrows
+    escrowed_at INTEGER NOT NULL,   -- timestamp when escrowed
+    PRIMARY KEY (pubkey, caa_hash)
+);
+
+CREATE TABLE IF NOT EXISTS known_recorder_keys (
+    chain_id   BLOB NOT NULL,       -- 32-byte chain ID
+    pubkey     BLOB NOT NULL,       -- 32-byte recorder public key
+    added_at   TEXT NOT NULL,       -- ISO 8601 timestamp
+    revoked_at TEXT,                -- NULL if active
+    PRIMARY KEY (chain_id, pubkey)
+);
 ```
 
 ### 4.3 New Endpoints
@@ -242,22 +260,27 @@ CREATE TABLE IF NOT EXISTS caa_utxos (
 | POST | `/chain/{id}/caa/submit` | Signed CAA JSON (+ optional recording proofs from prior chains) | Recording proof JSON |
 | POST | `/chain/{id}/caa/bind` | Binding submission: CAA hash + all recording proofs | Block info JSON |
 | GET | `/chain/{id}/caa/{caa_hash}` | — | CAA status: state, deadline, block height, proofs |
+| GET | `/admin/recorder-keys` | — | List of known recorder keys (chain ID, pubkey, status) |
+| POST | `/admin/recorder-keys` | `{"chain_id": "<hex>", "pubkey": "<hex>", "action": "add"|"revoke"}` | Updated key entry |
 
 ### 4.4 Validation Rules for CAA Submit
 
 1. CAA must contain a valid `CAA_COMPONENT` for this chain (matched by `CHAIN_REF`).
-2. Component's `ASSIGNMENT` must pass all standard assignment validation (signatures, UTXO availability, key uniqueness, balance equation).
-3. `ESCROW_DEADLINE` must be in the future.
-4. All overall `AUTH_SIG` signatures must verify against the CAA content. The number of overall signatures must equal the total number of participants across all components. No two overall signatures may be from the same public key.
-5. If this chain's `CHAIN_ORDER` > 0, recording proofs for all prior chains must be present and valid.
-6. Giver UTXOs must be `Unspent` (not already escrowed or spent).
-7. `CHAIN_ORDER` values across all components must be contiguous integers 0..N-1 (where N = `LIST_SIZE`), with no duplicates.
+2. **Chain count limit.** The CAA must contain at most **8 chains** (`MAX_CAA_CHAINS`). This bounds the amplification factor of N-chain attacks.
+3. Component's `ASSIGNMENT` must pass all standard assignment validation (signatures, UTXO availability, key uniqueness, balance equation).
+4. `ESCROW_DEADLINE` must be in the future and at most **10 minutes** from current time (anti-griefing: prevents capital lockup via excessively long deadlines).
+5. **Per-giver rate limit.** Each giver public key may have at most **3** active escrows (`MAX_ACTIVE_ESCROWS_PER_GIVER`). This prevents capital-lockup cycling attacks where an adversary repeatedly escrows a victim's shares.
+6. **Coordinator bond (non-last chains).** For chains where `CHAIN_ORDER` < total_chains - 1, the CAA component must include a `COORDINATOR_BOND (78)` field. The bond amount must be ≥ **10%** of the total giver amount on that component (`MIN_BOND_FRACTION = 1/10`). The bond creates an economic disincentive for the last-chain theft attack: if the coordinator completes the last chain but abandons earlier chains, the bond is forfeited on timeout. Bond validation runs before signature verification.
+7. All overall `AUTH_SIG` signatures must verify against the CAA content. The number of overall signatures must equal the total number of participants across all components. No two overall signatures may be from the same public key. Every locally-verifiable participant (local givers by UTXO lookup + all receivers by pubkey) must have a corresponding overall signature.
+8. If this chain's `CHAIN_ORDER` > 0, recording proofs for all prior chains must be present and valid. Each proof's `CHAIN_REF` must match the expected chain at that position in the ouroboros order.
+9. Giver UTXOs must be `Unspent` (not already escrowed or spent). UTXOs released from a prior escrow have a **30-second cooldown** before they can be re-escrowed (anti-cycling).
+10. `CHAIN_ORDER` values across all components must be contiguous integers 0..N-1 (where N = `LIST_SIZE`), with no duplicates.
 
 ### 4.5 Validation Rules for CAA Bind
 
 1. `CAA_HASH` must match an existing escrowed CAA on this chain.
 2. Recording proofs must be present for ALL chains in the CAA. The expected count is read from `total_chains` in the stored escrow record — this avoids the client needing to re-submit the CAA structure.
-3. Each proof must contain a valid recorder signature.
+3. Each proof must contain a valid recorder signature. Proofs must cover exactly N **distinct** chains (no duplicate `CHAIN_REF` values).
 4. The escrowed CAA must not be expired.
 
 ### 4.6 Block Construction During CAA Submit
@@ -288,9 +311,9 @@ The escrow sweep finds all `caa_escrows` with `status = 'escrowed'` and `deadlin
 1. Set escrow status to `expired`.
 2. For each **giver** UTXO in `caa_utxos`: transition from `Escrowed` back to `Unspent` (shares preserved).
 3. For each **receiver** UTXO in `caa_utxos`: **delete** the UTXO entirely (these are phantom receivers that were never finalized) and remove the public key from `used_keys` (allowing the key to be reused in a future assignment).
-4. **Restore the recording fee** to `SHARES_OUT`. The fee = sum(giver amounts) - sum(receiver amounts). This reverses the fee deduction made during CAA submit.
+4. **Restore the recording fee minus bond.** The restored amount = fee - bond_amount. The fee = sum(giver amounts) - sum(receiver amounts). The bond forfeiture burns shares from the coordinator's portion of `shares_out`, creating an economic penalty for escrow timeout. On successful binding, no bond is forfeited — the full fee is retained by the recorder as normal.
 
-Step 3 is essential for accounting: without it, phantom receiver UTXOs would permanently consume sequence IDs and lock public keys. Step 4 maintains the `SHARES_OUT` invariant — since the CAA assignment was never finalized, the fee deduction is reversed.
+Step 3 is essential for accounting: without it, phantom receiver UTXOs would permanently consume sequence IDs and lock public keys. Step 4 maintains the `SHARES_OUT` invariant — since the CAA assignment was never finalized, the fee deduction is partially reversed (reduced by the forfeited bond).
 
 This is distinct from the expiry sweep (which retires shares permanently). Escrow release preserves all shares.
 
@@ -304,7 +327,7 @@ A recorder receiving a recording proof from another chain must verify:
 2. **CAA hash match:** The `CAA_HASH` in the proof matches the submitted CAA's hash.
 3. **Recorder signature:** The `AUTH_SIG` verifies against a known public key for that chain's recorder.
 
-**Recorder key discovery:** For MVP, recorder public keys are configured statically in the recorder's TOML config under a `[known_recorders]` section. Future versions may use on-chain recorder key publication or a registry.
+**Recorder key discovery:** Recorder public keys are loaded from TOML config at startup under `[known_recorders]`, and can be dynamically added or revoked at runtime via the `/admin/recorder-keys` endpoint. Keys are stored in the `known_recorder_keys` database table and held in an `RwLock<HashMap>` for concurrent read access. Revoked keys are soft-deleted (`revoked_at` timestamp set) and immediately excluded from proof verification.
 
 ```toml
 [known_recorders]
@@ -348,13 +371,42 @@ The coordinator is implemented in `ao-exchange` as a reusable async function, ca
 
 **Out of scope:**
 - PWA CAA UI (deferred — Phase 4's exchange agent model is sufficient for end users)
-- Automatic recorder key discovery (use static config for MVP)
-- CAA involving 3+ chains (tested but not optimized)
+- CAA involving 3+ chains (tested but not optimized; hard-capped at 8)
 - Competing recorders per chain (TⒶ³)
 
 ---
 
-## 9. Acceptance Criteria
+## 9. Security Mitigations
+
+### 9.1 Last-Chain Theft Attack
+
+**Attack:** The coordinator completes recording on the last chain (making it binding and irreversible), then abandons the earlier chains. Escrows on earlier chains expire, returning shares to their givers — but the last chain's givers lose their shares permanently. The coordinator effectively steals from last-chain givers.
+
+**Mitigation: Coordinator bond.** Non-last chains require a `COORDINATOR_BOND (78)` field worth ≥ 10% of the giver total on that component. On escrow timeout, the bond is forfeited (burned from `shares_out`). This makes the attack unprofitable: the coordinator must post bonds on all N-1 non-last chains, and abandoning them forfeits all bonds. The bond fraction is tunable via `MIN_BOND_FRACTION_NUM / MIN_BOND_FRACTION_DEN` constants.
+
+### 9.2 Capital Lockup Cycling
+
+**Attack:** An adversary repeatedly creates CAAs that escrow a victim's shares, locking them for the escrow period (up to 10 minutes). With 30-second cooldown between escrows, this achieves ~95% lockup rate, effectively denying the victim use of their shares.
+
+**Mitigation: Per-giver rate limiting.** Each giver public key may have at most `MAX_ACTIVE_ESCROWS_PER_GIVER` (3) active escrows simultaneously. Tracked in `caa_giver_history` table, joined against active escrows. This bounds the maximum lockup to 3 × escrow_period, and ensures the victim always retains access to shares not in active escrows.
+
+### 9.3 N-Chain Amplification
+
+**Attack:** A malicious CAA includes a large number of chains, amplifying the complexity and resource cost of validation, and increasing the window for partial-completion attacks.
+
+**Mitigation: Chain count limit.** `MAX_CAA_CHAINS` (8) caps the number of chains per CAA. Validation rejects CAAs exceeding this limit before any expensive processing.
+
+### 9.4 TOCTOU Atomicity
+
+**Confirmed safe.** The `Mutex<ChainStore>` acquired inside `spawn_blocking` plus SQLite's `BEGIN IMMEDIATE` transaction ensures that UTXO validation and escrow recording are atomic. No time-of-check-to-time-of-use gap exists.
+
+### 9.5 Recorder Key Compromise
+
+**Mitigation: Dynamic key rotation.** The `/admin/recorder-keys` endpoint allows adding new recorder keys and revoking compromised ones at runtime without restarting the recorder. Revoked keys are immediately excluded from recording proof verification. The `known_recorder_keys` database table provides an audit trail.
+
+---
+
+## 10. Acceptance Criteria
 
 1. Three-party two-chain CAA (Alice → Bob via Charlie, CCC + BCG) completes in < 30 seconds.
 2. Server failure during ouroboros causes correct escrow release after deadline.

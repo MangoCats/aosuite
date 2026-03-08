@@ -55,6 +55,8 @@ pub struct CaaEscrow {
     pub block_height: u64,
     pub proof_data: Option<Vec<u8>>,
     pub total_chains: u64,
+    /// Bond amount forfeited on timeout (zero if last chain or no bond).
+    pub bond_amount: BigInt,
 }
 
 /// Chain metadata stored in the database.
@@ -131,13 +133,32 @@ impl ChainStore {
                 status TEXT NOT NULL DEFAULT 'escrowed',
                 block_height INTEGER NOT NULL,
                 proof_data BLOB,
-                total_chains INTEGER NOT NULL DEFAULT 0
+                total_chains INTEGER NOT NULL DEFAULT 0,
+                bond_amount BLOB NOT NULL DEFAULT X''
             );
             CREATE TABLE IF NOT EXISTS caa_utxos (
                 caa_hash BLOB NOT NULL,
                 seq_id INTEGER NOT NULL,
                 role TEXT NOT NULL,
                 PRIMARY KEY (caa_hash, seq_id)
+            );
+            CREATE TABLE IF NOT EXISTS escrow_releases (
+                seq_id INTEGER PRIMARY KEY,
+                released_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS caa_giver_history (
+                pubkey BLOB NOT NULL,
+                caa_hash BLOB NOT NULL,
+                escrowed_at INTEGER NOT NULL,
+                PRIMARY KEY (pubkey, caa_hash)
+            );
+            CREATE INDEX IF NOT EXISTS idx_caa_giver_pubkey ON caa_giver_history(pubkey);
+            CREATE TABLE IF NOT EXISTS known_recorder_keys (
+                chain_id BLOB NOT NULL,
+                pubkey BLOB NOT NULL,
+                added_at INTEGER NOT NULL,
+                revoked_at INTEGER,
+                PRIMARY KEY (chain_id, pubkey)
             );"
         )?;
         Ok(())
@@ -475,6 +496,7 @@ impl ChainStore {
     // --- CAA escrow operations ---
 
     /// Record a CAA escrow entry.
+    #[allow(clippy::too_many_arguments)]
     pub fn insert_caa_escrow(
         &self,
         caa_hash: &[u8; 32],
@@ -483,10 +505,12 @@ impl ChainStore {
         block_height: u64,
         proof_data: Option<&[u8]>,
         total_chains: u64,
+        bond_amount: &BigInt,
     ) -> Result<()> {
+        let bond_bytes = bond_amount.to_signed_bytes_be();
         self.conn.execute(
-            "INSERT INTO caa_escrows (caa_hash, chain_order, deadline, status, block_height, proof_data, total_chains)
-             VALUES (?1, ?2, ?3, 'escrowed', ?4, ?5, ?6)",
+            "INSERT INTO caa_escrows (caa_hash, chain_order, deadline, status, block_height, proof_data, total_chains, bond_amount)
+             VALUES (?1, ?2, ?3, 'escrowed', ?4, ?5, ?6, ?7)",
             params![
                 &caa_hash[..],
                 chain_order as i64,
@@ -494,6 +518,7 @@ impl ChainStore {
                 block_height as i64,
                 proof_data,
                 total_chains as i64,
+                bond_bytes,
             ],
         )?;
         Ok(())
@@ -511,7 +536,7 @@ impl ChainStore {
     /// Get CAA escrow status by hash.
     pub fn get_caa_escrow(&self, caa_hash: &[u8; 32]) -> Result<Option<CaaEscrow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT caa_hash, chain_order, deadline, status, block_height, proof_data, total_chains
+            "SELECT caa_hash, chain_order, deadline, status, block_height, proof_data, total_chains, bond_amount
              FROM caa_escrows WHERE caa_hash = ?1"
         )?;
         let mut rows = stmt.query(params![&caa_hash[..]])?;
@@ -520,6 +545,8 @@ impl ChainStore {
                 let hash_bytes: Vec<u8> = row.get(0)?;
                 let mut hash = [0u8; 32];
                 if hash_bytes.len() == 32 { hash.copy_from_slice(&hash_bytes); }
+                let bond_bytes: Vec<u8> = row.get(7)?;
+                let bond_amount = if bond_bytes.is_empty() { BigInt::zero() } else { BigInt::from_signed_bytes_be(&bond_bytes) };
                 Ok(Some(CaaEscrow {
                     caa_hash: hash,
                     chain_order: row.get::<_, i64>(1)? as u64,
@@ -528,6 +555,7 @@ impl ChainStore {
                     block_height: row.get::<_, i64>(4)? as u64,
                     proof_data: row.get(5)?,
                     total_chains: row.get::<_, i64>(6)? as u64,
+                    bond_amount,
                 }))
             }
             None => Ok(None),
@@ -561,7 +589,7 @@ impl ChainStore {
     /// Find all expired escrows (deadline < current_timestamp, status = 'escrowed').
     pub fn find_expired_escrows(&self, current_timestamp: i64) -> Result<Vec<CaaEscrow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT caa_hash, chain_order, deadline, status, block_height, proof_data, total_chains
+            "SELECT caa_hash, chain_order, deadline, status, block_height, proof_data, total_chains, bond_amount
              FROM caa_escrows WHERE status = 'escrowed' AND deadline < ?1"
         )?;
         let mut escrows = Vec::new();
@@ -570,6 +598,8 @@ impl ChainStore {
             let hash_bytes: Vec<u8> = row.get(0)?;
             let mut hash = [0u8; 32];
             if hash_bytes.len() == 32 { hash.copy_from_slice(&hash_bytes); }
+            let bond_bytes: Vec<u8> = row.get(7)?;
+            let bond_amount = if bond_bytes.is_empty() { BigInt::zero() } else { BigInt::from_signed_bytes_be(&bond_bytes) };
             escrows.push(CaaEscrow {
                 caa_hash: hash,
                 chain_order: row.get::<_, i64>(1)? as u64,
@@ -578,6 +608,7 @@ impl ChainStore {
                 block_height: row.get::<_, i64>(4)? as u64,
                 proof_data: row.get(5)?,
                 total_chains: row.get::<_, i64>(6)? as u64,
+                bond_amount,
             });
         }
         Ok(escrows)
@@ -613,6 +644,118 @@ impl ChainStore {
             ids.push(sid as u64);
         }
         Ok(ids)
+    }
+
+    // --- Escrow release cooldown tracking ---
+
+    /// Record that a UTXO was released from escrow at the given timestamp.
+    pub fn record_escrow_release(&self, seq_id: u64, released_at: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO escrow_releases (seq_id, released_at) VALUES (?1, ?2)",
+            params![seq_id as i64, released_at],
+        )?;
+        Ok(())
+    }
+
+    /// Record that a giver pubkey entered escrow for a specific CAA.
+    pub fn record_giver_escrow(&self, pubkey: &[u8; 32], caa_hash: &[u8; 32], escrowed_at: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO caa_giver_history (pubkey, caa_hash, escrowed_at) VALUES (?1, ?2, ?3)",
+            params![&pubkey[..], &caa_hash[..], escrowed_at],
+        )?;
+        Ok(())
+    }
+
+    /// Count active (non-expired, non-finalized) escrows for a giver pubkey.
+    pub fn count_active_escrows_for_giver(&self, pubkey: &[u8; 32]) -> Result<u64> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM caa_giver_history g
+             INNER JOIN caa_escrows e ON g.caa_hash = e.caa_hash
+             WHERE g.pubkey = ?1 AND e.status = 'escrowed'",
+            params![&pubkey[..]],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
+    }
+
+    /// Get the timestamp when a UTXO was last released from escrow, if any.
+    pub fn get_escrow_release_time(&self, seq_id: u64) -> Result<Option<i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT released_at FROM escrow_releases WHERE seq_id = ?1"
+        )?;
+        let mut rows = stmt.query(params![seq_id as i64])?;
+        match rows.next()? {
+            Some(row) => Ok(Some(row.get(0)?)),
+            None => Ok(None),
+        }
+    }
+
+    // --- Known recorder keys (for CAA proof verification) ---
+
+    /// Add a known recorder public key for a chain.
+    pub fn add_recorder_key(&self, chain_id: &[u8; 32], pubkey: &[u8; 32], added_at: i64) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO known_recorder_keys (chain_id, pubkey, added_at, revoked_at)
+             VALUES (?1, ?2, ?3, NULL)",
+            params![&chain_id[..], &pubkey[..], added_at],
+        )?;
+        Ok(())
+    }
+
+    /// Revoke a recorder key (soft delete — keeps history).
+    pub fn revoke_recorder_key(&self, chain_id: &[u8; 32], pubkey: &[u8; 32], revoked_at: i64) -> Result<()> {
+        self.conn.execute(
+            "UPDATE known_recorder_keys SET revoked_at = ?3 WHERE chain_id = ?1 AND pubkey = ?2",
+            params![&chain_id[..], &pubkey[..], revoked_at],
+        )?;
+        Ok(())
+    }
+
+    /// Get the active (non-revoked) recorder pubkey for a chain. Returns the most recently added.
+    pub fn get_active_recorder_key(&self, chain_id: &[u8; 32]) -> Result<Option<[u8; 32]>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT pubkey FROM known_recorder_keys
+             WHERE chain_id = ?1 AND revoked_at IS NULL
+             ORDER BY added_at DESC LIMIT 1"
+        )?;
+        let mut rows = stmt.query(params![&chain_id[..]])?;
+        match rows.next()? {
+            Some(row) => {
+                let pk: Vec<u8> = row.get(0)?;
+                if pk.len() == 32 {
+                    let mut arr = [0u8; 32];
+                    arr.copy_from_slice(&pk);
+                    Ok(Some(arr))
+                } else {
+                    Ok(None)
+                }
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Load all active recorder keys as a HashMap (chain_id → pubkey).
+    pub fn load_all_recorder_keys(&self) -> Result<std::collections::HashMap<[u8; 32], [u8; 32]>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT chain_id, pubkey FROM known_recorder_keys
+             WHERE revoked_at IS NULL
+             ORDER BY added_at DESC"
+        )?;
+        let mut map = std::collections::HashMap::new();
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let cid: Vec<u8> = row.get(0)?;
+            let pk: Vec<u8> = row.get(1)?;
+            if cid.len() == 32 && pk.len() == 32 {
+                let mut chain_id = [0u8; 32];
+                chain_id.copy_from_slice(&cid);
+                let mut pubkey = [0u8; 32];
+                pubkey.copy_from_slice(&pk);
+                // First (most recent) key wins per chain
+                map.entry(chain_id).or_insert(pubkey);
+            }
+        }
+        Ok(map)
     }
 
     // --- Block storage ---

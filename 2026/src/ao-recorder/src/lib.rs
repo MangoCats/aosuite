@@ -177,7 +177,8 @@ pub struct AppState {
     /// Cached validator endorsements per chain: chain_id → Vec<ValidatorEndorsement>.
     validator_cache: RwLock<HashMap<String, Vec<ValidatorEndorsement>>>,
     /// Known recorder public keys for CAA proof verification: chain_id bytes → pubkey bytes.
-    pub known_recorders: std::collections::HashMap<[u8; 32], [u8; 32]>,
+    /// Writable so keys can be updated at runtime via admin API or DB reload.
+    pub known_recorders: RwLock<HashMap<[u8; 32], [u8; 32]>>,
     /// Vendor profiles per chain: chain_id → VendorProfile.
     vendor_profiles: RwLock<HashMap<String, VendorProfile>>,
     /// Optional content-addressed blob storage.
@@ -214,7 +215,7 @@ impl AppState {
             mqtt: std::sync::OnceLock::new(),
             exchange_agents: RwLock::new(HashMap::new()),
             validator_cache: RwLock::new(HashMap::new()),
-            known_recorders: std::collections::HashMap::new(),
+            known_recorders: RwLock::new(HashMap::new()),
             vendor_profiles: RwLock::new(HashMap::new()),
             blob_store: None,
             connection_semaphore: None,
@@ -230,7 +231,7 @@ impl AppState {
             mqtt: std::sync::OnceLock::new(),
             exchange_agents: RwLock::new(HashMap::new()),
             validator_cache: RwLock::new(HashMap::new()),
-            known_recorders: std::collections::HashMap::new(),
+            known_recorders: RwLock::new(HashMap::new()),
             vendor_profiles: RwLock::new(HashMap::new()),
             blob_store: None,
             connection_semaphore: None,
@@ -371,7 +372,7 @@ struct CreateChainRequest {
 /// Maximum request body size (256 KB). Assignments are compact wire-format
 /// structures; anything larger is almost certainly malicious.
 const MAX_BODY_SIZE: usize = 256 * 1024;
-const MAX_BLOB_SIZE: usize = 5_242_880;
+const DEFAULT_MAX_BLOB_SIZE: usize = 5_242_880;
 
 /// Maximum number of blocks returned by a single GET /blocks request.
 const MAX_BLOCK_RANGE: u64 = 1000;
@@ -405,12 +406,14 @@ pub fn build_router_with_config(state: Arc<AppState>, cfg: &config::Config) -> R
         .route("/chain/{id}/caa/{caa_hash}", get(caa_status))
         .route("/chain/{id}/profile", get(get_vendor_profile).post(set_vendor_profile))
         .route("/chain/{id}/blob/{hash}", get(blob::get_blob))
+        .route("/admin/recorder-keys", get(list_recorder_keys).post(update_recorder_key))
         .layer(DefaultBodyLimit::max(MAX_BODY_SIZE));
 
-    // Blob upload route gets a separate, larger body limit (5 MB).
+    // Blob upload route gets a separate, larger body limit (configurable, default 5 MB).
+    let blob_body_limit = if cfg.max_blob_bytes > 0 { cfg.max_blob_bytes } else { DEFAULT_MAX_BLOB_SIZE };
     let blob_routes = Router::new()
         .route("/chain/{id}/blob", axum::routing::post(blob::upload_blob))
-        .layer(DefaultBodyLimit::max(MAX_BLOB_SIZE));
+        .layer(DefaultBodyLimit::max(blob_body_limit));
 
     let mut app: Router = standard_routes
         .merge(blob_routes)
@@ -937,7 +940,9 @@ async fn caa_submit(
     let wall_ts = current_wall_timestamp()?;
 
     let chain = state.get_chain_or_err(&chain_id_hex)?;
-    let known_recorders = state.known_recorders.clone();
+    let known_recorders = state.known_recorders.read()
+        .expect("known_recorders lock poisoned")
+        .clone();
 
     let response = blocking(move || {
         let store = lock_store(&chain)?;
@@ -1014,7 +1019,7 @@ async fn caa_submit(
             }
             let seq_count = next_seq - first_seq;
 
-            // Record CAA escrow with total_chains
+            // Record CAA escrow with total_chains and bond amount
             store.insert_caa_escrow(
                 &validated.caa_hash,
                 validated.chain_order,
@@ -1022,12 +1027,19 @@ async fn caa_submit(
                 height,
                 None,
                 validated.total_chains,
+                &validated.bond_amount,
             ).map_err(|e| RecorderError::Internal(e.to_string()))?;
 
-            // Record UTXO associations
+            // Record UTXO associations and giver escrow history
             for (seq_id, _) in &validated.givers {
                 store.insert_caa_utxo(&validated.caa_hash, *seq_id, "giver")
                     .map_err(|e| RecorderError::Internal(e.to_string()))?;
+                // Look up giver pubkey for rate-limiting history
+                if let Some(utxo) = store.get_utxo(*seq_id)
+                    .map_err(|e| RecorderError::Internal(e.to_string()))? {
+                    store.record_giver_escrow(&utxo.pubkey, &validated.caa_hash, current_ts)
+                        .map_err(|e| RecorderError::Internal(e.to_string()))?;
+                }
             }
             let mut recv_seq = meta.next_seq_id;
             for _ in &validated.receivers {
@@ -1159,7 +1171,9 @@ async fn caa_bind(
     let wall_ts = current_wall_timestamp()?;
 
     let chain = state.get_chain_or_err(&chain_id_hex)?;
-    let known_recorders = state.known_recorders.clone();
+    let known_recorders = state.known_recorders.read()
+        .expect("known_recorders lock poisoned")
+        .clone();
 
     let response = blocking(move || {
         let store = lock_store(&chain)?;
@@ -1254,6 +1268,69 @@ async fn caa_status(
     }).await?;
 
     Ok(Json(response))
+}
+
+// ── Admin: Recorder Key Management ──────────────────────────────────
+
+#[derive(Serialize)]
+struct RecorderKeyEntry {
+    chain_id: String,
+    pubkey: String,
+}
+
+/// GET /admin/recorder-keys — list all known recorder keys.
+async fn list_recorder_keys(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<RecorderKeyEntry>>, RecorderError> {
+    let kr = state.known_recorders.read()
+        .map_err(|e| RecorderError::Internal(format!("lock: {}", e)))?;
+    let entries: Vec<RecorderKeyEntry> = kr.iter()
+        .map(|(cid, pk)| RecorderKeyEntry {
+            chain_id: hex::encode(cid),
+            pubkey: hex::encode(pk),
+        })
+        .collect();
+    Ok(Json(entries))
+}
+
+#[derive(Deserialize)]
+struct RecorderKeyUpdate {
+    chain_id: String,
+    pubkey: String,
+    #[serde(default)]
+    revoke: bool,
+}
+
+/// POST /admin/recorder-keys — add or revoke a known recorder key.
+async fn update_recorder_key(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<RecorderKeyUpdate>,
+) -> Result<Json<serde_json::Value>, RecorderError> {
+    let cid_bytes = hex::decode(&req.chain_id)
+        .map_err(|e| RecorderError::BadRequest(format!("invalid chain_id hex: {}", e)))?;
+    let pk_bytes = hex::decode(&req.pubkey)
+        .map_err(|e| RecorderError::BadRequest(format!("invalid pubkey hex: {}", e)))?;
+    if cid_bytes.len() != 32 || pk_bytes.len() != 32 {
+        return Err(RecorderError::BadRequest("chain_id and pubkey must be 32 bytes each".into()));
+    }
+    let mut chain_id = [0u8; 32];
+    chain_id.copy_from_slice(&cid_bytes);
+    let mut pubkey = [0u8; 32];
+    pubkey.copy_from_slice(&pk_bytes);
+
+    // Update in-memory map
+    let mut kr = state.known_recorders.write()
+        .map_err(|e| RecorderError::Internal(format!("lock: {}", e)))?;
+
+    if req.revoke {
+        kr.remove(&chain_id);
+        tracing::info!(chain = %req.chain_id, "Revoked recorder key");
+        Ok(Json(serde_json::json!({"status": "revoked"})))
+    } else {
+        kr.insert(chain_id, pubkey);
+        tracing::info!(chain = %req.chain_id, "Added recorder key");
+        Ok(Json(serde_json::json!({"status": "added"})))
+    }
 }
 
 /// Build a RECORDING_PROOF DataItem signed by the recorder.

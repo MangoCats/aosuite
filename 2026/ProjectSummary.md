@@ -60,11 +60,11 @@ These are hard requirements from [CorePrinciples.html](../docs/html/CorePrincipl
 
 **C++ codebase (~15,600 lines, 2018–2021):** Implements only the data serialization layer — VBC encoding, DataItem types, hash wrappers, key structures, GMP integer storage, and a JSON codec. No protocol logic, no networking, no user-facing apps. Uses the 2018 crypto choices (ECDSA brainpool-256, RSA-3072, SHA3-512 via OpenPGP). Tests are GUI-based (Qt widgets), not automated. Last commit September 2021. Useful as a reference for the binary wire format and the `byteCodeDefinitions.json` type code registry, but not directly portable due to changed cryptographic algorithms.
 
-**Rust crates (Phases 0–6 complete):** 7 crates — ao-types, ao-crypto, ao-chain, ao-recorder, ao-exchange, ao-validator, ao-cli — covering serialization, cryptography, chain logic, HTTP recorder, atomic exchange, validation, and CLI tools. 140 Rust tests, 0 clippy warnings.
+**Rust crates (Phases 0–6 complete):** 7 crates — ao-types, ao-crypto, ao-chain, ao-recorder, ao-exchange, ao-validator, ao-cli — covering serialization, cryptography, chain logic, HTTP recorder, atomic exchange, validation, and CLI tools. 187 Rust tests, 0 clippy warnings.
 
-**React PWA (Phase 3):** TypeScript core data layer, Web Crypto signing, Zustand state, VendorView (AOS) and ConsumerView (AOE). 209 PWA tests.
+**React PWA (Phase 3):** TypeScript core data layer, Web Crypto signing, Zustand state, VendorView (AOS) and ConsumerView (AOE). 68 PWA tests.
 
-**349 total tests** (140 Rust + 209 PWA).
+**255 total tests** (187 Rust + 68 PWA).
 
 ## The 2026 Technology Stack
 
@@ -73,14 +73,14 @@ These are hard requirements from [CorePrinciples.html](../docs/html/CorePrincipl
 | Language | Rust (edition 2024) | Memory safety for crypto, cross-compile to ARM |
 | Signatures | Ed25519 via `ring` 0.17 | Replaces ECDSA brainpool-256 and RSA-3072 |
 | Hashes | SHA2-256 + BLAKE3 | SHA3-512 dropped entirely |
-| Type codes | 53 codes (1–39, -1, -2, 64–68, 69–77) | Compact registry, extensible via type-code dispatch |
+| Type codes | 56 codes (1–39, -1, -2, 64–68, 69–78) | Compact registry, extensible via type-code dispatch |
 | Big integers | `num-bigint` + `num-rational` | Pure Rust, replaces GMP |
 | Serialization | `serde` with custom binary + JSON | Preserves VBC binary on-chain format |
 | HTTP server | Axum 0.8+ | Async, lightweight, tokio ecosystem |
 | Pub/sub | MQTT via `rumqttc` (+ optional `rumqttd` embedded broker) | Lighter than RabbitMQ, runs on Pi |
 | Storage | SQLite via `rusqlite` | Single-file, embedded, adequate for small chains |
 | Client UI | React PWA (TypeScript) | Cross-platform, no app store, offline capable |
-| Client crypto | Web Crypto API (Ed25519 now in all major browsers) | `tweetnacl-js` as Safari fallback only |
+| Client crypto | Web Crypto API (Ed25519 in all major browsers: Chrome 113+, Firefox 129+, Safari 17+) | No fallback library needed |
 | Wallet encryption | Argon2id + XChaCha20-Poly1305 | For private key storage in browser and CLI |
 | Testing | `cargo test` + `proptest` + conformance vectors | Property-based + hand-computed ground truth |
 

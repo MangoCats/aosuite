@@ -8,7 +8,7 @@
 
 Before spending anything, take stock of what already exists:
 
-1. **Working software.** Phases 0-6 complete: 7 Rust crates, 128 tests, full protocol from genesis through atomic multi-chain exchange.
+1. **Working software.** Phases 0-6 complete: 7 Rust crates, 187 Rust tests + 68 PWA tests, full protocol from genesis through atomic multi-chain exchange.
 2. **Live simulation suite.** Sims A-D: agent framework, viewer PWA with map view, time controls, audit overlay, adversarial agents. The `island-life.toml` scenario runs the full IslandLife cast on Anguilla geography with competing exchange agents and realistic market dynamics.
 3. **Three deployment narratives.** Tourism Vendors (Sandy Ground), Island UBI (Likiep), Farming Cooperatives (Riuki) -- grounded in real-world research, honest about costs and risks.
 4. **Open source repo.** GitHub (assignonward/aosuite) + GitLab mirror. MIT license.

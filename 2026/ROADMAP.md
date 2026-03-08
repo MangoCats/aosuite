@@ -16,7 +16,7 @@ Six phases over approximately 54 weeks, starting with architecture and specifica
 | MQTT | `rumqttc` | Consider `rumqttd` embedded broker for simple deployments. |
 | Storage | `rusqlite` | Synchronous, wrap with `spawn_blocking` if needed. |
 | Client UI | React PWA (TypeScript) | Cross-platform, no app store, offline capable. |
-| Client crypto | Web Crypto API (primary) | Ed25519 in Chrome, Edge, Firefox. `tweetnacl-js` as Safari fallback. |
+| Client crypto | Web Crypto API | Ed25519 in Chrome 113+, Edge, Firefox 129+, Safari 17+. No fallback library needed. |
 | Wallet encryption | Argon2id + XChaCha20-Poly1305 | For private key storage in browser and CLI. |
 | Testing | `cargo test` + `proptest` + conformance vectors | Property-based + hand-computed ground truth in JSON. |
 
@@ -126,7 +126,7 @@ Build `ao-types` and `ao-crypto` crates plus the genesis block creator, building
 
 ### Deliverables
 
-**ao-types** — [src/ao-types/](src/ao-types/) ✓: VBC codec (signed/unsigned). DataItem binary + JSON codec. Type code registry (37 codes). BigInt/Rational encoding via `num-bigint`/`num-rational`. Timestamp type with signed i64 and 2126 design horizon. Recording fee arithmetic with ceil rounding. Separable item identification (`is_separable`). 42 tests (including 5 proptest property tests).
+**ao-types** — [src/ao-types/](src/ao-types/) ✓: VBC codec (signed/unsigned). DataItem binary + JSON codec. Type code registry (56 codes). BigInt/Rational encoding via `num-bigint`/`num-rational`. Timestamp type with signed i64 and 2126 design horizon. Recording fee arithmetic with ceil rounding. Separable item identification (`is_separable`). 42 tests (including 5 proptest property tests).
 
 **ao-crypto** — [src/ao-crypto/](src/ao-crypto/) ✓: Ed25519 via `ring` 0.17 (switched from `ed25519-dalek` — see [lessons/wrong-test-vector.md](lessons/wrong-test-vector.md)). SHA2-256 and BLAKE3. Separable-item hash-substitution. Sign/verify DataItem pipeline per WireFormat.md §6.2. 13 tests. Key-never-reuse tracking deferred to Phase 2 UTXO layer (requires persistent state).
 
@@ -361,9 +361,9 @@ Specification: [specs/AtomicExchange.md](specs/AtomicExchange.md) ✓ 2026-03-07
 
 ### Deliverables
 
-**6A: Specification** — [specs/AtomicExchange.md](specs/AtomicExchange.md) ✓: CAA wire format (9 new type codes 69–77, all inseparable), ouroboros recording protocol for N chains, escrow state machine (proposed → signed → recording → binding → finalized / expired), escrow rules (deadline enforcement, auto-release, no partial binding), recording proof structure and verification, binding submission protocol, client-side coordination, timeout and recovery, idempotent submission.
+**6A: Specification** — [specs/AtomicExchange.md](specs/AtomicExchange.md) ✓: CAA wire format (10 new type codes 69–78 including COORDINATOR_BOND, all inseparable), ouroboros recording protocol for N chains, escrow state machine (proposed → signed → recording → binding → finalized / expired), escrow rules (deadline enforcement, auto-release, no partial binding), recording proof structure and verification, binding submission protocol, client-side coordination, timeout and recovery, idempotent submission.
 
-**6B: CAA type codes in ao-types** — ✓: `CAA` (69), `CAA_COMPONENT` (70), `CHAIN_REF` (71), `ESCROW_DEADLINE` (72), `CHAIN_ORDER` (73), `RECORDING_PROOF` (74), `CAA_HASH` (75), `BLOCK_REF` (76), `BLOCK_HEIGHT` (77). Size categories, type names, separability tests all updated.
+**6B: CAA type codes in ao-types** — ✓: `CAA` (69), `CAA_COMPONENT` (70), `CHAIN_REF` (71), `ESCROW_DEADLINE` (72), `CHAIN_ORDER` (73), `RECORDING_PROOF` (74), `CAA_HASH` (75), `BLOCK_REF` (76), `BLOCK_HEIGHT` (77), `COORDINATOR_BOND` (78). Size categories, type names, separability tests all updated.
 
 **6C: Escrow in ao-chain** — [src/ao-chain/src/caa.rs](src/ao-chain/src/caa.rs) ✓: `Escrowed` UTXO status. `caa_escrows` and `caa_utxos` SQL tables. `validate_caa_submit()` (full CAA validation: component matching, UTXO checks, per-component signatures, overall signatures, recording proof verification, balance equation). `validate_caa_bind()` (binding proof validation). `run_escrow_sweep()` (auto-release expired escrows). `compute_caa_hash()` (deterministic canonical hash). Error variants: `UtxoEscrowed`, `InvalidCaa`, `CaaNotFound`, `CaaAlreadyExists`, `CaaExpired`. 6 unit tests.
 
@@ -375,7 +375,7 @@ Specification: [specs/AtomicExchange.md](specs/AtomicExchange.md) ✓ 2026-03-07
 
 **6G: Integration tests** — ✓: CAA submit and status query across two independent chains with escrowed UTXO verification and idempotent re-submission. 1 integration test.
 
-**Tests:** 160 Rust tests (42 ao-types + 13 ao-crypto + 31 ao-chain unit + 12 ao-chain integration + 17 ao-exchange + 12 ao-recorder unit + 18 ao-recorder integration + 4 ao-recorder blob + 11 ao-validator) + 218 PWA tests = 378 total. 0 clippy warnings.
+**Tests:** 187 Rust tests (42 ao-types + 13 ao-crypto + 44 ao-chain unit + 12 ao-chain integration + 21 ao-exchange + 21 ao-recorder unit + 23 ao-recorder integration + 11 ao-validator) + 68 PWA tests = 255 total. 0 clippy warnings.
 
 ### Acceptance Criteria
 
@@ -417,7 +417,7 @@ The PWA now supports the full browser-based sign-and-submit flow with persistent
 
 4. **Vendor SSE Monitor**: VendorView subscribes to SSE block events on the selected chain. Incoming blocks display in real-time with block height, assignment count, and seq range. Genesis creation collapsed into an expandable section.
 
-**Implementation:** [useStore.ts](src/ao-pwa/src/store/useStore.ts) (localStorage persistence), [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx) (wallet + UTXO scanner + transfer), [VendorView.tsx](src/ao-pwa/src/components/VendorView.tsx) (SSE monitor + genesis creator). 209 PWA tests passing, TypeScript clean, 70KB gzipped production build.
+**Implementation:** [useStore.ts](src/ao-pwa/src/store/useStore.ts) (localStorage persistence), [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx) (wallet + UTXO scanner + transfer), [VendorView.tsx](src/ao-pwa/src/components/VendorView.tsx) (SSE monitor + genesis creator). 68 PWA tests passing, TypeScript clean, 70KB gzipped production build.
 
 **Remaining:** Two-device <3s latency test (requires hardware), iOS/Android PWA install test, Lighthouse audit.
 

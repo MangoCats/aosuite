@@ -52,9 +52,9 @@ No rate limiting on any endpoint. Block submission, CAA submission, chain creati
 
 **File:** `ao-exchange/src/engine.rs:46-58`
 
-`compute_sell_amount` converts BigInt to f64 for division, then truncates back to i64. Precision loss on large amounts could cause the exchange to systematically lose fractional shares per trade.
+**Status: Mitigated.** `compute_sell_amount` now uses `BigRational` for exact arithmetic — rates are scaled to 10^9 rational, and truncation toward zero gives remainder to exchange. Note: the function signature still accepts `rate: f64` and `spread: f64` parameters, converting them to BigRational internally; precision of the rate/spread *inputs* is limited to f64, but the share arithmetic itself is exact. 8 tests including large-amount and edge cases.
 
-**Recommendation:** Use `num-rational` or BigInt division with explicit rounding policy.
+**Original finding:** `compute_sell_amount` converted BigInt to f64 for division, then truncated back to i64.
 
 #### F6. PREV_HASH Not Validated on Block Acceptance
 

@@ -78,7 +78,7 @@ Each chain has one recorder. The recorder writes blocks. Period. If two recorder
 
 ## The Result
 
-Seven Rust crates. 136 tests. ~6,500 lines of protocol code. A simulation suite with 19 agents trading across 7 chains on a map. Runs on a Raspberry Pi. MIT license.
+Seven Rust crates. 255 tests (187 Rust + 68 PWA). ~16,000 lines of Rust across seven crates. A simulation suite with 19 agents trading across 7 chains on a map. Runs on a Raspberry Pi. MIT license.
 
 No mining. No tokens. No smart contracts. No DeFi. No consensus mechanism. No venture capital. No foundation. No roadmap to decentralization.
 

@@ -92,7 +92,7 @@ If members don't find the transparent ledger easier than Benson's notebook -- be
 
 ## The Software
 
-The core software exists. Seven Rust crates, 349 tests, MIT-licensed. A simulation suite shows cooperative-style multi-chain dynamics running on a map with time controls. The recorder is designed to run on a Raspberry Pi (not yet field-tested on one). The wallet runs in a browser. M-Pesa integration would use the existing M-Pesa API through the exchange agent role -- the exchange agent architecture is built, but the M-Pesa bridge is not yet implemented. Photo attachments for crop documentation are supported by the protocol (separable data items with binary blobs) but the upload UI is not yet built.
+The core software exists. Seven Rust crates, 255 tests (187 Rust + 68 PWA), MIT-licensed. A simulation suite shows cooperative-style multi-chain dynamics running on a map with time controls. The recorder is designed to run on a Raspberry Pi (not yet field-tested on one). The wallet runs in a browser. M-Pesa integration would use the existing M-Pesa API through the exchange agent role -- the exchange agent architecture is built, but the M-Pesa bridge is not yet implemented. Photo attachments for crop documentation are supported by the protocol (separable data items with binary blobs) but the upload UI is not yet built.
 
 If you work with farming cooperatives, Saccos, agricultural finance, or cooperative technology -- and you recognize the trust problem described here -- the architecture is documented, the code is open, and we'd like to hear from you.
 

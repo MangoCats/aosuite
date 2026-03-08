@@ -10,7 +10,7 @@ This is how we built it in Rust.
 
 ## The Protocol in 30 Seconds
 
-Assign Onward is a federated microblockchain protocol. Instead of one shared chain, every business runs its own. Bob's Curry Goat chain, Rita's Mango Futures chain, Dave's E-Bike Rentals chain. Exchange agents bridge between chains. A recorder hosts chains on commodity hardware. The protocol is ~6,500 lines of Rust across seven crates (`ao-types`, `ao-crypto`, `ao-chain`, `ao-recorder`, `ao-cli`, `ao-exchange`, `ao-validator`), with 136 tests.
+Assign Onward is a federated microblockchain protocol. Instead of one shared chain, every business runs its own. Bob's Curry Goat chain, Rita's Mango Futures chain, Dave's E-Bike Rentals chain. Exchange agents bridge between chains. A recorder hosts chains on commodity hardware. The protocol is ~16,000 lines of Rust across seven crates (`ao-types`, `ao-crypto`, `ao-chain`, `ao-recorder`, `ao-cli`, `ao-exchange`, `ao-validator`), with 187 tests.
 
 The simulator needed to exercise all of this -- not by mocking the protocol, but by running the real recorder and having agents interact with it over HTTP, exactly as real users would.
 
@@ -295,4 +295,4 @@ GitHub: [assignonward/aosuite](https://github.com/assignonward/aosuite)
 
 ---
 
-*The simulation suite is in `2026/sims/`. The protocol crates are in `2026/src/`. The viewer PWA is in `2026/sims/viewer/`. Total Rust: ~6,500 lines of protocol + ~3,000 lines of simulator. Total TypeScript: ~2,000 lines of viewer.*
+*The simulation suite is in `2026/sims/`. The protocol crates are in `2026/src/`. The viewer PWA is in `2026/sims/viewer/`. Total Rust: ~16,000 lines of protocol + ~3,000 lines of simulator. Total TypeScript: ~3,100 lines of PWA + ~2,000 lines of viewer.*

@@ -264,7 +264,7 @@ CREDENTIAL_REF (38)
 
 The `SHA256` child is the SHA2-256 hash of the credential document's byte content at the time the credential reference was created. This binds the URL to specific content — if the document at the URL changes, the hash will no longer match.
 
-**Separability:** Both `CREDENTIAL_REF` (38) and `CREDENTIAL_URL` (39) are separable (`|code| & 0x20 != 0`). This means credential references can be stripped from blocks to reduce storage without invalidating signatures. The hash of the stripped credential reference remains in the block, proving that a credential was present at signing time.
+**Separability:** Both `CREDENTIAL_REF` (38) and `CREDENTIAL_URL` (39) are separable (`|code| & 0x20 != 0`). This means credential references can be stripped from blocks to reduce storage without invalidating signatures. The hash of the stripped credential reference remains in the block, proving that a credential was present at signing time. Note: when a separable container like `CREDENTIAL_REF` is replaced with its SHA2-256 hash during signing, the **entire container** (including its inseparable children like `SHA256 (3)`) is hashed as a unit and replaced with a single `SHA256` item. The separability check operates on the outermost item; children are not individually evaluated.
 
 ### 5.3 Credential Verification
 
@@ -278,7 +278,7 @@ Verification is a client-side operation, not enforced by the recorder or validat
 
 The PWA displays a hash-match indicator (green check / red warning) next to each credential. The indicator reflects only hash verification — it does not validate the credential's content, issuer authority, or expiration.
 
-### 5.4 W3C Verifiable Credentials Compatibility
+### 5.4 W3C Verifiable Credentials — URL+Hash Storage (Not Protocol-Level Integration)
 
 The credential reference system is designed to be compatible with, but not dependent on, the [W3C Verifiable Credentials](https://www.w3.org/TR/vc-data-model/) data model.
 

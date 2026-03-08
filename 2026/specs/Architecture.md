@@ -197,6 +197,12 @@ A share holder assigns all shares from their current key to a fresh key they con
 | GET | `/chain/{id}/profile` | — | Vendor profile JSON (name, location, metadata) |
 | POST | `/chain/{id}/profile` | Vendor profile JSON | 200 OK (updated profile) |
 | POST | `/chain/{id}/exchange-agent` | Exchange agent registration JSON | 200 OK |
+| GET | `/health` | — | Server health: uptime, chains hosted, version |
+| GET | `/dashboard` | — | HTML dashboard page for browser-based monitoring |
+| POST | `/chain/{id}/blob` | Binary body with `Content-Type` header | `{"hash": "<hex>"}` (201 Created) |
+| GET | `/chain/{id}/blob/{hash}` | — | Blob content with original Content-Type |
+| GET | `/admin/recorder-keys` | — | List of known recorder public keys for CAA proof verification |
+| POST | `/admin/recorder-keys` | `{"pubkey":"<hex>","action":"add"|"revoke"}` | 200 OK |
 
 Phase 6 adds CAA endpoints — see [AtomicExchange.md](AtomicExchange.md) §4.3.
 

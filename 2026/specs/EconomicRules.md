@@ -165,7 +165,7 @@ else:
 
 Where:
 - `age = current_block_timestamp - block_timestamp_of_receipt` (in AO timestamp units).
-- `TAX_START_AGE` and `TAX_DOUBLING_PERIOD` are from `TAX_PARAMS` in genesis.
+- `TAX_START_AGE` and `TAX_DOUBLING_PERIOD` are from `TAX_PARAMS` in genesis. Both are encoded as `TIMESTAMP` (type code 5, 8-byte big-endian i64) but represent **time deltas** in AO timestamp units, not absolute wall-clock times.
 
 The tax is applied at block recording time:
 

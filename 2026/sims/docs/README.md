@@ -197,5 +197,5 @@ See [ROADMAP.md](ROADMAP.md) for the full sims development plan. Current status:
 | Sim-A | Phase 2 | Complete — CLI agents, text observer, minimal + three-chain scenarios |
 | Sim-B | Phase 3 | Complete — Viewer PWA, agent/chain/transaction tables, WebSocket updates |
 | Sim-C | Phase 4 | Complete — Map view, MQTT exchange agents, referral fees, island-life scenario |
-| Sim-D | Phase 5 | Not started — Auditor agents, adversarial agents |
-| Sim-E | Phase 6 | Not started — CAA escrow, chaos testing |
+| Sim-D | Phase 5 | Complete — Validator agent, adversarial agents (double-spend, key-reuse, expired-UTXO, chain tampering, refutation) |
+| Sim-E | Phase 6 | Complete — CAA atomic exchange, island-life-full scenario with mixed atomic/legacy consumers |

@@ -185,7 +185,7 @@ Second inseparable band. See [ValidationAndTrust.md](ValidationAndTrust.md) §4.
 | 67 | `ANCHOR_REF` | variable | External anchor reference string (UTF-8) |
 | 68 | `ANCHOR_TIMESTAMP` | 8 | Anchor publication timestamp |
 
-### 3.4 CAA Types (Inseparable, |code| 69–77)
+### 3.4 CAA Types (Inseparable, |code| 69–78)
 
 Conditional Assignment Agreement types. See [AtomicExchange.md](AtomicExchange.md).
 
@@ -200,6 +200,7 @@ Conditional Assignment Agreement types. See [AtomicExchange.md](AtomicExchange.m
 | 75 | `CAA_HASH` | 32 | SHA2-256 hash of a CAA |
 | 76 | `BLOCK_REF` | container | Block reference: chain ID + height + hash |
 | 77 | `BLOCK_HEIGHT` | vbc-value | Block height within a BLOCK_REF |
+| 78 | `COORDINATOR_BOND` | variable | Bond amount declared by coordinator on non-last chains; forfeited on escrow timeout |
 
 ### 3.5 Separability Rule
 
@@ -213,7 +214,7 @@ fn is_separable(type_code: i64) -> bool {
 
 Before signing, walk the DataItem tree and replace each separable item with a `SHA256` item (code 3) containing its SHA2-256 hash. The hash is computed over the separable item's **complete encoding** (type code + size + data).
 
-**Note on code ranges:** The bit 5 rule creates alternating 32-wide bands: |codes| 1–31 inseparable, 32–63 separable, 64–95 inseparable, 96–127 separable, etc. The original A1 type codes fall in the 1–63 range; Phase 5 added validator types (64–68) and Phase 6 added CAA types (69–77) in the second inseparable band. Future type codes must be assigned with this pattern in mind.
+**Note on code ranges:** The bit 5 rule creates alternating 32-wide bands: |codes| 1–31 inseparable, 32–63 separable, 64–95 inseparable, 96–127 separable, etc. The original A1 type codes fall in the 1–63 range; Phase 5 added validator types (64–68) and Phase 6 added CAA types (69–78, including COORDINATOR_BOND) in the second inseparable band. Future type codes must be assigned with this pattern in mind.
 
 ---
 

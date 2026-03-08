@@ -134,7 +134,7 @@ In each case: government distribution seeds the economy with tokens, local vendo
 
 ## What We Built
 
-The core software exists. Seven Rust crates, 349 tests passing, MIT-licensed. Full protocol from genesis block through atomic multi-chain exchange. A simulation suite with agents that demonstrate the economic dynamics on a map. The recorder is designed to run on a Raspberry Pi (not yet field-tested on one). The wallet runs in a browser. M-Pesa and other fiat on/off-ramp integrations are not yet built -- the exchange agent role is implemented, but bridging to external payment systems would require additional development.
+The core software exists. Seven Rust crates, 255 tests passing (187 Rust + 68 PWA), MIT-licensed. Full protocol from genesis block through atomic multi-chain exchange. A simulation suite with agents that demonstrate the economic dynamics on a map. The recorder is designed to run on a Raspberry Pi (not yet field-tested on one). The wallet runs in a browser. M-Pesa and other fiat on/off-ramp integrations are not yet built -- the exchange agent role is implemented, but bridging to external payment systems would require additional development.
 
 What doesn't exist yet: a deployment on an actual atoll, with actual fishermen and shopkeepers, in actual conditions of intermittent satellite connectivity and 90-degree heat. Nor does LoRa mesh transport or fiat payment integration exist in code yet -- those are designed for but not implemented. The software is the easy part. Finding the Tia and the Mako -- the shopkeeper willing to try something new and the IT person willing to spend a weekend setting it up -- that's the hard part.
 

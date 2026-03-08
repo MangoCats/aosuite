@@ -254,6 +254,7 @@ mod tests {
             ANCHOR_REF, ANCHOR_TIMESTAMP,
             CAA, CAA_COMPONENT, CHAIN_REF, ESCROW_DEADLINE,
             CHAIN_ORDER, RECORDING_PROOF, CAA_HASH, BLOCK_REF, BLOCK_HEIGHT,
+            COORDINATOR_BOND,
         ];
         for code in all_codes {
             assert!(

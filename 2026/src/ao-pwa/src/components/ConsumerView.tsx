@@ -3,6 +3,7 @@ import { useStore } from '../store/useStore.ts';
 import { RecorderClient } from '../api/client.ts';
 import type { UtxoInfo } from '../api/client.ts';
 import { signingKeyFromSeed, generateSigningKey } from '../core/sign.ts';
+import type { SigningKey } from '../core/sign.ts';
 import { buildAuthorizationJson, buildAssignment } from '../core/assignment.ts';
 import { recordingFee } from '../core/fees.ts';
 import { toBytes } from '../core/dataitem.ts';
@@ -14,6 +15,19 @@ import { AttachmentPicker } from './AttachmentPicker.tsx';
 import type { AttachedBlob } from '../core/blob.ts';
 import * as walletDb from '../core/walletDb.ts';
 import { validateKeysOnChain } from '../core/walletSync.ts';
+
+/** State held between build (preview) and confirm (submit) phases. */
+interface PendingTransfer {
+  givers: Giver[];
+  receivers: Receiver[];
+  feeRate: FeeRate;
+  recipientKey: SigningKey | null;
+  changeKey: SigningKey;
+  needsChange: boolean;
+  sendAmount: bigint;
+  fee: bigint;
+  changeAmount: bigint;
+}
 
 /** Scan chain for unspent UTXOs owned by the given pubkey hex. */
 async function scanUtxos(
@@ -59,6 +73,7 @@ export function ConsumerView() {
   const [loading, setLoading] = useState(false);
   const [queuedCount, setQueuedCount] = useState(0);
   const [attachments, setAttachments] = useState<AttachedBlob[]>([]);
+  const [pendingTransfer, setPendingTransfer] = useState<PendingTransfer | null>(null);
 
   // Validation alerts
   const [validationAlert, setValidationAlert] = useState('');
@@ -234,8 +249,8 @@ export function ConsumerView() {
     setScanning(false);
   }, [recorderUrl, selectedChainId, chainInfo, publicKeyHex]);
 
-  // ── Transfer ──────────────────────────────────────────────────────
-  async function handleTransfer() {
+  // ── Transfer: Build (preview) ───────────────────────────────────
+  async function handleBuild() {
     if (!chainInfo || !selectedChainId || !storedSeedHex || !selectedUtxo) return;
     if (recipientPubkey && !/^[0-9a-fA-F]{64}$/.test(recipientPubkey)) {
       setStatus('Error: recipient pubkey must be 64 hex characters');
@@ -245,7 +260,6 @@ export function ConsumerView() {
     setStatus('Building transfer...');
 
     try {
-      const client = new RecorderClient(recorderUrl);
       const giverKey = await signingKeyFromSeed(hexToBytes(storedSeedHex));
       const giverAmt = BigInt(selectedUtxo.amount);
       const sendAmt = BigInt(transferAmount || selectedUtxo.amount);
@@ -256,10 +270,7 @@ export function ConsumerView() {
       };
       const sharesOut = BigInt(chainInfo.shares_out);
 
-      // Generate receiver key (only needed when no external recipient specified)
       const recipientKey = recipientPubkey ? null : await generateSigningKey();
-
-      // Generate change key (back to consumer)
       const changeKey = await generateSigningKey();
 
       const givers: Giver[] = [{
@@ -268,7 +279,6 @@ export function ConsumerView() {
         key: giverKey,
       }];
 
-      // If sending full amount: single receiver. Otherwise: receiver + change.
       const needsChange = sendAmt < giverAmt;
       const receivers: Receiver[] = [{
         pubkey: recipientPubkey ? hexToBytes(recipientPubkey) : recipientKey!.publicKey,
@@ -279,22 +289,21 @@ export function ConsumerView() {
       if (needsChange) {
         receivers.push({
           pubkey: changeKey.publicKey,
-          amount: 0n, // adjusted by fee convergence
+          amount: 0n,
           key: changeKey,
         });
       }
 
-      // Iterative fee convergence (3 rounds) — last receiver absorbs fee
+      // Iterative fee convergence (3 rounds)
+      let fee = 0n;
       for (let i = 0; i < 3; i++) {
         const assignment = buildAssignment(givers, receivers, feeRate);
         const pageBytes = BigInt(toBytes(assignment).length + 200);
-        const fee = recordingFee(pageBytes, feeRate.num, feeRate.den, sharesOut);
+        fee = recordingFee(pageBytes, feeRate.num, feeRate.den, sharesOut);
 
         if (needsChange) {
-          // Change receiver (last) gets remainder after fee
           receivers[receivers.length - 1].amount = giverAmt - sendAmt - fee;
         } else {
-          // Single receiver absorbs fee
           receivers[0].amount = giverAmt - fee;
         }
       }
@@ -306,10 +315,32 @@ export function ConsumerView() {
         return;
       }
 
-      setStatus(`Signing (sending ${receivers[0].amount} shares)...`);
+      const changeAmount = needsChange ? receivers[receivers.length - 1].amount : 0n;
+
+      setPendingTransfer({
+        givers, receivers, feeRate, recipientKey, changeKey,
+        needsChange, sendAmount: receivers[0].amount, fee, changeAmount,
+      });
+      setStatus('');
+    } catch (e) {
+      setStatus(`Error: ${e}`);
+    }
+    setLoading(false);
+  }
+
+  // ── Transfer: Confirm (sign + submit) ─────────────────────────────
+  async function handleConfirm() {
+    if (!pendingTransfer || !selectedChainId) return;
+    const { givers, receivers, feeRate, recipientKey, changeKey, needsChange } = pendingTransfer;
+
+    setLoading(true);
+    setStatus('Signing...');
+
+    try {
+      const client = new RecorderClient(recorderUrl);
       const authJson = await buildAuthorizationJson(givers, receivers, feeRate);
 
-      // Upload attached blobs to recorder (associated content for this transfer).
+      // Upload attached blobs to recorder.
       // TODO: Reference blob hashes in the assignment DataItem once buildAssignment
       // supports DATA_BLOB children. For now, blobs are uploaded alongside but not
       // linked on-chain.
@@ -348,7 +379,7 @@ export function ConsumerView() {
             publicKey: bytesToHex(recipientKey.publicKey),
             seedHex: recvStored,
             seedEncrypted: !!walletPassphrase,
-            seqId: null, // will be discovered on next scan
+            seqId: null,
             amount: receivers[0].amount.toString(),
             status: 'unconfirmed',
             acquiredAt: now,
@@ -413,6 +444,7 @@ export function ConsumerView() {
         if (blob.previewUrl) URL.revokeObjectURL(blob.previewUrl);
       }
       setAttachments([]);
+      setPendingTransfer(null);
 
       // Refresh UTXOs after transfer
       setSelectedUtxo(null);
@@ -534,7 +566,7 @@ export function ConsumerView() {
       )}
 
       {/* Transfer Form */}
-      {storedSeedHex && selectedUtxo && (
+      {storedSeedHex && selectedUtxo && !pendingTransfer && (
         <div style={{ display: 'grid', gap: 8, maxWidth: 400 }}>
           <div style={{ fontSize: 13, fontWeight: 500 }}>
             Transfer from UTXO #{selectedUtxo.seq_id} ({selectedUtxo.amount} shares)
@@ -558,9 +590,64 @@ export function ConsumerView() {
             />
           </label>
           <AttachmentPicker attachments={attachments} onAttach={setAttachments} />
-          <button onClick={handleTransfer} disabled={loading}>
-            {loading ? 'Processing...' : 'Transfer'}
+          <button onClick={handleBuild} disabled={loading}>
+            {loading ? 'Building...' : 'Review Transfer'}
           </button>
+        </div>
+      )}
+
+      {/* Confirmation Screen (N12) */}
+      {pendingTransfer && (
+        <div style={{ maxWidth: 400, padding: 12, background: '#f0f7ff', border: '1px solid #cce0ff', borderRadius: 6 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>Confirm Transfer</div>
+          <table style={{ fontSize: 12, width: '100%', borderCollapse: 'collapse' }}>
+            <tbody>
+              <tr>
+                <td style={{ padding: '4px 8px 4px 0', color: '#666' }}>Sending</td>
+                <td style={{ padding: '4px 0', fontWeight: 500 }}>{pendingTransfer.sendAmount.toString()} shares</td>
+              </tr>
+              <tr>
+                <td style={{ padding: '4px 8px 4px 0', color: '#666' }}>Fee</td>
+                <td style={{ padding: '4px 0' }}>{pendingTransfer.fee.toString()} shares</td>
+              </tr>
+              {pendingTransfer.needsChange && (
+                <tr>
+                  <td style={{ padding: '4px 8px 4px 0', color: '#666' }}>Change returned</td>
+                  <td style={{ padding: '4px 0' }}>{pendingTransfer.changeAmount.toString()} shares</td>
+                </tr>
+              )}
+              <tr>
+                <td style={{ padding: '4px 8px 4px 0', color: '#666' }}>Recipient</td>
+                <td style={{ padding: '4px 0', fontFamily: 'monospace', fontSize: 11, wordBreak: 'break-all' }}>
+                  {recipientPubkey
+                    ? `${recipientPubkey.slice(0, 8)}...${recipientPubkey.slice(-8)}`
+                    : 'New key (generated)'}
+                </td>
+              </tr>
+              {attachments.length > 0 && (
+                <tr>
+                  <td style={{ padding: '4px 8px 4px 0', color: '#666' }}>Attachments</td>
+                  <td style={{ padding: '4px 0' }}>{attachments.length} file{attachments.length > 1 ? 's' : ''}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+          <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+            <button
+              onClick={() => setPendingTransfer(null)}
+              disabled={loading}
+              style={{ flex: 1 }}
+            >
+              Edit
+            </button>
+            <button
+              onClick={handleConfirm}
+              disabled={loading}
+              style={{ flex: 1, background: '#0066cc', color: '#fff', border: 'none', borderRadius: 4, padding: '6px 12px', cursor: loading ? 'wait' : 'pointer' }}
+            >
+              {loading ? 'Sending...' : 'Confirm & Send'}
+            </button>
+          </div>
         </div>
       )}
 

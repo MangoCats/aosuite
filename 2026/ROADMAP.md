@@ -595,7 +595,7 @@ Five sub-phases (S1–S5) delivering multi-device key sync for AO's single-use k
 | N10 | Security hardening | All three | Medium | — | ✓ Done (F3 deferred) |
 | N11 | Multi-device wallet sync | All three | Medium–Large | N2, N3 | ✓ Done |
 | **Tier 1: Pilot blockers** | | | | | |
-| N12 | Transfer confirmation screen | All three | Small | N2 | — |
+| N12 | Transfer confirmation screen | All three | Small | N2 | ✓ Done |
 | N13 | Wallet backup/restore UX | All three | Small | N11 | — |
 | N14 | Offline balance cache | All three | Small | N11 | — |
 | N15 | Transaction history + CSV export | All three | Medium | N2 | — |
@@ -631,14 +631,13 @@ Remaining hardware-dependent acceptance tests from earlier phases: two-device <3
 
 These items must ship before handing the system to real vendors and consumers. All are small-to-medium effort with no external dependencies. Analysis: [specs/UnmetNeedsReport.md](specs/UnmetNeedsReport.md) §1–2, [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md).
 
-### N12: Transfer Confirmation Screen — *All Three*
+### N12: Transfer Confirmation Screen — *All Three* ✓
 
-Split the transfer flow into build → preview → confirm. `buildAssignment()` already returns the constructed DataItem — extract amounts for display before calling `submitBlock()`.
+Transfer flow split into build → preview → confirm in ConsumerView.tsx. `handleBuild()` constructs the assignment with fee convergence and displays a confirmation panel. `handleConfirm()` signs and submits only after user review.
 
-**Deliverables:**
-- Confirmation modal/step showing: amount sent, fee, change returned, recipient pubkey (truncated), attachment count.
-- "Edit" to go back, "Confirm & Send" to submit.
-- No new dependencies — pure UI change in `ConsumerView.tsx`.
+**Confirmation panel shows:** amount sending (shares), recording fee, change returned (if any), recipient pubkey (truncated, or "New key"), attachment count. "Edit" returns to form; "Confirm & Send" submits. `PendingTransfer` interface holds built state between phases.
+
+**Implementation:** Pure refactor of [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx). No new dependencies or files.
 
 ### N13: Wallet Backup/Restore UX — *All Three*
 

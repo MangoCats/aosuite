@@ -27,6 +27,7 @@ pub mod blob;
 pub mod config;
 pub mod dashboard;
 pub mod health;
+pub mod metrics;
 pub mod mqtt;
 pub mod security;
 
@@ -259,9 +260,10 @@ impl AppState {
 
     /// Register a chain. Panics if the chains lock is poisoned (unrecoverable).
     pub fn add_chain(&self, chain_id: String, chain_state: Arc<ChainState>) {
-        self.chains.write()
-            .expect("chains write lock poisoned — server state corrupt")
-            .insert(chain_id, chain_state);
+        let mut chains = self.chains.write()
+            .expect("chains write lock poisoned — server state corrupt");
+        chains.insert(chain_id, chain_state);
+        metrics::set_chains_hosted(chains.len() as i64);
     }
 
     /// Get a chain by ID, or RecorderError::ChainNotFound.
@@ -274,12 +276,22 @@ impl AppState {
     }
 }
 
+/// Guard that decrements SSE gauge on drop.
+struct SseGuard;
+
+impl Drop for SseGuard {
+    fn drop(&mut self) {
+        metrics::sse_disconnected();
+    }
+}
+
 // Stream wrapper that holds a semaphore permit, releasing it when the stream ends.
 pin_project_lite::pin_project! {
     struct PermitStream<S> {
         #[pin]
         inner: S,
         _permit: Option<tokio::sync::OwnedSemaphorePermit>,
+        _sse_guard: Option<SseGuard>,
     }
 }
 
@@ -422,8 +434,13 @@ pub fn build_router_with_config(state: Arc<AppState>, cfg: &config::Config) -> R
         .route("/chain/{id}/blob", axum::routing::post(blob::upload_blob))
         .layer(DefaultBodyLimit::max(blob_body_limit));
 
+    // Metrics endpoint (no auth, no state needed — reads from global registry)
+    let metrics_route = Router::new()
+        .route("/metrics", get(metrics::metrics_handler));
+
     let mut app: Router = standard_routes
         .merge(blob_routes)
+        .merge(metrics_route)
         .with_state(state);
 
     // Apply rate limiting if configured
@@ -733,6 +750,9 @@ async fn submit_assignment(
     // Walk the assignment's SHA256 children and look up matching blobs.
     let blob_sizes = collect_blob_sizes(&state, &chain_id_hex, &authorization);
 
+    let submit_start = std::time::Instant::now();
+    let chain_id_for_metrics = chain_id_hex.clone();
+
     // All SQLite work runs on the blocking pool
     let info = blocking(move || {
         let store = lock_store(&chain)?;
@@ -765,7 +785,16 @@ async fn submit_assignment(
 
         let _ = chain.block_tx.send(info.clone());
         Ok(info)
-    }).await?;
+    }).await;
+
+    match &info {
+        Ok(_) => metrics::record_block_submitted(
+            &chain_id_for_metrics,
+            submit_start.elapsed().as_secs_f64(),
+        ),
+        Err(_) => metrics::record_block_submit_error(),
+    }
+    let info = info?;
 
     // MQTT publish (non-blocking, fire-and-forget)
     if let Some(mqtt) = state.mqtt.get() {
@@ -842,7 +871,8 @@ async fn sse_events(
         }
     });
     // Hold permit for the lifetime of the stream (dropped when stream ends)
-    let stream = PermitStream { inner: stream, _permit: permit };
+    metrics::sse_connected();
+    let stream = PermitStream { inner: stream, _permit: permit, _sse_guard: Some(SseGuard) };
     Ok(Sse::new(stream).keep_alive(sse::KeepAlive::default()))
 }
 
@@ -1503,6 +1533,7 @@ async fn ws_connection(
     chain: Arc<ChainState>,
     _permit: Option<tokio::sync::OwnedSemaphorePermit>,
 ) {
+    metrics::ws_connected();
     let mut rx = chain.block_tx.subscribe();
     loop {
         tokio::select! {
@@ -1532,4 +1563,5 @@ async fn ws_connection(
             }
         }
     }
+    metrics::ws_disconnected();
 }

@@ -687,14 +687,9 @@ SalesReport component in VendorView. Aggregates received transactions daily/week
 
 SSE-based deposit detection in ao-exchange. Per-chain SSE listener tasks subscribe to recorder `/chain/{id}/events`, notify main loop via mpsc channel on new blocks, triggering immediate `check_deposits`. Falls back to polling on SSE disconnect with automatic reconnection. Config field `deposit_detection` validated ("sse" default, "polling" legacy). Buffer management: 64KB cap prevents memory exhaustion, partial-event retention avoids dropped events across chunks. SSE comments (keep-alive) stripped. Silent exit on all-listeners-dead returns error instead of Ok. 12 new tests (SSE parsing, config defaults/validation).
 
-### N22: Prometheus Metrics — *All Three*
+### N22: Prometheus Metrics — *All Three* ✓ Done
 
-Standard monitoring integration for ao-recorder and ao-validator.
-
-**Deliverables:**
-- `prometheus` crate dependency. `GET /metrics` endpoint (optional, behind feature flag).
-- Instruments: block submissions (counter + latency histogram), blob uploads (counter + size histogram), validation runs (counter + result label), SSE connections (gauge), active chains (gauge).
-- Example Grafana dashboard JSON in `2026/ops/`.
+Optional Prometheus metrics behind `metrics` feature flag in ao-recorder and ao-validator. `GET /metrics` endpoint returns Prometheus text format. Recorder instruments: block submissions (counter + latency histogram), blob uploads (counter + size by status), SSE connections (gauge with drop-based tracking), WebSocket connections (gauge), chains hosted (gauge). Validator instruments: validation runs (counter by chain/result), blocks verified (counter), verify duration (histogram), validated height (gauge per chain), alerts dispatched (counter by type). No-op when feature disabled. Example Grafana dashboard in `2026/ops/`. 6 new tests (with feature flag).
 
 ### N23: Mobile UI Polish — *All Three*
 

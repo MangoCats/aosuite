@@ -1,0 +1,145 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "title": "Recorder — Block Submissions",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "rate(recorder_blocks_submitted_total{status=\"ok\"}[5m])",
+          "legendFormat": "blocks/s (ok)"
+        },
+        {
+          "expr": "rate(recorder_blocks_submitted_total{status=\"error\"}[5m])",
+          "legendFormat": "blocks/s (error)"
+        }
+      ]
+    },
+    {
+      "title": "Recorder — Block Submit Latency",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, rate(recorder_block_submit_duration_seconds_bucket[5m]))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, rate(recorder_block_submit_duration_seconds_bucket[5m]))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, rate(recorder_block_submit_duration_seconds_bucket[5m]))",
+          "legendFormat": "p99"
+        }
+      ]
+    },
+    {
+      "title": "Recorder — Blob Uploads",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "rate(recorder_blobs_uploaded_total[5m])",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "title": "Recorder — Active Connections",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 8 },
+      "targets": [
+        {
+          "expr": "recorder_sse_connections_active",
+          "legendFormat": "SSE"
+        },
+        {
+          "expr": "recorder_ws_connections_active",
+          "legendFormat": "WebSocket"
+        }
+      ]
+    },
+    {
+      "title": "Recorder — Chains Hosted",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 8 },
+      "targets": [
+        {
+          "expr": "recorder_chains_hosted",
+          "legendFormat": "chains"
+        }
+      ]
+    },
+    {
+      "title": "Validator — Verification Runs",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "expr": "rate(validator_runs_total[5m])",
+          "legendFormat": "{{chain}} — {{result}}"
+        }
+      ]
+    },
+    {
+      "title": "Validator — Blocks Verified",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "expr": "rate(validator_blocks_verified_total[5m])",
+          "legendFormat": "{{chain}}"
+        }
+      ]
+    },
+    {
+      "title": "Validator — Verified Height",
+      "type": "stat",
+      "gridPos": { "h": 4, "w": 12, "x": 0, "y": 24 },
+      "targets": [
+        {
+          "expr": "validator_validated_height",
+          "legendFormat": "{{chain}}"
+        }
+      ]
+    },
+    {
+      "title": "Validator — Verify Duration",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 24 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(validator_verify_duration_seconds_bucket[5m]))",
+          "legendFormat": "{{chain}} p95"
+        }
+      ]
+    },
+    {
+      "title": "Validator — Alerts",
+      "type": "timeseries",
+      "gridPos": { "h": 4, "w": 12, "x": 0, "y": 28 },
+      "targets": [
+        {
+          "expr": "rate(validator_alerts_total[5m])",
+          "legendFormat": "{{type}}"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["assign-onward"],
+  "templating": { "list": [] },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "Assign Onward — Recorder & Validator",
+  "uid": "ao-recorder-validator",
+  "version": 1
+}

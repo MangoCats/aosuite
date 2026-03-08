@@ -9,6 +9,7 @@ use tracing::info;
 use ao_validator::alert::{Alert, AlertDispatcher, AlertType};
 use ao_validator::client::RecorderClient;
 use ao_validator::config;
+use ao_validator::metrics;
 use ao_validator::store::ValidatorStore;
 use ao_validator::verifier;
 
@@ -118,7 +119,9 @@ async fn run_daemon(config_path: &str) -> Result<()> {
                             timestamp: unix_now(),
                         };
                         state.alerts.dispatch(&alert).await;
+                        metrics::record_alert("unreachable");
                     }
+                    metrics::record_run(label, "unreachable");
 
                     if let Some(prev) = prev {
                         let store = state.store.lock().map_err(|e| anyhow::anyhow!("store lock poisoned: {}", e))?;
@@ -156,6 +159,7 @@ async fn run_daemon(config_path: &str) -> Result<()> {
                     timestamp: unix_now(),
                 };
                 state.alerts.dispatch(&alert).await;
+                metrics::record_alert("recovered");
             }
 
             let validated = chain_state.validated_height;
@@ -174,6 +178,7 @@ async fn run_daemon(config_path: &str) -> Result<()> {
             let mut current_height = validated + 1;
             let mut rolled = chain_state.rolled_hash;
             let mut verification_ok = true;
+            let verify_start = std::time::Instant::now();
 
             while current_height <= recorder_height {
                 let batch_end = (current_height + 999).min(recorder_height);
@@ -201,6 +206,7 @@ async fn run_daemon(config_path: &str) -> Result<()> {
                     Ok(result) => {
                         rolled = result.rolled_hash;
                         current_height = result.last_height + 1;
+                        metrics::record_blocks_verified(label, result.count);
                         info!(
                             chain = %label,
                             verified = result.count,
@@ -217,6 +223,8 @@ async fn run_daemon(config_path: &str) -> Result<()> {
                             timestamp: unix_now(),
                         };
                         state.alerts.dispatch(&alert).await;
+                        metrics::record_alert("alteration");
+                        metrics::record_run(label, "alteration");
 
                         let store = state.store.lock().map_err(|e| anyhow::anyhow!("store lock poisoned: {}", e))?;
                         store.update_chain_state(
@@ -232,10 +240,14 @@ async fn run_daemon(config_path: &str) -> Result<()> {
             }
 
             if verification_ok {
+                let final_height = current_height.saturating_sub(1);
+                metrics::record_run(label, "ok");
+                metrics::record_verify_duration(label, verify_start.elapsed().as_secs_f64());
+                metrics::set_validated_height(label, final_height);
                 let store = state.store.lock().map_err(|e| anyhow::anyhow!("store lock poisoned: {}", e))?;
                 store.update_chain_state(
                     &chain_cfg.chain_id,
-                    current_height.saturating_sub(1),
+                    final_height,
                     &rolled, "ok", None,
                 )?;
             }
@@ -333,6 +345,7 @@ async fn run_api_server(
     let app = Router::new()
         .route("/validate", get(list_all_status))
         .route("/validate/{chain_id}", get(get_validation_status))
+        .route("/metrics", get(ao_validator::metrics::metrics_handler))
         .with_state(state);
 
     let addr = format!("{}:{}", host, port);

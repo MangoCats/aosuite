@@ -4,3 +4,4 @@ pub mod store;
 pub mod verifier;
 pub mod alert;
 pub mod anchor;
+pub mod metrics;

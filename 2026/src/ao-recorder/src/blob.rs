@@ -305,7 +305,21 @@ pub async fn upload_blob(
         return Err(BlobError::MimeNotAllowed(mime.to_string()));
     }
 
-    let hash_hex = blob_store.store(data, &chain_id)?;
+    let hash_hex = match blob_store.store(data, &chain_id) {
+        Ok(hash) => {
+            crate::metrics::record_blob_uploaded(&chain_id, data.len(), "ok");
+            hash
+        }
+        Err(e) => {
+            let status = match &e {
+                BlobError::TooLarge { .. } => "too_large",
+                BlobError::QuotaExceeded { .. } => "quota_exceeded",
+                _ => "error",
+            };
+            crate::metrics::record_blob_uploaded(&chain_id, data.len(), status);
+            return Err(e);
+        }
+    };
     tracing::info!(chain = %chain_id, size = data.len(), hash = %hash_hex, "Blob stored");
 
     Ok(Json(json!({ "hash": hash_hex })))

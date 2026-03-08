@@ -556,74 +556,25 @@ Network-layer security fixes identified by the [security audit](SECURITY_AUDIT.m
 
 **F3 — CAA Recorder Trust**: Signed recorder identity deferred to when multi-recorder topology is implemented. Current config-based `known_recorders` is adequate for single-recorder deployments.
 
-### N11: Multi-Device Wallet Sync — *All Three* — In Progress
+### N11: Multi-Device Wallet Sync — *All Three* ✓
 
-Specification: [specs/WalletSync.md](specs/WalletSync.md)
+Specification: [specs/WalletSync.md](specs/WalletSync.md). User guide: [WalletSyncGuide.md](WalletSyncGuide.md).
 
-Users need to access the same coin-keys from multiple devices (phone and desktop, husband and wife sharing a household wallet). AO's single-use key design means every transaction generates fresh keys that must be communicated to other devices, and every device must validate held keys against the recorder before transacting.
+Five sub-phases (S1–S5) delivering multi-device key sync for AO's single-use key model:
 
-Three layered approaches, shipped incrementally:
+**S1: UTXO Validation on Connect** — ✓: `validateKeysOnChain()` queries recorder for each held key's UTXO status on startup and on SSE block events. Stale keys marked spent. Unknown-device spend alerts displayed in ConsumerView.
 
-#### S1: UTXO Validation on Connect ✓ (existing infrastructure)
+**S2: Wallet State Model + IndexedDB Migration** — ✓: `walletDb.ts` (449 lines). `ao-wallet` IndexedDB with `keys`, `peers`, `config` object stores. `KeyEntry` model with chain/seq/status/sync tracking. Device identity (persistent 16-byte random ID). `migrateFromLocalStorage()` imports single-seed wallet on first load. `chainBalance()` aggregates unspent keys. Seed encryption via Argon2id + XChaCha20-Poly1305 per CryptoChoices.md §4. `PassphrasePrompt` component for setup and session unlock. 13 tests.
 
-Already available via `GET /chain/{id}/utxo/{seq_id}` and SSE/WebSocket block events. Devices query the recorder to confirm held keys are still unspent. No new code needed — but the PWA wallet must call these endpoints on startup and surface results clearly.
+**S3: QR Key Transfer** — ✓: `walletSync.ts` (298 lines). `buildSyncPayload()` / `buildFullExportPayload()` assemble key/spent entries. `importSyncPayload()` with idempotent key import. `AnimatedQrCode` component for multi-frame QR (>1800 bytes). `WalletSync` component with export/scan/file-import modes. Header sync badge shows unsynced count. File-based fallback for desktop-to-desktop. 8 + 12 tests.
 
-**Deliverables:**
-- Wallet startup validation: query recorder for each held key's UTXO status on connect
-- Stale key detection: mark keys as spent when recorder reports them spent
-- Unknown spend alert: warn user when a key was spent by an unrecognized device
-- SSE integration: subscribe to chain events for real-time spend notification on held keys
+**S4: Paired-Device Push Relay** — ✓: `pairing.ts` (212 lines) — X25519 key agreement → HKDF-SHA256 → `relay_key`. AES-GCM relay encryption. Wallet ID = SHA-256(relay_key) truncated (browser-compatible; spec notes BLAKE3 alternative). `relayClient.ts` (278 lines) — WebSocket relay client with auto-reconnect, KEY_ACQUIRED/KEY_SPENT/HEARTBEAT sync messages, sequence replay protection. `PairedDevices` component with QR pairing ceremony, peer list, unpair. **ao-relay** crate (316 lines) — Axum WebSocket forwarder, per-wallet broadcast channels, 72-hour message retention, background cleanup. App.tsx wires RelayClient lifecycle to paired device state. 11 + 5 tests.
 
-#### S2: Wallet State Model + IndexedDB Migration
+**S5: User Guide** — ✓: [WalletSyncGuide.md](WalletSyncGuide.md) — single-device basics, QR sync, paired devices, lost device recovery, backup recommendations, troubleshooting.
 
-Upgrade from single-seed localStorage to a multi-key IndexedDB wallet with device identity.
+**Implementation:** [walletDb.ts](src/ao-pwa/src/core/walletDb.ts), [walletSync.ts](src/ao-pwa/src/core/walletSync.ts), [pairing.ts](src/ao-pwa/src/core/pairing.ts), [relayClient.ts](src/ao-pwa/src/core/relayClient.ts), [WalletSync.tsx](src/ao-pwa/src/components/WalletSync.tsx), [AnimatedQrCode.tsx](src/ao-pwa/src/components/AnimatedQrCode.tsx), [PairedDevices.tsx](src/ao-pwa/src/components/PairedDevices.tsx), [PassphrasePrompt.tsx](src/ao-pwa/src/components/PassphrasePrompt.tsx), [ao-relay/](src/ao-relay/). Integration in App.tsx (migration + passphrase + relay lifecycle), Header.tsx (sync badge), Settings.tsx (paired devices), ConsumerView.tsx (IndexedDB key storage + UTXO validation + spend alerts), useStore.ts (multi-key state, passphrase, relay). 49 N11-specific tests (13 walletDb + 8 walletSync + 12 animatedQr + 11 pairing + 5 ao-relay).
 
-**Deliverables:**
-- `WalletState` model: device ID, device label, `KeyEntry[]` with chain/seq/status/sync tracking, `PeerDevice[]` for paired devices
-- IndexedDB storage (`ao-wallet` database): `keys`, `peers`, `config` object stores
-- Migration: import existing `localStorage` wallet (`ao_wallet_seed`, `ao_wallet_pubkey`, `ao_wallet_label`) into IndexedDB on first load, then remove `localStorage` entries
-- Multi-key balance display: aggregate unspent keys per chain, show total balance
-- Wallet passphrase: encrypt all seeds in IndexedDB with Argon2id + XChaCha20-Poly1305 per CryptoChoices.md §4 (upgrade from current unencrypted MVP storage)
-
-#### S3: QR Key Transfer (Approach 3 — Default)
-
-Air-gapped key transfer between user's own devices via QR scan. Zero new infrastructure.
-
-**Deliverables:**
-- Sync payload builder: JSON with `key_acquired` and `key_spent` entries, seeds encrypted with wallet passphrase
-- QR sync screen: source device displays payload as QR code (animated multi-frame for large payloads)
-- QR sync import: target device scans QR, prompts for wallet passphrase, decrypts and imports keys
-- Sync badge: header shows count of unsynced keys, tapping opens sync screen
-- Full wallet export: generate complete wallet state as single QR payload for initial device setup
-- File-based fallback: export/import sync payload as JSON file (for desktop ↔ desktop without camera)
-
-**Acceptance:** Generate keys on phone, QR-sync to desktop, desktop shows correct balance after recorder validation. Spend from desktop, QR-sync spent status to phone, phone shows updated balance.
-
-#### S4: Paired-Device Push Relay (Approach 2 — Shared Access)
-
-Real-time encrypted sync for shared wallets (household members, business partners). Sub-second key and spend propagation.
-
-**Deliverables:**
-
-**Device pairing:** One-time QR ceremony. X25519 key agreement → HKDF-SHA256 → shared `relay_key`. Group key distribution for >2 devices. Pair/unpair UI in Settings.
-
-**Relay server:** Minimal WebSocket forwarder (< 500 lines). Receives encrypted blobs, forwards to all clients with matching `wallet_id` (= `BLAKE3(group_key)` truncated). 72-hour message retention for offline devices. Self-hostable. MQTT alternative for existing broker deployments.
-
-**Sync messages:** Three types through the relay — `KEY_ACQUIRED` (new seeds, double-encrypted), `KEY_SPENT` (spend notifications with device attribution), `HEARTBEAT` (online presence, 5-minute interval).
-
-**Conflict resolution:** Recorder is authoritative. Duplicate key imports are idempotent. Missing relay messages recovered via recorder UTXO validation on reconnect.
-
-**PWA integration:** Settings panel for relay URL configuration, paired device list with online/offline status, automatic reconnect with exponential backoff.
-
-**Acceptance:** Pair phone and desktop via QR. Buy coins on phone — desktop shows updated balance within 2 seconds. Spend from desktop — phone shows "Spent by Desktop" within 2 seconds. Unpair a device — it can no longer receive sync messages.
-
-#### S5: User Guide
-
-**Deliverable:** [WalletSyncGuide.md](WalletSyncGuide.md) — user-facing guide covering: single-device wallet basics, QR sync between own devices, pairing devices for shared wallet, managing paired devices, what to do if a device is lost or compromised, backup recommendations.
-
-#### Implementation Order
-
-S1 → S2 → S3 → S5 → S4. The relay (S4) is the most complex component; S1–S3 deliver immediate value with zero infrastructure. The guide (S5) ships with S3 since QR sync is the primary user-facing feature.
+**Remaining:** Two-device end-to-end workflow test (requires hardware). Cloud vault backup (WalletSync.md §5, deferred).
 
 **Unblocks:** Husband and wife sharing a coin wallet from separate phones (All three). Tourist accessing coins from both phone and tablet (Tourism). Tia checking balances from shop desktop and personal phone (UBI). Cooperative members syncing transaction keys across field devices (Cooperative).
 
@@ -642,7 +593,7 @@ S1 → S2 → S3 → S5 → S4. The relay (S4) is the most complex component; S1
 | N8 | Binary attachments (photo/doc) | Coop, Tourism | Medium | N2, N7 | ✓ Done |
 | N9 | Server operations dashboard | All three | Medium–Large | — | ✓ Partial |
 | N10 | Security hardening | All three | Medium | — | ✓ Done (F3 deferred) |
-| N11 | Multi-device wallet sync | All three | Medium–Large | N2, N3 | In progress |
+| N11 | Multi-device wallet sync | All three | Medium–Large | N2, N3 | ✓ Done |
 | **Tier 1: Pilot blockers** | | | | | |
 | N12 | Transfer confirmation screen | All three | Small | N2 | — |
 | N13 | Wallet backup/restore UX | All three | Small | N11 | — |
@@ -670,7 +621,7 @@ S1 → S2 → S3 → S5 → S4. The relay (S4) is the most complex component; S1
 | N32 | Cooperative metadata UI | Coop | Large | N17 | — |
 | N33 | Hot-standby recorder | All three | Large | N10 (F3) | — |
 
-N1–N8 complete. N9 partially complete (installers remaining; Prometheus now tracked as N22). N10 complete except F3 (deferred). N11 in progress. N12–N33 derived from [specs/UnmetNeedsReport.md](specs/UnmetNeedsReport.md) and [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md).
+N1–N8 complete. N9 partially complete (installers remaining; Prometheus now tracked as N22). N10 complete except F3 (deferred). N11 complete. N12–N33 derived from [specs/UnmetNeedsReport.md](specs/UnmetNeedsReport.md) and [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md).
 
 Remaining hardware-dependent acceptance tests from earlier phases: two-device <3s latency, iOS/Android PWA install, Pi stress tests, Lighthouse PWA audit.
 

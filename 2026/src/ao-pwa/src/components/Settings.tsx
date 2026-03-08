@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../store/useStore.ts';
 import { QrScanner } from './QrScanner.tsx';
 import { PairedDevices } from './PairedDevices.tsx';
+import { WalletBackup } from './WalletBackup.tsx';
 
 /** Parse a chain info URL into recorder base URL and chain ID.
  *  Accepts: http://host:port/chain/{id}/info or http://host:port/chain/{id}
@@ -59,8 +60,11 @@ export function Settings() {
         />
       )}
 
+      {/* Wallet Backup */}
+      <WalletBackup />
+
       {/* Paired Devices */}
-      <div style={{ marginTop: 16, borderTop: '1px solid #eee', paddingTop: 12 }}>
+      <div style={{ marginTop: 12, borderTop: '1px solid #eee', paddingTop: 12 }}>
         <button onClick={() => setShowPairing(!showPairing)} style={{ fontSize: 13 }}>
           {showPairing ? 'Hide' : 'Paired Devices'}
         </button>

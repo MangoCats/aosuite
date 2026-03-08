@@ -75,6 +75,7 @@ export interface WalletConfig {
   deviceId: string;
   deviceLabel: string;
   relayUrl?: string;
+  lastBackupAt?: string; // ISO timestamp of last backup export
 }
 
 // ── IndexedDB ────────────────────────────────────────────────────────
@@ -139,6 +140,17 @@ export async function getDeviceLabel(): Promise<string> {
 export async function setDeviceLabel(label: string): Promise<void> {
   const config = await getConfig() ?? { deviceId: await getDeviceId(), deviceLabel: label };
   config.deviceLabel = label;
+  await setConfig(config);
+}
+
+export async function getLastBackupAt(): Promise<string | null> {
+  const config = await getConfig();
+  return config?.lastBackupAt ?? null;
+}
+
+export async function setLastBackupAt(isoTimestamp: string): Promise<void> {
+  const config = await getConfig() ?? { deviceId: await getDeviceId(), deviceLabel: 'This Device' };
+  config.lastBackupAt = isoTimestamp;
   await setConfig(config);
 }
 

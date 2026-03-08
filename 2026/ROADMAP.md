@@ -596,7 +596,7 @@ Five sub-phases (S1–S5) delivering multi-device key sync for AO's single-use k
 | N11 | Multi-device wallet sync | All three | Medium–Large | N2, N3 | ✓ Done |
 | **Tier 1: Pilot blockers** | | | | | |
 | N12 | Transfer confirmation screen | All three | Small | N2 | ✓ Done |
-| N13 | Wallet backup/restore UX | All three | Small | N11 | — |
+| N13 | Wallet backup/restore UX | All three | Small | N11 | ✓ Done |
 | N14 | Offline balance cache | All three | Small | N11 | — |
 | N15 | Transaction history + CSV export | All three | Medium | N2 | — |
 | N16 | Vendor profile persistence + on-chain | Tourism | Small | N5 | — |
@@ -639,17 +639,11 @@ Transfer flow split into build → preview → confirm in ConsumerView.tsx. `han
 
 **Implementation:** Pure refactor of [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx). No new dependencies or files.
 
-### N13: Wallet Backup/Restore UX — *All Three*
+### N13: Wallet Backup/Restore UX — *All Three* ✓
 
-File-based encrypted backup using existing `buildFullExportPayload()` from `walletSync.ts`. Cloud backup deferred to when cloud vault (WalletSync.md §5) is implemented.
+Encrypted file-based wallet backup using existing `buildFullExportPayload()`. Backup file format: JSON envelope with PBKDF2-SHA256 + AES-256-GCM encrypted payload (salt + IV + ciphertext). Export prompts for backup password (8+ chars, confirmed), downloads `.json` file. Import accepts file + password, decrypts and merges keys via `importSyncPayload()`. `WalletBackup` component in Settings panel with export/import modes. Backup age tracking in IndexedDB (`lastBackupAt`): yellow warning when no backup exists or >30 days stale. Cloud backup deferred (WalletSync.md §5).
 
-**Deliverables:**
-- Settings panel: "Export Wallet Backup" → password prompt → downloads encrypted JSON file.
-- Settings panel: "Import Wallet Backup" → file picker + password → decrypts and merges keys into IndexedDB.
-- Warning on first wallet creation: "No backup exists. Back up now?"
-- Periodic reminder if no backup in 30 days.
-
-**Depends on:** N11 (wallet sync IndexedDB infrastructure).
+**Implementation:** [backup.ts](src/ao-pwa/src/core/backup.ts) (encrypt/decrypt), [WalletBackup.tsx](src/ao-pwa/src/components/WalletBackup.tsx) (UI), [walletDb.ts](src/ao-pwa/src/core/walletDb.ts) (`lastBackupAt` config field), [Settings.tsx](src/ao-pwa/src/components/Settings.tsx) (integration). 4 tests (round-trip, wrong password, large payload, salt uniqueness).
 
 ### N14: Offline Balance Cache — *All Three*
 

@@ -9,7 +9,11 @@ pub struct Config {
     /// Optional MQTT config for real-time block notifications.
     #[serde(default)]
     pub mqtt: Option<MqttConfig>,
+    /// Deposit detection mode: "sse" (default) or "polling".
+    #[serde(default = "default_deposit_detection")]
+    pub deposit_detection: String,
     /// Polling interval in seconds for deposit detection (default: 5).
+    /// Used as poll interval in polling mode and as fallback interval when SSE drops.
     #[serde(default = "default_poll_interval")]
     pub poll_interval_secs: u64,
     /// Trade request TTL in seconds (default: 300).
@@ -20,6 +24,7 @@ pub struct Config {
     pub deadline_secs: i64,
 }
 
+fn default_deposit_detection() -> String { "sse".to_string() }
 fn default_poll_interval() -> u64 { 5 }
 fn default_trade_ttl() -> u64 { 300 }
 fn default_deadline() -> i64 { 86400 }
@@ -76,6 +81,88 @@ fn default_mqtt_port() -> u16 { 1883 }
 fn default_client_id() -> String { "ao-exchange".to_string() }
 fn default_topic_prefix() -> String { "ao/chain".to_string() }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deposit_detection_defaults_to_sse() {
+        let toml = r#"
+[[pairs]]
+sell = "BCG"
+buy = "MPF"
+rate = 1.5
+
+[[chains]]
+symbol = "BCG"
+recorder_url = "http://localhost:3000"
+key_seed = "aa"
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.deposit_detection, "sse");
+    }
+
+    #[test]
+    fn deposit_detection_can_be_set_to_polling() {
+        let toml = r#"
+deposit_detection = "polling"
+
+[[pairs]]
+sell = "BCG"
+buy = "MPF"
+rate = 1.5
+
+[[chains]]
+symbol = "BCG"
+recorder_url = "http://localhost:3000"
+key_seed = "aa"
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.deposit_detection, "polling");
+    }
+
+    #[test]
+    fn invalid_deposit_detection_rejected() {
+        let dir = std::env::temp_dir();
+        let path = dir.join("test_invalid_detect.toml");
+        std::fs::write(&path, r#"
+deposit_detection = "SSE"
+
+[[pairs]]
+sell = "A"
+buy = "B"
+rate = 1.0
+
+[[chains]]
+symbol = "A"
+recorder_url = "http://localhost:3000"
+key_seed = "bb"
+"#).unwrap();
+        let result = super::load_config(path.to_str().unwrap());
+        let err = result.err().expect("should fail on invalid deposit_detection");
+        let msg = err.to_string();
+        assert!(msg.contains("invalid deposit_detection"), "got: {}", msg);
+        std::fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn poll_interval_default() {
+        let toml = r#"
+[[pairs]]
+sell = "A"
+buy = "B"
+rate = 1.0
+
+[[chains]]
+symbol = "A"
+recorder_url = "http://localhost:3000"
+key_seed = "bb"
+"#;
+        let cfg: Config = toml::from_str(toml).unwrap();
+        assert_eq!(cfg.poll_interval_secs, 5);
+    }
+}
+
 pub fn load_config(path: &str) -> anyhow::Result<Config> {
     let content = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("failed to read config {}: {}", path, e))?;
@@ -86,6 +173,12 @@ pub fn load_config(path: &str) -> anyhow::Result<Config> {
     }
     if config.chains.is_empty() {
         anyhow::bail!("at least one [[chains]] entry required in {}", path);
+    }
+    if config.deposit_detection != "sse" && config.deposit_detection != "polling" {
+        anyhow::bail!(
+            "invalid deposit_detection '{}' in {} (must be 'sse' or 'polling')",
+            config.deposit_detection, path,
+        );
     }
     Ok(config)
 }

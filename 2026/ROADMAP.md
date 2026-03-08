@@ -683,17 +683,9 @@ Collapsible "Print QR Signage" section in VendorView. SVG QR code preview with c
 
 SalesReport component in VendorView. Aggregates received transactions daily/weekly/monthly with totals (coins), transaction count, average per-tx. UTC-based period keys (daily YYYY-MM-DD, weekly ISO YYYY-Wnn, monthly YYYY-MM). Date range picker (default 30 days). Incremental block scanning with IndexedDB cache (reuses N15 txHistory). CSV export with coin amounts and averages.
 
-### N21: SSE Deposit Detection for Exchange — *All Three*
+### N21: SSE Deposit Detection for Exchange — *All Three* ✓ Done
 
-Upgrade ao-exchange from polling to SSE subscription for faster trade settlement.
-
-**Deliverables:**
-- Subscribe to `GET /chain/{id}/events` SSE on each watched chain.
-- On new block: immediately check for deposits matching pending trades.
-- Fall back to polling if SSE connection drops.
-- Config: `deposit_detection = "sse"` (default) or `"polling"` (legacy).
-
-**Depends on:** Recorder SSE endpoint (exists).
+SSE-based deposit detection in ao-exchange. Per-chain SSE listener tasks subscribe to recorder `/chain/{id}/events`, notify main loop via mpsc channel on new blocks, triggering immediate `check_deposits`. Falls back to polling on SSE disconnect with automatic reconnection. Config field `deposit_detection` validated ("sse" default, "polling" legacy). Buffer management: 64KB cap prevents memory exhaustion, partial-event retention avoids dropped events across chunks. SSE comments (keep-alive) stripped. Silent exit on all-listeners-dead returns error instead of Ok. 12 new tests (SSE parsing, config defaults/validation).
 
 ### N22: Prometheus Metrics — *All Three*
 

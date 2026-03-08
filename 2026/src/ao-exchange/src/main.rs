@@ -15,6 +15,8 @@ use tracing::info;
 
 use ao_exchange::config;
 use ao_exchange::engine::ExchangeEngine;
+use ao_exchange::client::RecorderClient;
+use ao_exchange::client::parse_sse_events;
 
 /// Maximum request body size (64 KB — trade requests are small JSON).
 const MAX_BODY_SIZE: usize = 64 * 1024;
@@ -63,6 +65,7 @@ async fn main() -> Result<()> {
 async fn run_daemon(config_path: &str, listen: &str) -> Result<()> {
     let cfg = config::load_config(config_path)?;
     let poll_interval = std::time::Duration::from_secs(cfg.poll_interval_secs);
+    let use_sse = cfg.deposit_detection == "sse";
 
     let engine = ExchangeEngine::from_config(&cfg).await
         .context("failed to initialize exchange engine")?;
@@ -70,6 +73,7 @@ async fn run_daemon(config_path: &str, listen: &str) -> Result<()> {
     info!(
         pairs = engine.pairs.len(),
         chains = engine.chains.len(),
+        detection = %cfg.deposit_detection,
         poll_secs = cfg.poll_interval_secs,
         trade_ttl = cfg.trade_ttl_secs,
         "Exchange agent started"
@@ -99,7 +103,123 @@ async fn run_daemon(config_path: &str, listen: &str) -> Result<()> {
         }
     });
 
-    // Main polling loop
+    if use_sse {
+        run_sse_loop(shared, poll_interval).await
+    } else {
+        run_polling_loop(shared, poll_interval).await
+    }
+}
+
+/// Maximum SSE buffer size per chain (64 KB). Protects against unbounded
+/// buffer growth from malformed or malicious SSE streams.
+const MAX_SSE_BUF: usize = 64 * 1024;
+
+/// SSE-based deposit detection: subscribe to block events on each chain.
+/// Falls back to polling if SSE connection drops, reconnects after poll_interval.
+async fn run_sse_loop(
+    shared: SharedEngine,
+    poll_interval: std::time::Duration,
+) -> Result<()> {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(32);
+
+    // Spawn per-chain SSE listeners
+    let chain_configs: Vec<(String, String, String)> = {
+        let engine = shared.lock().await;
+        engine.chains.iter().map(|(chain_id, state)| {
+            (chain_id.clone(), state.symbol.clone(), state.client.base_url().to_string())
+        }).collect()
+    };
+
+    for (chain_id, symbol, recorder_url) in chain_configs {
+        let tx = tx.clone();
+        let poll_interval = poll_interval;
+        tokio::spawn(async move {
+            loop {
+                let client = RecorderClient::new(&recorder_url);
+                match client.subscribe_blocks(&chain_id).await {
+                    Ok(mut resp) => {
+                        info!(chain = %symbol, "SSE connected");
+                        let mut buf = String::new();
+                        loop {
+                            match resp.chunk().await {
+                                Ok(Some(chunk)) => {
+                                    if let Ok(text) = std::str::from_utf8(&chunk) {
+                                        buf.push_str(text);
+
+                                        // Guard against unbounded buffer growth
+                                        if buf.len() > MAX_SSE_BUF {
+                                            tracing::warn!(
+                                                chain = %symbol,
+                                                buf_len = buf.len(),
+                                                "SSE buffer exceeded limit, clearing"
+                                            );
+                                            buf.clear();
+                                            continue;
+                                        }
+
+                                        let result = parse_sse_events(&buf);
+                                        if !result.events.is_empty() {
+                                            // Retain any partial trailing data
+                                            buf = buf[result.consumed..].to_string();
+                                            for event in &result.events {
+                                                tracing::debug!(
+                                                    chain = %symbol,
+                                                    height = event.height,
+                                                    seq_count = event.seq_count,
+                                                    "SSE block event"
+                                                );
+                                            }
+                                            // Notify main loop to check deposits
+                                            let _ = tx.send(chain_id.clone()).await;
+                                        }
+                                    }
+                                }
+                                Ok(None) => {
+                                    tracing::warn!(chain = %symbol, "SSE stream ended");
+                                    break;
+                                }
+                                Err(e) => {
+                                    tracing::warn!(chain = %symbol, "SSE error: {}", e);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(chain = %symbol, "SSE connect failed: {}", e);
+                    }
+                }
+                // Reconnect after poll_interval (fallback to polling behavior)
+                tracing::info!(chain = %symbol, "Falling back to poll, reconnecting SSE in {:?}", poll_interval);
+                // Do a poll-based check while SSE is down
+                let _ = tx.send(chain_id.clone()).await;
+                tokio::time::sleep(poll_interval).await;
+            }
+        });
+    }
+    drop(tx); // Drop sender so rx ends when all spawned tasks end
+
+    // Main loop: check deposits whenever an SSE event arrives
+    while let Some(_chain_id) = rx.recv().await {
+        // Drain any queued notifications to batch process
+        while rx.try_recv().is_ok() {}
+
+        let mut engine = shared.lock().await;
+        let results = engine.check_deposits().await;
+        if !results.is_empty() {
+            info!(trades = results.len(), "SSE-triggered deposit check completed trades");
+        }
+        for (symbol, balance) in engine.positions() {
+            tracing::debug!(symbol = %symbol, balance = %balance, "Position");
+        }
+    }
+
+    tracing::error!("All SSE listeners exited — exchange agent stopping");
+    anyhow::bail!("all SSE listeners exited unexpectedly")
+}
+
+/// Legacy polling-based deposit detection.
+async fn run_polling_loop(shared: SharedEngine, poll_interval: std::time::Duration) -> Result<()> {
     loop {
         tokio::time::sleep(poll_interval).await;
 
@@ -110,7 +230,6 @@ async fn run_daemon(config_path: &str, listen: &str) -> Result<()> {
             info!(trades = results.len(), "Poll cycle completed trades");
         }
 
-        // Log positions periodically
         for (symbol, balance) in engine.positions() {
             tracing::debug!(symbol = %symbol, balance = %balance, "Position");
         }

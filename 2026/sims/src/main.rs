@@ -133,9 +133,22 @@ async fn main() -> Result<()> {
     let speed: SharedSpeed = Arc::new(AtomicU64::new(scenario.simulation.speed.to_bits()));
     let pause_flags: PauseFlags = Arc::new(RwLock::new(HashMap::new()));
 
+    // Build scenario metadata for viewer onboarding
+    let scenario_meta = viewer::ScenarioMeta {
+        name: scenario.simulation.name.clone(),
+        title: scenario.simulation.title.clone(),
+        description: scenario.simulation.description.clone(),
+        what_to_watch: scenario.simulation.what_to_watch.clone(),
+        agents: scenario.agents.iter().map(|a| viewer::AgentMeta {
+            name: a.name.clone(),
+            role: a.role.clone(),
+            blurb: a.blurb.clone(),
+        }).collect(),
+    };
+
     // Start viewer state + API server
     let viewer_state = Arc::new(ViewerState::new());
-    let viewer_url = start_viewer(cli.viewer_port, viewer_state.clone(), Arc::clone(&speed), Arc::clone(&pause_flags)).await;
+    let viewer_url = start_viewer(cli.viewer_port, viewer_state.clone(), Arc::clone(&speed), Arc::clone(&pause_flags), scenario_meta).await;
     info!("Viewer API running at {}", viewer_url);
 
     // Build pre-genesis lookup: vendor_name → (genesis_json, issuer_seed)
@@ -328,11 +341,13 @@ async fn start_viewer(
     viewer_state: Arc<ViewerState>,
     speed: SharedSpeed,
     pause_flags: PauseFlags,
+    scenario_meta: viewer::ScenarioMeta,
 ) -> String {
     let app_state = viewer::ViewerAppState {
         viewer: viewer_state,
         speed,
         pause_flags,
+        scenario_meta,
     };
     let app = viewer::build_viewer_router(app_state);
 

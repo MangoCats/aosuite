@@ -14,15 +14,28 @@ const ROLE_COLORS: Record<string, string> = {
 };
 
 export function MapView() {
-  const { agents, transactions, selectAgent, timeFilter, showHeatMap, toggleHeatMap, showCoverage, toggleCoverage, showAuditOverlay, toggleAuditOverlay } = useStore();
+  const { agents, transactions, selectAgent, timeFilter, scenarioMeta,
+    showHeatMap, toggleHeatMap, showCoverage, toggleCoverage, showAuditOverlay, toggleAuditOverlay } = useStore();
   const mapRef = useRef<L.Map | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const markersRef = useRef<Map<string, L.CircleMarker>>(new Map());
+  const labelsRef = useRef<Map<string, L.Marker>>(new Map());
   const arcsRef = useRef<L.Polyline[]>([]);
   const heatRef = useRef<L.Circle[]>([]);
   const coverageRef = useRef<L.Circle[]>([]);
   const auditRef = useRef<L.Circle[]>([]);
   const tooltipLayerRef = useRef<L.LayerGroup | null>(null);
+
+  // Build blurb lookup from scenario metadata
+  const blurbMap = useRef(new Map<string, string>());
+  useEffect(() => {
+    blurbMap.current.clear();
+    if (scenarioMeta) {
+      for (const a of scenarioMeta.agents) {
+        if (a.blurb) blurbMap.current.set(a.name, a.blurb);
+      }
+    }
+  }, [scenarioMeta]);
 
   // Initialize map once
   useEffect(() => {
@@ -55,13 +68,14 @@ export function MapView() {
       map.remove();
       mapRef.current = null;
       markersRef.current.clear();
+      labelsRef.current.clear();
       arcsRef.current = [];
       tooltipLayerRef.current = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Update markers when agents change
+  // Update markers and labels when agents change
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -69,11 +83,13 @@ export function MapView() {
     const existingNames = new Set(markersRef.current.keys());
     const currentNames = new Set(agents.map((a) => a.name));
 
-    // Remove markers for agents no longer present
+    // Remove markers/labels for agents no longer present
     for (const name of existingNames) {
       if (!currentNames.has(name)) {
         markersRef.current.get(name)?.remove();
         markersRef.current.delete(name);
+        labelsRef.current.get(name)?.remove();
+        labelsRef.current.delete(name);
       }
     }
 
@@ -86,7 +102,7 @@ export function MapView() {
         existing.setLatLng([agent.lat, agent.lon]);
         existing.setStyle({ fillColor: ROLE_COLORS[agent.role] || '#868e96' });
         existing.unbindTooltip();
-        existing.bindTooltip(buildTooltip(agent), { direction: 'top', offset: [0, -8] });
+        existing.bindTooltip(buildTooltip(agent, blurbMap.current), { direction: 'top', offset: [0, -8] });
       } else {
         const marker = L.circleMarker([agent.lat, agent.lon], {
           radius: agent.role === 'vendor' ? 10 : agent.role === 'exchange' ? 8 : 6,
@@ -95,11 +111,30 @@ export function MapView() {
           weight: 2,
           fillOpacity: 0.9,
         });
-        marker.bindTooltip(buildTooltip(agent), { direction: 'top', offset: [0, -8] });
+        marker.bindTooltip(buildTooltip(agent, blurbMap.current), { direction: 'top', offset: [0, -8] });
         marker.on('click', () => selectAgent(agent.name));
         marker.addTo(map);
         markersRef.current.set(agent.name, marker);
+
+        // Add persistent name label above marker
+        const labelIcon = L.divIcon({
+          className: 'agent-label',
+          html: `<span style="
+            font-size: 11px; font-weight: 600; color: ${ROLE_COLORS[agent.role] || '#868e96'};
+            text-shadow: 1px 1px 2px #fff, -1px -1px 2px #fff, 1px -1px 2px #fff, -1px 1px 2px #fff;
+            white-space: nowrap; pointer-events: none;
+          ">${agent.name}</span>`,
+          iconSize: [0, 0],
+          iconAnchor: [0, 18],
+        });
+        const label = L.marker([agent.lat, agent.lon], { icon: labelIcon, interactive: false });
+        label.addTo(map);
+        labelsRef.current.set(agent.name, label);
       }
+
+      // Update label position
+      const label = labelsRef.current.get(agent.name);
+      if (label) label.setLatLng([agent.lat, agent.lon]);
     }
   }, [agents, selectAgent]);
 
@@ -147,7 +182,7 @@ export function MapView() {
     }
   }, [agents, transactions, timeFilter]);
 
-  // Heat map overlay: semi-transparent circles at transaction midpoints (debounced)
+  // Heat map overlay
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -177,7 +212,7 @@ export function MapView() {
         const midLat = (from.lat + to.lat) / 2;
         const midLon = (from.lon + to.lon) / 2;
         const age = now - tx.timestamp_ms;
-        const opacity = Math.max(0.05, 0.4 * (1 - age / 300000)); // fade over 5 min
+        const opacity = Math.max(0.05, 0.4 * (1 - age / 300000));
 
         const circle = L.circle([midLat, midLon], {
           radius: 80,
@@ -192,7 +227,7 @@ export function MapView() {
     return () => clearTimeout(timer);
   }, [agents, transactions, timeFilter, showHeatMap]);
 
-  // Coverage zones: circles around vendors
+  // Coverage zones
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -218,7 +253,7 @@ export function MapView() {
     }
   }, [agents, showCoverage]);
 
-  // Audit overlay: halos around vendors showing chain validation status
+  // Audit overlay
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -233,20 +268,17 @@ export function MapView() {
       for (const c of auditRef.current) c.remove();
       auditRef.current = [];
 
-      // Collect validator chain statuses
-      const chainStatus = new Map<string, string>(); // chain_id -> "ok" | "alert"
+      const chainStatus = new Map<string, string>();
       for (const a of agents) {
         if (!a.validator_status) continue;
         for (const mc of a.validator_status.monitored_chains) {
           const existing = chainStatus.get(mc.chain_id);
-          // alert overrides ok
           if (!existing || mc.status === 'alert') {
             chainStatus.set(mc.chain_id, mc.status);
           }
         }
       }
 
-      // Draw halos around vendors
       for (const agent of agents) {
         if (agent.role !== 'vendor') continue;
         if (agent.lat === 0 && agent.lon === 0) continue;
@@ -277,6 +309,7 @@ export function MapView() {
         ref={containerRef}
         style={{ width: '100%', height: 500, borderRadius: 8, border: '1px solid #dee2e6' }}
       />
+      {/* Overlay toggle buttons — top right */}
       <div style={{
         position: 'absolute', top: 10, right: 10, zIndex: 1000,
         display: 'flex', gap: 4, flexDirection: 'column',
@@ -312,17 +345,60 @@ export function MapView() {
           Audit
         </button>
       </div>
+      {/* Map legend — bottom left */}
+      <MapLegend />
     </div>
   );
 }
 
-function buildTooltip(agent: AgentState): string {
+function MapLegend() {
+  const roles = [
+    { role: 'vendor', label: 'Vendor' },
+    { role: 'exchange', label: 'Exchange' },
+    { role: 'consumer', label: 'Consumer' },
+    { role: 'validator', label: 'Validator' },
+    { role: 'attacker', label: 'Attacker' },
+  ];
+
+  return (
+    <div style={{
+      position: 'absolute', bottom: 10, left: 10, zIndex: 1000,
+      background: 'rgba(255,255,255,0.92)', borderRadius: 6,
+      padding: '6px 10px', fontSize: 11, lineHeight: 1.6,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.15)', border: '1px solid #dee2e6',
+    }}>
+      {roles.map(({ role, label }) => (
+        <div key={role} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{
+            display: 'inline-block', width: 8, height: 8, borderRadius: '50%',
+            background: ROLE_COLORS[role],
+          }} />
+          <span>{label}</span>
+        </div>
+      ))}
+      <div style={{ borderTop: '1px solid #e9ecef', marginTop: 4, paddingTop: 4 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ display: 'inline-block', width: 16, borderTop: '2px dashed #868e96' }} />
+          <span>Transaction</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <span style={{ display: 'inline-block', width: 16, borderTop: '3px solid #7048e8' }} />
+          <span>Atomic swap</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function buildTooltip(agent: AgentState, blurbs: Map<string, string>): string {
   const utxos = agent.chains.reduce((s, c) => s + c.unspent_utxos, 0);
   const chains = agent.chains.map((c) => c.symbol).join(', ');
-  return `<strong>${agent.name}</strong><br/>` +
-    `${agent.role} — ${agent.status}<br/>` +
-    `${agent.transactions} txns, ${utxos} UTXOs<br/>` +
-    (chains ? `Chains: ${chains}` : '');
+  const blurb = blurbs.get(agent.name);
+  return `<strong>${agent.name}</strong>` +
+    (blurb ? `<br/><em>${blurb}</em>` : '') +
+    `<br/>${agent.role} — ${agent.status}` +
+    `<br/>${agent.transactions} txns, ${utxos} UTXOs` +
+    (chains ? `<br/>Chains: ${chains}` : '');
 }
 
 function formatTxPopup(tx: TransactionEvent): string {

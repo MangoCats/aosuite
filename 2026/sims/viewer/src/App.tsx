@@ -1,17 +1,25 @@
 import { useEffect, useRef } from 'react';
 import { useStore } from './store';
-import { connectWs, fetchChains } from './api';
+import { connectWs, fetchChains, fetchScenario } from './api';
 import { AgentTable } from './components/AgentTable';
 import { ChainTable } from './components/ChainTable';
 import { TransactionLog } from './components/TransactionLog';
 import { AgentDetail } from './components/AgentDetail';
 import { MapView } from './components/MapView';
 import { TimeControls } from './components/TimeControls';
+import { WelcomeOverlay } from './components/WelcomeOverlay';
+import { TransactionToasts, useTransactionToasts } from './components/TransactionToasts';
 
 export function App() {
-  const { setAgents, addTransactions, setChains, selectedAgent, tab, setTab, selectAgent, paused } = useStore();
+  const { setAgents, addTransactions, setChains, setScenarioMeta,
+    selectedAgent, tab, setTab, selectAgent, paused } = useStore();
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+
+  // Fetch scenario metadata once
+  useEffect(() => {
+    fetchScenario().then(setScenarioMeta).catch(() => {});
+  }, [setScenarioMeta]);
 
   useEffect(() => {
     const ws = connectWs((msg) => {
@@ -22,7 +30,6 @@ export function App() {
       }
     });
 
-    // Also fetch chains periodically (derived from agent state on server)
     const chainPoll = setInterval(async () => {
       if (pausedRef.current) return;
       try {
@@ -30,7 +37,6 @@ export function App() {
         setChains(chains);
       } catch { /* retry next interval */ }
     }, 3000);
-    // Initial fetch
     fetchChains().then(setChains).catch(() => {});
 
     return () => {
@@ -38,6 +44,9 @@ export function App() {
       clearInterval(chainPoll);
     };
   }, [setAgents, addTransactions, setChains]);
+
+  // Hook: generate toasts from new transactions
+  useTransactionToasts();
 
   if (selectedAgent) {
     return (
@@ -55,25 +64,46 @@ export function App() {
     <div style={{ maxWidth: 1100, margin: '0 auto', padding: '16px 20px' }}>
       <Header />
       <TimeControls />
+      {tab === 'map' && <TransactionToasts />}
       <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid #dee2e6', marginBottom: 16 }}>
+        <TabBtn label="Map" active={tab === 'map'} onClick={() => setTab('map')} />
         <TabBtn label="Agents" active={tab === 'agents'} onClick={() => setTab('agents')} />
         <TabBtn label="Chains" active={tab === 'chains'} onClick={() => setTab('chains')} />
         <TabBtn label="Transactions" active={tab === 'transactions'} onClick={() => setTab('transactions')} />
-        <TabBtn label="Map" active={tab === 'map'} onClick={() => setTab('map')} />
       </div>
+      {tab === 'map' && <MapView />}
       {tab === 'agents' && <AgentTable />}
       {tab === 'chains' && <ChainTable />}
       {tab === 'transactions' && <TransactionLog />}
-      {tab === 'map' && <MapView />}
+      <WelcomeOverlay />
     </div>
   );
 }
 
 function Header() {
-  const { agents, transactions } = useStore();
+  const { agents, transactions, scenarioMeta, setShowWelcome } = useStore();
+  const title = scenarioMeta?.title || scenarioMeta?.name || 'AO Sims Viewer';
+  const hasOverlay = !!(scenarioMeta?.description || scenarioMeta?.title);
+
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
-      <h1 style={{ fontSize: 20, fontWeight: 600 }}>AO Sims Viewer</h1>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+        <h1 style={{ fontSize: 20, fontWeight: 600 }}>{title}</h1>
+        {hasOverlay && (
+          <button
+            onClick={() => setShowWelcome(true)}
+            title="About this simulation"
+            style={{
+              width: 22, height: 22, borderRadius: '50%', border: '1px solid #dee2e6',
+              background: '#f8f9fa', cursor: 'pointer', fontSize: 13, fontWeight: 700,
+              color: '#868e96', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              padding: 0, lineHeight: 1,
+            }}
+          >
+            ?
+          </button>
+        )}
+      </div>
       <span style={{ fontSize: 13, color: '#666' }}>
         {agents.length} agents, {transactions.length} transactions
       </span>

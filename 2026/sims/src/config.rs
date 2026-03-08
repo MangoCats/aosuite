@@ -10,6 +10,15 @@ pub struct ScenarioConfig {
 #[derive(Deserialize, Debug, Clone)]
 pub struct SimulationConfig {
     pub name: String,
+    /// Display title for viewer onboarding overlay.
+    #[serde(default)]
+    pub title: Option<String>,
+    /// 1-3 sentence overview for first-time visitors.
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Bulleted guidance: what to watch for in this scenario.
+    #[serde(default)]
+    pub what_to_watch: Vec<String>,
     /// Recorder port. 0 = auto-assign.
     #[serde(default)]
     pub recorder_port: u16,
@@ -32,6 +41,9 @@ fn default_duration() -> u64 { 300 }
 pub struct AgentConfig {
     pub name: String,
     pub role: String,
+    /// One-sentence description for viewer tooltips and welcome panel.
+    #[serde(default)]
+    pub blurb: Option<String>,
     #[serde(default)]
     pub lat: f64,
     #[serde(default)]

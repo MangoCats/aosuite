@@ -24,6 +24,7 @@ No sims work creates requirements on base phases. If a base phase is delayed, th
 | Sim-C: Map View & Exchange Agents | Phase 4 | ✓ | Market equilibrium test scenario (formal convergence verification) |
 | Sim-D: Auditor View & Adversarial Agents | Phase 5 | ✓ | Vendor credentials (needs separable items); late-recording attacker (complex window semantics); integrity timeline visualization |
 | Sim-E: Atomic Exchange & Full Scenario | Phase 6 | ✓ | Chaos testing with recorder restarts; CAA state machine visualization in Individual User View |
+| Sim-F: Onboarding Layer | — | — | All deliverables |
 
 ---
 
@@ -227,6 +228,54 @@ Attackers log all attempts and outcomes. ✓ The viewer shows attacker agents wi
 
 ---
 
+## Sim-F: Onboarding Layer — Visitor-Friendly Presentation
+
+**Depends on:** Sim-E complete (all agent types, scenarios, and viewer features exist)
+
+**Why this phase exists:** The promo articles promise readers "watch twelve agents trade across seven chains on a map of Anguilla" and invite them to click a link to see a running simulation. The current viewer is an excellent operator dashboard but provides zero context for a first-time visitor. A reader arriving from an article encounters raw tables, unexplained acronyms (UTXO, AOS, AOI, CAA), and no narrative connecting the dots on the map to the story in the article. This phase adds a presentation layer — not a rewrite, but onboarding context that makes the existing viewer self-explanatory for casual visitors and usable as an elevator-pitch mini-demo.
+
+**Design constraint:** All onboarding content is scenario-driven. Each TOML file carries its own title, description, and agent blurbs. The viewer reads this metadata from the API and renders it. No hardcoded scenario-specific text in the viewer code.
+
+### Deliverables
+
+**Scenario metadata in TOML + API**
+- New optional fields in `[simulation]`: `title` (display name), `description` (1-3 sentence overview for visitors), `what_to_watch` (bulleted guidance).
+- New optional field on each `[[agent]]`: `blurb` (one-sentence human-readable description for tooltips and welcome panel).
+- New `GET /api/scenario` endpoint returning `{ name, title, description, what_to_watch, agents: [{ name, role, blurb }] }`.
+- Existing scenarios updated with narrative metadata: `island-life.toml`, `island-life-full.toml`, `audit-adversarial.toml`, `atomic-exchange.toml`.
+
+**Welcome overlay**
+- On first page load, a dismissible overlay appears over the map:
+  - Scenario title and description from API.
+  - "What to watch" bullet list.
+  - Agent roster: name, role badge, blurb for each agent.
+  - Color legend: vendor (green), exchange (orange), consumer (blue), validator (purple), attacker (red).
+  - "Got it" button dismisses. Overlay does not reappear until page reload.
+- A small "?" button in the header re-opens the overlay at any time.
+
+**Map-first default**
+- Default tab changes from "Agents" to "Map". Visitors see geography first, not a data table.
+- Map shows persistent agent name labels (not just hover tooltips). Labels positioned above markers, small font, no overlap logic needed at Anguilla zoom level.
+
+**Map legend**
+- Small collapsible legend panel in bottom-left corner of map: role colors, arc styles (dashed = normal, solid purple = CAA atomic), overlay button descriptions.
+
+**Narrative transaction toasts**
+- When a transaction occurs, a brief toast notification appears above the map (stacked, max 3 visible, auto-dismiss after 5 seconds).
+- Toast text is human-readable: uses agent blurbs and scenario context to generate messages like "Alice bought BCG from Charlie (12 CCC)" rather than raw "assignment recorded on chain abc123..."
+- Toasts are suppressible via a "Mute" toggle for power users who find them distracting.
+
+### Acceptance Criteria
+
+- A person who has never seen the project can open the viewer, read the welcome overlay, and understand what they're watching within 30 seconds.
+- The welcome overlay correctly renders scenario-specific content from any TOML file with metadata.
+- Map tab is the default landing view with visible agent labels.
+- Transaction toasts provide enough narrative context that a visitor can follow the economic activity without clicking into agent detail views.
+- All existing scenarios still work without metadata fields (graceful fallback to current behavior — no overlay if no description, no labels if no blurbs).
+- The viewer remains fully functional as an operator tool — all existing tables, panels, and features are unchanged.
+
+---
+
 ## Summary
 
 | Sims Phase | Base Dependency | Key Deliverables | Status |
@@ -236,5 +285,6 @@ Attackers log all attempts and outcomes. ✓ The viewer shows attacker agents wi
 | Sim-C | Phase 4 | Map View, MQTT-based exchange agents, referral fees, island-life scenario, time scrubber | ✓ |
 | Sim-D | Phase 5 | Validator agent, validator view + audit map overlay, adversarial agents (double-spend, key-reuse, expired-UTXO), audit-adversarial scenario | ✓ |
 | Sim-E | Phase 6 | CAA-capable agents, CAA visualization, atomic-exchange + island-life-full scenarios, pre-genesis architecture | ✓ |
+| Sim-F | — | Onboarding layer: welcome overlay, map labels, legend, narrative toasts, scenario metadata API | — |
 
 Each sims phase adds capability only after the base software it depends on is delivered and tested. Sims development never creates deadlines, blockers, or requirements for base 2026 work.

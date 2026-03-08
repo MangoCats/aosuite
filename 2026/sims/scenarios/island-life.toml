@@ -26,6 +26,14 @@
 
 [simulation]
 name = "island-life"
+title = "Island Life — Sandy Ground Beach Economy"
+description = "A beach economy on Anguilla: four vendors sell curry goat, mango futures, e-bike rentals, and goat plates. Three competing exchange agents bridge tourist spending to local chains. Watch prices converge as exchanges compete for the same customers."
+what_to_watch = [
+    "Charlie and Ziggy compete on BCG rates — watch Ziggy undercut Charlie's prices",
+    "Transaction arcs on the map show the flow of commerce across Sandy Ground",
+    "Click any agent to see their wallet, inventory, and trading rates",
+    "Ted operates from Tortola — a regional exchange with different rate dynamics",
+]
 recorder_port = 0
 speed = 10.0
 duration_secs = 300
@@ -36,6 +44,7 @@ mqtt_port = 1884
 [[agent]]
 name = "Bob"
 role = "vendor"
+blurb = "Sells curry goat at Sandy Ground — the anchor vendor"
 lat = 18.2027
 lon = -63.0890   # Sandy Ground
 
@@ -50,6 +59,7 @@ initial_float = 100
 [[agent]]
 name = "Rita"
 role = "vendor"
+blurb = "Sells mango futures at George Hill"
 lat = 18.2173
 lon = -63.0578   # George Hill
 
@@ -64,6 +74,7 @@ initial_float = 200
 [[agent]]
 name = "Dave"
 role = "vendor"
+blurb = "Rents e-bikes at Blowing Point"
 lat = 18.1755
 lon = -63.0925   # Blowing Point
 
@@ -78,6 +89,7 @@ initial_float = 40
 [[agent]]
 name = "Oscar"
 role = "vendor"
+blurb = "Sells goat plates in The Valley — cheaper than Bob, but sketchy"
 lat = 18.2167
 lon = -63.0500   # The Valley
 
@@ -94,12 +106,14 @@ initial_float = 50
 [[agent]]
 name = "Gene"
 role = "recorder"
+blurb = "Hosts all blockchains from Crocus Bay"
 lat = 18.2060
 lon = -63.1510   # Crocus Bay
 
 [[agent]]
 name = "Faythe"
 role = "recorder"
+blurb = "Backup recorder at George Hill"
 lat = 18.2173
 lon = -63.0578   # George Hill (Faythe's closet)
 
@@ -108,6 +122,7 @@ lon = -63.0578   # George Hill (Faythe's closet)
 [[agent]]
 name = "Charlie"
 role = "exchange"
+blurb = "Main exchange at the cruise port — issues CCC (Cruise Credits)"
 lat = 18.2190
 lon = -63.0350   # near the cruise port / Sandy Ground marina
 
@@ -142,6 +157,7 @@ plates = 20
 [[agent]]
 name = "Ziggy"
 role = "exchange"
+blurb = "Aggressive competitor — undercuts Charlie with ZIC (Island Credits)"
 lat = 18.2100
 lon = -63.0600   # The Valley area
 
@@ -165,6 +181,7 @@ plates = 25
 [[agent]]
 name = "Ted"
 role = "exchange"
+blurb = "Regional exchange in Road Town, Tortola — issues TCC"
 lat = 18.4400
 lon = -64.6200   # off-island (Road Town, Tortola — regional)
 
@@ -192,6 +209,7 @@ plates = 80
 [[agent]]
 name = "CCC-Issuer"
 role = "vendor"
+blurb = "Issues Charlie's Cruise Credits (USD-pegged payment chain)"
 lat = 18.2190
 lon = -63.0355
 
@@ -207,6 +225,7 @@ initial_float = 5000
 [[agent]]
 name = "ZIC-Issuer"
 role = "vendor"
+blurb = "Issues Ziggy's Island Credits"
 lat = 18.2105
 lon = -63.0605
 
@@ -222,6 +241,7 @@ initial_float = 3000
 [[agent]]
 name = "TCC-Issuer"
 role = "vendor"
+blurb = "Issues Ted's Caribbean Credits"
 lat = 18.4405
 lon = -64.6205
 
@@ -238,6 +258,7 @@ initial_float = 2000
 [[agent]]
 name = "Alice"
 role = "consumer"
+blurb = "Tourist at Sandy Ground — buys curry goat via Charlie"
 lat = 18.2030
 lon = -63.0885   # Sandy Ground beach (tourist)
 
@@ -251,6 +272,7 @@ interval_secs = 30
 [[agent]]
 name = "Eddie"
 role = "consumer"
+blurb = "Local investor — also buys BCG via Charlie"
 lat = 18.2050
 lon = -63.0870   # near Sandy Ground (local investor)
 
@@ -264,6 +286,7 @@ interval_secs = 45
 [[agent]]
 name = "Karen"
 role = "consumer"
+blurb = "Nurse at George Hill — buys mango futures via Charlie"
 lat = 18.2165
 lon = -63.0560   # near George Hill hospital
 
@@ -277,6 +300,7 @@ interval_secs = 40
 [[agent]]
 name = "Luke"
 role = "consumer"
+blurb = "Tourist at Blowing Point — rents e-bikes via Ziggy (cheaper)"
 lat = 18.1760
 lon = -63.0920   # Blowing Point (tourist)
 
@@ -290,6 +314,7 @@ interval_secs = 60
 [[agent]]
 name = "Mona"
 role = "consumer"
+blurb = "Local in The Valley — uses Ziggy for cheaper curry goat"
 lat = 18.2100
 lon = -63.0500   # The Valley (local, uses Ziggy for cheaper BCG)
 

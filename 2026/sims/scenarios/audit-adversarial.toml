@@ -3,6 +3,14 @@
 
 [simulation]
 name = "audit-adversarial"
+title = "Security Testing — Validator vs Attackers"
+description = "Four attackers try different exploits against the blockchain: double-spending, key reuse, expired UTXOs, and direct database tampering. Victor the validator monitors chain integrity. All attacks should fail."
+what_to_watch = [
+    "Click any red attacker to see their attempts vs rejections — 'unexpected accepts' should stay at zero",
+    "Eve tampers with the recorder's database directly — Victor detects the hash mismatch",
+    "Enable the Audit overlay to see green halos turn red when Eve corrupts chain data",
+    "Alice continues normal purchases throughout — legitimate commerce is unaffected",
+]
 recorder_port = 0
 speed = 10.0
 duration_secs = 180     # 3 minutes real time
@@ -12,6 +20,7 @@ duration_secs = 180     # 3 minutes real time
 [[agent]]
 name = "Bob"
 role = "vendor"
+blurb = "Curry goat vendor — target of several attacks"
 lat = 18.2027
 lon = -63.0490
 
@@ -28,6 +37,7 @@ initial_float = 50
 [[agent]]
 name = "Carol"
 role = "vendor"
+blurb = "Coconut cream vendor — target of expired-UTXO attack"
 lat = 18.2070
 lon = -63.0460
 
@@ -44,12 +54,14 @@ initial_float = 40
 [[agent]]
 name = "Gene"
 role = "recorder"
+blurb = "Recorder hosting all chains"
 
 # ── Charlie: exchange agent ─────────────────────────────────────────
 
 [[agent]]
 name = "Charlie"
 role = "exchange"
+blurb = "Exchange agent — facilitates normal commerce"
 lat = 18.2060
 lon = -63.0519
 
@@ -62,6 +74,7 @@ initial_buy = 50
 [[agent]]
 name = "Alice"
 role = "consumer"
+blurb = "Consumer — buying normally while attacks happen"
 lat = 18.2040
 lon = -63.0500
 
@@ -75,6 +88,7 @@ interval_secs = 30
 [[agent]]
 name = "Victor"
 role = "validator"
+blurb = "Validator — monitors chain integrity, detects tampering"
 lat = 18.2050
 lon = -63.0530
 
@@ -87,6 +101,7 @@ batch_size = 50
 [[agent]]
 name = "Mallory"
 role = "attacker"
+blurb = "Double-spend attacker — tries to spend the same UTXO twice"
 lat = 18.2015
 lon = -63.0475
 
@@ -100,6 +115,7 @@ attack_interval_secs = 15
 [[agent]]
 name = "Trudy"
 role = "attacker"
+blurb = "Key-reuse attacker — tries to receive on an already-used key"
 lat = 18.2080
 lon = -63.0510
 
@@ -113,6 +129,7 @@ attack_interval_secs = 15
 [[agent]]
 name = "Oscar"
 role = "attacker"
+blurb = "Expired-UTXO attacker — tries to use expired shares"
 lat = 18.2035
 lon = -63.0545
 
@@ -126,6 +143,7 @@ attack_interval_secs = 15
 [[agent]]
 name = "Eve"
 role = "attacker"
+blurb = "Chain tamper attacker — directly modifies the database"
 lat = 18.2090
 lon = -63.0520
 

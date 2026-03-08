@@ -27,6 +27,14 @@
 
 [simulation]
 name = "island-life-full"
+title = "Island Life Full — Atomic Exchange on Anguilla"
+description = "The complete IslandLife scenario with CAA atomic cross-chain swaps. Charlie and Ziggy use cryptographic escrow to guarantee trades complete atomically — no counterparty risk. Victor validates all chains while Mallory tries to double-spend."
+what_to_watch = [
+    "Solid purple arcs on the map are atomic (CAA) swaps — dashed arcs are legacy two-leg trades",
+    "Click Charlie or Ziggy to see their CAA Atomic Swaps panel — successful vs failed counts",
+    "Victor (validator) monitors all chains — enable the Audit overlay to see green/red halos",
+    "Mallory attempts double-spend attacks on Bob — all should be rejected",
+]
 recorder_port = 0
 speed = 10.0
 duration_secs = 300
@@ -37,6 +45,7 @@ mqtt_port = 1884
 [[agent]]
 name = "Bob"
 role = "vendor"
+blurb = "Sells curry goat at Sandy Ground — the anchor vendor"
 lat = 18.2027
 lon = -63.0890   # Sandy Ground
 
@@ -51,6 +60,7 @@ initial_float = 100
 [[agent]]
 name = "Rita"
 role = "vendor"
+blurb = "Sells mango futures at George Hill"
 lat = 18.2173
 lon = -63.0578   # George Hill
 
@@ -65,6 +75,7 @@ initial_float = 200
 [[agent]]
 name = "Dave"
 role = "vendor"
+blurb = "Rents e-bikes at Blowing Point"
 lat = 18.1755
 lon = -63.0925   # Blowing Point
 
@@ -79,6 +90,7 @@ initial_float = 40
 [[agent]]
 name = "Oscar"
 role = "vendor"
+blurb = "Sells goat plates in The Valley"
 lat = 18.2167
 lon = -63.0500   # The Valley
 
@@ -95,12 +107,14 @@ initial_float = 50
 [[agent]]
 name = "Gene"
 role = "recorder"
+blurb = "Primary recorder at Crocus Bay"
 lat = 18.2060
 lon = -63.1510   # Crocus Bay
 
 [[agent]]
 name = "Faythe"
 role = "recorder"
+blurb = "Backup recorder at George Hill"
 lat = 18.2173
 lon = -63.0578   # George Hill
 
@@ -109,6 +123,7 @@ lon = -63.0578   # George Hill
 [[agent]]
 name = "Charlie"
 role = "exchange"
+blurb = "Main exchange — uses CAA atomic swaps for guaranteed trades"
 lat = 18.2190
 lon = -63.0350   # near cruise port
 
@@ -144,6 +159,7 @@ plates = 20
 [[agent]]
 name = "Ziggy"
 role = "exchange"
+blurb = "Aggressive competitor — atomic swaps at lower rates"
 lat = 18.2100
 lon = -63.0600   # The Valley area
 
@@ -169,6 +185,7 @@ plates = 25
 [[agent]]
 name = "Ted"
 role = "exchange"
+blurb = "Regional legacy exchange in Tortola"
 lat = 18.4400
 lon = -64.6200   # Road Town, Tortola
 
@@ -194,6 +211,7 @@ plates = 80
 [[agent]]
 name = "CCC-Issuer"
 role = "vendor"
+blurb = "Issues Charlie's Cruise Credits"
 lat = 18.2190
 lon = -63.0355
 
@@ -208,6 +226,7 @@ initial_float = 5000
 [[agent]]
 name = "ZIC-Issuer"
 role = "vendor"
+blurb = "Issues Ziggy's Island Credits"
 lat = 18.2105
 lon = -63.0605
 
@@ -222,6 +241,7 @@ initial_float = 3000
 [[agent]]
 name = "TCC-Issuer"
 role = "vendor"
+blurb = "Issues Ted's Caribbean Credits"
 lat = 18.4405
 lon = -64.6205
 
@@ -238,6 +258,7 @@ initial_float = 2000
 [[agent]]
 name = "Alice"
 role = "consumer"
+blurb = "Tourist — atomic purchases via Charlie"
 lat = 18.2030
 lon = -63.0885   # Sandy Ground (tourist, atomic)
 
@@ -252,6 +273,7 @@ atomic = true
 [[agent]]
 name = "Eddie"
 role = "consumer"
+blurb = "Local investor — atomic purchases via Charlie"
 lat = 18.2050
 lon = -63.0870   # Sandy Ground (local investor, atomic)
 
@@ -266,6 +288,7 @@ atomic = true
 [[agent]]
 name = "Karen"
 role = "consumer"
+blurb = "Nurse — legacy purchases via Charlie"
 lat = 18.2165
 lon = -63.0560   # George Hill (nurse, legacy two-leg)
 
@@ -279,6 +302,7 @@ interval_secs = 40
 [[agent]]
 name = "Luke"
 role = "consumer"
+blurb = "Tourist — atomic e-bike rentals via Ziggy"
 lat = 18.1760
 lon = -63.0920   # Blowing Point (tourist, atomic via Ziggy)
 
@@ -293,6 +317,7 @@ atomic = true
 [[agent]]
 name = "Mona"
 role = "consumer"
+blurb = "Local — legacy purchases via Ziggy"
 lat = 18.2100
 lon = -63.0500   # The Valley (local, legacy via Ziggy)
 
@@ -308,6 +333,7 @@ interval_secs = 35
 [[agent]]
 name = "Victor"
 role = "validator"
+blurb = "Validates all chains — detects tampering and fraud"
 lat = 18.2050
 lon = -63.0530
 
@@ -320,6 +346,7 @@ batch_size = 100
 [[agent]]
 name = "Mallory"
 role = "attacker"
+blurb = "Attempts double-spend attacks — should always be rejected"
 lat = 18.2015
 lon = -63.0475
 

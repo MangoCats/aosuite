@@ -13,11 +13,28 @@ use tower_http::cors::{Any, CorsLayer};
 use crate::agents::{SharedSpeed, ViewerState};
 use crate::PauseFlags;
 
+#[derive(Clone, Serialize)]
+pub struct ScenarioMeta {
+    pub name: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub what_to_watch: Vec<String>,
+    pub agents: Vec<AgentMeta>,
+}
+
+#[derive(Clone, Serialize)]
+pub struct AgentMeta {
+    pub name: String,
+    pub role: String,
+    pub blurb: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct ViewerAppState {
     pub viewer: Arc<ViewerState>,
     pub speed: SharedSpeed,
     pub pause_flags: PauseFlags,
+    pub scenario_meta: ScenarioMeta,
 }
 
 pub fn build_viewer_router(state: ViewerAppState) -> Router {
@@ -27,6 +44,7 @@ pub fn build_viewer_router(state: ViewerAppState) -> Router {
         .allow_headers(Any);
 
     Router::new()
+        .route("/api/scenario", get(get_scenario))
         .route("/api/agents", get(list_agents))
         .route("/api/agents/{name}", get(get_agent))
         .route("/api/chains", get(list_chains))
@@ -38,6 +56,12 @@ pub fn build_viewer_router(state: ViewerAppState) -> Router {
         .route("/api/ws", get(ws_handler))
         .layer(cors)
         .with_state(state)
+}
+
+async fn get_scenario(
+    State(state): State<ViewerAppState>,
+) -> Json<ScenarioMeta> {
+    Json(state.scenario_meta.clone())
 }
 
 async fn list_agents(

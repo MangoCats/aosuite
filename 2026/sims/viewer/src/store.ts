@@ -1,5 +1,11 @@
 import { create } from 'zustand';
-import type { AgentState, TransactionEvent, ChainSummary } from './api';
+import type { AgentState, TransactionEvent, ChainSummary, ScenarioMeta } from './api';
+
+export interface Toast {
+  id: number;
+  text: string;
+  timestamp: number;
+}
 
 export interface ViewerStore {
   agents: AgentState[];
@@ -48,14 +54,29 @@ export interface ViewerStore {
 
   // Agent control
   setAgentPaused: (name: string, paused: boolean) => void;
+
+  // Onboarding
+  scenarioMeta: ScenarioMeta | null;
+  setScenarioMeta: (meta: ScenarioMeta) => void;
+  showWelcome: boolean;
+  setShowWelcome: (show: boolean) => void;
+
+  // Toasts
+  toasts: Toast[];
+  addToast: (text: string) => void;
+  removeToast: (id: number) => void;
+  toastsMuted: boolean;
+  toggleToastsMuted: () => void;
 }
+
+let nextToastId = 1;
 
 export const useStore = create<ViewerStore>((set) => ({
   agents: [],
   transactions: [],
   chains: [],
   selectedAgent: null,
-  tab: 'agents',
+  tab: 'map',
 
   setAgents: (agents) => set({ agents }),
   addTransactions: (txns) => set((s) => {
@@ -105,4 +126,21 @@ export const useStore = create<ViewerStore>((set) => ({
   setAgentPaused: (name, paused) => set((s) => ({
     agents: s.agents.map((a) => a.name === name ? { ...a, paused } : a),
   })),
+
+  // Onboarding
+  scenarioMeta: null,
+  setScenarioMeta: (scenarioMeta) => set({ scenarioMeta }),
+  showWelcome: true,
+  setShowWelcome: (showWelcome) => set({ showWelcome }),
+
+  // Toasts
+  toasts: [],
+  addToast: (text) => set((s) => ({
+    toasts: [...s.toasts.slice(-2), { id: nextToastId++, text, timestamp: Date.now() }],
+  })),
+  removeToast: (id) => set((s) => ({
+    toasts: s.toasts.filter((t) => t.id !== id),
+  })),
+  toastsMuted: false,
+  toggleToastsMuted: () => set((s) => ({ toastsMuted: !s.toastsMuted })),
 }));

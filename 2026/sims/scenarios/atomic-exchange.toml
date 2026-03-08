@@ -12,6 +12,14 @@
 
 [simulation]
 name = "atomic-exchange"
+title = "Atomic Exchange — CAA Cross-Chain Swaps"
+description = "A minimal scenario demonstrating Conditional Assignment Agreements (CAA). Alice and Dan trade in opposite directions through Charlie's exchange, with cryptographic escrow guaranteeing each swap completes atomically."
+what_to_watch = [
+    "Purple solid arcs are atomic swaps — both chains update in a single guaranteed operation",
+    "Click Charlie to see the CAA panel — total swaps, success rate, last hash",
+    "Alice pays CCC to get BCG; Dan pays BCG to get CCC — both via atomic CAA",
+    "Victor validates both chains during active CAA trading",
+]
 recorder_port = 0
 speed = 10.0
 duration_secs = 180
@@ -22,6 +30,7 @@ mqtt_port = 0
 [[agent]]
 name = "Bob"
 role = "vendor"
+blurb = "BCG vendor — Bob's Curry Goat chain"
 lat = 18.2027
 lon = -63.0490
 
@@ -36,6 +45,7 @@ initial_float = 50
 [[agent]]
 name = "Carol"
 role = "vendor"
+blurb = "CCC vendor — Carol's Cold Coffee chain"
 lat = 18.2070
 lon = -63.0460
 
@@ -52,12 +62,14 @@ initial_float = 100
 [[agent]]
 name = "Gene"
 role = "recorder"
+blurb = "Recorder hosting both chains"
 
 # ── Exchange agent (atomic CAA) ────────────────────────────────────
 
 [[agent]]
 name = "Charlie"
 role = "exchange"
+blurb = "Exchange agent — executes CAA atomic swaps on both chains"
 lat = 18.2060
 lon = -63.0519
 
@@ -82,6 +94,7 @@ plates = 120
 [[agent]]
 name = "Alice"
 role = "consumer"
+blurb = "Consumer — buys BCG, pays with CCC (atomic)"
 lat = 18.2040
 lon = -63.0500
 
@@ -96,6 +109,7 @@ atomic = true
 [[agent]]
 name = "Dan"
 role = "consumer"
+blurb = "Consumer — buys CCC, pays with BCG (atomic, reverse direction)"
 lat = 18.2055
 lon = -63.0495
 
@@ -112,6 +126,7 @@ atomic = true
 [[agent]]
 name = "Victor"
 role = "validator"
+blurb = "Validator — verifies chains during CAA activity"
 lat = 18.2050
 lon = -63.0530
 

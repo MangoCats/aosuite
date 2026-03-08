@@ -98,6 +98,20 @@ export interface ChainSummary {
   agents: string[];
 }
 
+export interface ScenarioMeta {
+  name: string;
+  title: string | null;
+  description: string | null;
+  what_to_watch: string[];
+  agents: AgentMeta[];
+}
+
+export interface AgentMeta {
+  name: string;
+  role: string;
+  blurb: string | null;
+}
+
 export interface WsMessage {
   type: 'snapshot' | 'update';
   agents: AgentState[];
@@ -105,6 +119,11 @@ export interface WsMessage {
 }
 
 const BASE = ''; // proxied via vite dev server
+
+export async function fetchScenario(): Promise<ScenarioMeta> {
+  const res = await fetch(`${BASE}/api/scenario`);
+  return res.json();
+}
 
 export async function fetchAgents(): Promise<AgentState[]> {
   const res = await fetch(`${BASE}/api/agents`);

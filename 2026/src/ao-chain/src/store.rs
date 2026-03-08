@@ -234,7 +234,8 @@ impl ChainStore {
             _ => return Ok(None),
         };
         let symbol = match self.get_meta("symbol")? {
-            Some(v) => String::from_utf8(v).unwrap_or_default(),
+            Some(v) => String::from_utf8(v)
+                .map_err(|_| ChainError::Encoding("chain symbol is not valid UTF-8".into()))?,
             None => return Ok(None),
         };
         let coin_count = self.get_meta_bigint("coin_count")?.unwrap_or_else(BigInt::zero);
@@ -318,16 +319,23 @@ impl ChainStore {
                 let bh: i64 = row.get(3)?;
                 let bt: i64 = row.get(4)?;
                 let st: String = row.get(5)?;
+                if pk.len() != 32 {
+                    return Err(ChainError::Encoding(
+                        format!("UTXO seq {} pubkey blob is {} bytes, expected 32", sid, pk.len())));
+                }
                 let mut pubkey = [0u8; 32];
-                if pk.len() == 32 { pubkey.copy_from_slice(&pk); }
+                pubkey.copy_from_slice(&pk);
                 let amount = if amt.is_empty() { BigInt::zero() } else { BigInt::from_signed_bytes_be(&amt) };
+                let status = UtxoStatus::from_str(&st)
+                    .ok_or_else(|| ChainError::Encoding(
+                        format!("UTXO seq {} has unknown status '{}'", sid, st)))?;
                 Ok(Some(Utxo {
                     seq_id: sid as u64,
                     pubkey,
                     amount,
                     block_height: bh as u64,
                     block_timestamp: bt,
-                    status: UtxoStatus::from_str(&st).unwrap_or(UtxoStatus::Unspent),
+                    status,
                 }))
             }
             None => Ok(None),
@@ -409,13 +417,20 @@ impl ChainStore {
             let bh: i64 = row.get(3)?;
             let bt: i64 = row.get(4)?;
             let st: String = row.get(5)?;
+            if pk.len() != 32 {
+                return Err(ChainError::Encoding(
+                    format!("UTXO seq {} pubkey blob is {} bytes, expected 32", sid, pk.len())));
+            }
             let mut pubkey = [0u8; 32];
-            if pk.len() == 32 { pubkey.copy_from_slice(&pk); }
+            pubkey.copy_from_slice(&pk);
             let amount = if amt.is_empty() { BigInt::zero() } else { BigInt::from_signed_bytes_be(&amt) };
+            let status = UtxoStatus::from_str(&st)
+                .ok_or_else(|| ChainError::Encoding(
+                    format!("UTXO seq {} has unknown status '{}'", sid, st)))?;
             utxos.push(Utxo {
                 seq_id: sid as u64, pubkey, amount,
                 block_height: bh as u64, block_timestamp: bt,
-                status: UtxoStatus::from_str(&st).unwrap_or(UtxoStatus::Unspent),
+                status,
             });
         }
         Ok(utxos)
@@ -663,7 +678,9 @@ impl ChainStore {
     /// Targets a byte in the middle of the block, corrupting BLOCK_SIGNED content
     /// while keeping VBC structure intact so the block can still be deserialized.
     /// The validator should detect the hash mismatch.
-    /// For testing validator detection only. Returns true if a block was modified.
+    /// For testing and simulation only. Returns true if a block was modified.
+    /// Enable the `test-support` feature to use this from external crates.
+    #[cfg(any(test, feature = "test-support"))]
     pub fn tamper_block(&self, height: u64) -> Result<bool> {
         if let Some(mut data) = self.get_block(height)? {
             // Flip a byte deep in the data (past VBC headers) to corrupt content
@@ -820,6 +837,56 @@ mod tests {
         // Empty range
         let empty = store.get_block_hashes(5, 10).unwrap();
         assert!(empty.is_empty());
+    }
+
+    /// B7 regression: malformed pubkey in DB returns an error instead of silently
+    /// defaulting to [0u8; 32].
+    #[test]
+    fn test_malformed_pubkey_returns_error() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        // Insert a UTXO with a 16-byte pubkey (malformed) directly via SQL
+        let bad_pk: Vec<u8> = vec![0xAA; 16];
+        let amount_bytes: Vec<u8> = BigInt::from(100).to_signed_bytes_be();
+        store.conn.execute(
+            "INSERT INTO utxos (seq_id, pubkey, amount, block_height, block_timestamp, status)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![1i64, &bad_pk[..], &amount_bytes[..], 0i64, 100i64, "unspent"],
+        ).unwrap();
+
+        // get_utxo should return an error
+        let result = store.get_utxo(1);
+        assert!(result.is_err(), "Malformed pubkey must return an error");
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("pubkey blob"), "Expected pubkey error, got: {}", err_msg);
+
+        // find_expired_utxos should also return an error
+        let result2 = store.find_expired_utxos(300, 150);
+        assert!(result2.is_err(), "Malformed pubkey in find_expired_utxos must return an error");
+    }
+
+    /// B7 regression: unknown status string in DB returns an error instead of
+    /// defaulting to Unspent.
+    #[test]
+    fn test_unknown_status_returns_error() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        let pk: Vec<u8> = vec![0xBB; 32];
+        let amount_bytes: Vec<u8> = BigInt::from(100).to_signed_bytes_be();
+        store.conn.execute(
+            "INSERT INTO utxos (seq_id, pubkey, amount, block_height, block_timestamp, status)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![1i64, &pk[..], &amount_bytes[..], 0i64, 100i64, "bogus_status"],
+        ).unwrap();
+
+        // get_utxo should return an error for unknown status
+        let result = store.get_utxo(1);
+        assert!(result.is_err(), "Unknown status must return an error");
+        let err_msg = format!("{}", result.unwrap_err());
+        assert!(err_msg.contains("unknown status"), "Expected status error, got: {}", err_msg);
+
     }
 
     #[test]

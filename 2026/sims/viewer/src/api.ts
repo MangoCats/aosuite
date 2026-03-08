@@ -31,6 +31,7 @@ export interface AgentState {
   trading_rates: TradingRate[];
   validator_status: ValidatorStatus | null;
   attacker_status: AttackerStatus | null;
+  caa_status: CaaExchangeStatus | null;
   transactions: number;
   last_action: string;
 }
@@ -63,6 +64,14 @@ export interface AttackerStatus {
   rejections: number;
   unexpected_accepts: number;
   last_result: string;
+}
+
+export interface CaaExchangeStatus {
+  total_caas: number;
+  successful: number;
+  failed: number;
+  last_caa_hash: string;
+  last_status: string;
 }
 
 export interface TradingRate {

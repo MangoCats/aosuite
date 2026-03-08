@@ -659,6 +659,29 @@ impl ChainStore {
         Ok(result)
     }
 
+    /// Tamper with a stored block by flipping a byte deep inside the data blob.
+    /// Targets a byte in the middle of the block, corrupting BLOCK_SIGNED content
+    /// while keeping VBC structure intact so the block can still be deserialized.
+    /// The validator should detect the hash mismatch.
+    /// For testing validator detection only. Returns true if a block was modified.
+    pub fn tamper_block(&self, height: u64) -> Result<bool> {
+        if let Some(mut data) = self.get_block(height)? {
+            // Flip a byte deep in the data (past VBC headers) to corrupt content
+            // without breaking VBC structure. Target 2/3 into the block.
+            let idx = data.len() * 2 / 3;
+            if idx > 0 {
+                data[idx] ^= 0x01;
+            }
+            self.conn.execute(
+                "UPDATE blocks SET data = ?1 WHERE height = ?2",
+                params![&data[..], height as i64],
+            )?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
     /// Get current block height.
     pub fn block_count(&self) -> Result<u64> {
         let count: i64 = self.conn.query_row(

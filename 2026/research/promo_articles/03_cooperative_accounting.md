@@ -30,7 +30,7 @@ Sixty farmer chains, one cooperative chain, one exchange chain -- all running on
 
 **Planting.** The cooperative buys bulk seeds and fertilizer. The purchase is recorded on the RCC chain: total cost, supplier, quantity. Each member's advance is recorded on their individual chain: Amara received KES 5,000 worth of inputs, debited against her future harvest. No ambiguity. No disputed notebook entries.
 
-**Harvest.** Ouma, the collection point operator, weighs tomatoes as they arrive. 180 kilos from Amara, Grade A, received 7:15 AM Thursday. Recorded on Amara's AFT chain. The transaction is small -- a few hundred bytes -- and can be transmitted even over spotty Safaricom coverage.
+**Harvest.** Ouma, the collection point operator, weighs tomatoes as they arrive. 180 kilos from Amara, Grade A, received 7:15 AM Thursday. Recorded on Amara's AFT chain. The transaction is small -- a few hundred bytes -- compact enough to transmit even over spotty Safaricom coverage.
 
 **Market sale.** The cooperative truck goes to Wakulima. The buyer pays KES 15 per kilo for 1,200 kilos from six farmers. KES 18,000 total. Transport cost: KES 2,000 (documented, on-chain). Net proceeds: KES 16,000, distributed proportionally to each farmer's contribution. Amara contributed 180 of 1,200 kilos (15%), so she receives KES 2,400. This arithmetic is on-chain, verifiable by any member with a phone.
 
@@ -46,7 +46,7 @@ This is not charity. It's a documented investment in a verifiable productive ent
 
 ## When the Harvest Fails
 
-In February, a hailstorm destroys 60% of Amara's crop. The damage is documented: Ouma inspects the plot and records the loss on Amara's AFT chain, with photos stored as separable data items. James, watching from Dubai, can see exactly what happened. The shares representing the destroyed crop lose value -- there's less harvest to redeem them against. But the loss is documented, transparent, and verifiable.
+In February, a hailstorm destroys 60% of Amara's crop. The damage is documented: Ouma inspects the plot and records the loss on Amara's AFT chain, with photos that could be stored as separable data items (the protocol supports binary attachments; a photo upload UI is planned but not yet built). James, watching from Dubai, can see exactly what happened. The shares representing the destroyed crop lose value -- there's less harvest to redeem them against. But the loss is documented, transparent, and verifiable.
 
 Compare this with telling Benson "the harvest was bad" and Benson writing a number in his ledger. No verification, no documentation, no basis for crop insurance claims or disaster relief.
 
@@ -92,7 +92,7 @@ If members don't find the transparent ledger easier than Benson's notebook -- be
 
 ## The Software
 
-The software exists. Seven Rust crates, 128 tests, MIT-licensed. A simulation suite shows cooperative-style multi-chain dynamics running on a map with time controls. The recorder runs on a Raspberry Pi. The wallet runs in a browser. M-Pesa integration would use the existing M-Pesa API through the exchange agent role.
+The core software exists. Seven Rust crates, 349 tests, MIT-licensed. A simulation suite shows cooperative-style multi-chain dynamics running on a map with time controls. The recorder is designed to run on a Raspberry Pi (not yet field-tested on one). The wallet runs in a browser. M-Pesa integration would use the existing M-Pesa API through the exchange agent role -- the exchange agent architecture is built, but the M-Pesa bridge is not yet implemented. Photo attachments for crop documentation are supported by the protocol (separable data items with binary blobs) but the upload UI is not yet built.
 
 If you work with farming cooperatives, Saccos, agricultural finance, or cooperative technology -- and you recognize the trust problem described here -- the architecture is documented, the code is open, and we'd like to hear from you.
 

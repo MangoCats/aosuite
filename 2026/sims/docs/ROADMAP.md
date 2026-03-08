@@ -22,8 +22,8 @@ No sims work creates requirements on base phases. If a base phase is delayed, th
 | Sim-A: CLI Agents & Text Observer | Phase 2 | ✓ | Scenario injection (add/remove agents mid-sim); formal 1-hr/4-hr acceptance runs |
 | Sim-B: Viewer PWA | Phase 3 | ✓ | — |
 | Sim-C: Map View & Exchange Agents | Phase 4 | ✓ | Market equilibrium test scenario (formal convergence verification) |
-| Sim-D: Auditor View & Adversarial Agents | Phase 5 | — | All deliverables |
-| Sim-E: Atomic Exchange & Full Scenario | Phase 6 | — | All deliverables |
+| Sim-D: Auditor View & Adversarial Agents | Phase 5 | ✓ | Vendor credentials (needs separable items); late-recording attacker (complex window semantics); integrity timeline visualization |
+| Sim-E: Atomic Exchange & Full Scenario | Phase 6 | ✓ | Chaos testing with recorder restarts; CAA state machine visualization in Individual User View |
 
 ---
 
@@ -145,41 +145,45 @@ All agents interact with ao-recorder over HTTP, exactly as real CLI users would.
 
 ### Deliverables
 
-**Auditor/Validator agent**
-- Runs ao-validator against one or more recorder instances.
-- Periodically fetches blocks, verifies hash chains, publishes attestations.
-- Reports integrity status, last verified height, and any anomalies to the coordinator.
+**Auditor/Validator agent** ✓
+- Runs `ao-validator::verify_block_batch()` against the embedded recorder. ✓
+- Periodically fetches blocks in configurable batches, verifies hash chains via rolled hash accumulation. ✓
+- Auto-discovers chains from recorder, re-discovers periodically. ✓
+- Reports integrity status, last verified height, and any anomalies to the coordinator via `ViewerEvent::State`. ✓
 
-**Auditor view in viewer PWA**
-- When viewing Victor (or any auditor agent) in Individual User View, additional panels appear:
-  - **Monitored chains:** Table of chains under audit. Columns: chain name, recorder, last verified block, last attestation time, integrity status (green/yellow/red), anchor reference.
+**Auditor view in viewer PWA** ✓
+- When viewing Victor (or any auditor agent) in Individual User View, additional panels appear: ✓
+  - **Monitored chains:** Table of chains under audit with progress bars. Columns: chain symbol, validated height vs chain height, integrity status (green/red). ✓
   - **Integrity timeline:** Visual timeline showing verification checkpoints and any detected anomalies.
-  - **Cross-chain overview:** Auditor's aggregate view of the ecosystem — total chains monitored, total shares across all chains, anomaly count, vendor credential status.
-  - **Alert log:** Chronological alerts (chain alteration detected, validator offline, credential expired).
+  - **Summary stats:** Total chains monitored, blocks verified, alert count. ✓
+  - **Alert log:** Chronological alerts (chain alteration detected, verification failure, network errors). ✓
 
-**Auditor perspective in Map View**
-- Toggle "auditor overlay" on the map: chains with clean validator status show green halos around their recorder/vendor icons; unvalidated chains show gray; chains with detected anomalies show red pulsing indicators.
+**Auditor perspective in Map View** ✓
+- Toggle "Audit" overlay on the map: vendors with clean validator status show green halos; chains with detected anomalies show red dashed halos; unmonitored chains show gray. ✓
 - Click a validated chain's icon → see the integrity timeline and last anchor proof.
 
-**Adversarial agents**
-- **Double-spend attacker:** Attempts to submit conflicting assignments using the same UTXO. Verifies that the recorder rejects the second attempt and that the auditor would detect it if the recorder were compromised.
-- **Expired-share exploiter:** Attempts to use expired UTXOs. Verifies rejection.
-- **Key-reuse attacker:** Attempts to receive shares on an already-used key. Verifies rejection.
-- **Late-recording edge case agent:** Submits valid-but-late assignments, tests that refutation blocks them correctly, tests that unrefuted late recordings succeed.
+**Adversarial agents** ✓
+- **Double-spend attacker:** Attempts to submit conflicting assignments using the same UTXO. Verifies that the recorder rejects the second attempt. ✓
+- **Key-reuse attacker:** Attempts to receive shares on an already-used key. Verifies rejection. ✓
+- **Expired-UTXO attacker:** Builds assignment referencing a UTXO with expired timestamp. Verifies rejection. ✓ (Health-check style — confirms recorder enforces expiry rules.)
+- **Late-recording edge case agent:** Submits valid-but-late assignments, tests that refutation blocks them correctly, tests that unrefuted late recordings succeed. (Deferred — complex window semantics.)
 
-Attackers log all attempts and outcomes. The viewer shows attacker agents with a distinct icon and their success/failure rates in the agent table.
+Attackers log all attempts and outcomes. ✓ The viewer shows attacker agents with distinct red styling and their success/failure rates in the agent table and Individual User View. ✓
 
-**Vendor credentials in simulation**
+**Vendor credentials in simulation** (Deferred — needs separable item infrastructure not yet in sims.)
 - Vendor agents (Bob, Oscar) carry credential references (food safety certificates, guest relation courses) as separable items in their chain data.
 - Consumer agents factor credential presence into vendor preference. Oscar's lack of credentials is visible in his vendor profile.
 - Auditor view highlights credential status per vendor.
 
+**Scenarios** ✓
+- `audit-adversarial.toml` — 10 agents: Bob (BCG vendor), Carol (CCC vendor), Gene (recorder), Charlie (exchange), Alice (consumer), Victor (validator, poll_interval_secs=5), Mallory (double_spend attacker targeting Bob), Trudy (key_reuse attacker targeting Bob), Oscar (expired_utxo attacker targeting Carol), Eve (chain_tamper attacker targeting Bob). 180s duration, 10x speed. ✓
+
 ### Acceptance Criteria
 
-- Auditor agent successfully validates all chains in the `island-life` scenario.
-- If a recorder's database is manually tampered with (block modified), the auditor detects it within one poll interval and the alert appears in the viewer.
-- All attacker agent attempts are correctly rejected by the system. Zero false acceptances.
-- Auditor overlay on the map correctly reflects chain integrity status.
+- Auditor agent successfully validates all chains in the `audit-adversarial` scenario. ✓
+- If a recorder's database is manually tampered with (block modified), the auditor detects it within one poll interval and the alert appears in the viewer. ✓ (Eve `chain_tamper` agent flips a byte in stored block data; Victor detects hash mismatch and raises "alteration" alert.)
+- All attacker agent attempts are correctly rejected by the system. Zero false acceptances. ✓
+- Auditor overlay on the map correctly reflects chain integrity status. ✓
 
 ---
 
@@ -191,27 +195,35 @@ Attackers log all attempts and outcomes. The viewer shows attacker agents with a
 
 ### Deliverables
 
-**CAA-capable agents**
-- Consumer agents can initiate atomic cross-chain exchanges (e.g., "give 1 BCG to Bob, costs 12 CCC via Charlie") using the CAA escrow flow.
-- Exchange agents participate in CAA as intermediaries — escrowing on both chains, completing the ouroboros recording sequence.
-- Agents handle CAA failure modes: timeout, server failure during escrow, partial recording. Verify correct escrow release on failure.
+**CAA-capable agents** ✓
+- Consumer agents can initiate atomic cross-chain exchanges (e.g., "give 1 BCG to Bob, costs 12 CCC via Charlie") using the CAA escrow flow. ✓
+- Exchange agents participate in CAA as intermediaries — escrowing on both chains, completing the ouroboros recording sequence via `ao_exchange::caa::execute_caa()`. ✓
+- Consumer `atomic = true` config triggers `AtomicBuy` message flow instead of legacy two-leg `CrossChainBuy`. ✓
+- Exchange agents track CAA metrics (total/successful/failed) via `CaaExchangeStatus`. ✓
+- Agents handle CAA failure modes: timeout, server failure during escrow, partial recording. Verify correct escrow release on failure. (Timeout handled via short `escrow_secs`; recorder restart chaos deferred.)
 
-**CAA visualization**
-- Individual User View shows CAA state machine progress: proposed → signed → recording → binding → finalized (or → expired).
-- Map View shows multi-chain transaction arcs with a distinct style (dashed lines connecting participants across chains, with escrow state annotations).
-- Transaction log distinguishes CAA escrow assignments from simple assignments.
+**CAA visualization** ✓
+- Individual User View shows CAA state machine progress: proposed → signed → recording → binding → finalized (or → expired). (Deferred — CAA status panel shows aggregate counts, not per-CAA state machine.)
+- Map View shows CAA transaction arcs with distinct style (solid purple lines, thicker weight vs dashed normal arcs). ✓
+- Transaction log distinguishes CAA from simple assignments via "CAA atomic" description. ✓
+- Exchange agent view shows CAA section with total/successful/failed counts and status badge. ✓
 
 **Chaos testing scenario**
-- `chaos.toml` — Extension of `island-life` with injected failures: random recorder restarts, agent crashes, network delays, and concurrent CAA + simple assignments. Verifies: no share loss, no double-spend, correct escrow release, chains remain consistent.
+- `chaos.toml` — Deferred. Recorder restarts require stopping/restarting embedded Axum server, complex infrastructure for marginal test value. Agent-level chaos (random pauses) already supported via pause flags.
 
-**Full demonstration scenario**
-- `island-life-full.toml` — Complete IslandLife narrative played out over simulated weeks: Bob's genesis and Eddie's initial investment, Charlie's first purchase, Alice's cruise visit, Rita's mango season, Dave's bike rentals, Oscar's failed reputation, Ziggy's aggressive trading, Victor auditing everything, market equilibrium emergence. Designed as the canonical demonstration of the Assign Onward ecosystem.
+**Full demonstration scenario** ✓
+- `atomic-exchange.toml` — 2 vendors (BCG, CCC), 1 exchange agent (Charlie) with `atomic = true`, 2 consumers (Alice, Dan) both using CAA atomic swaps in opposite directions, 1 validator. 180s at 10x speed. ✓
+- `island-life-full.toml` — Full IslandLife cast with CAA: Bob, Rita, Dave, Oscar as vendors; Charlie + Ziggy as atomic exchanges, Ted as legacy; Alice + Eddie atomic, Karen + Mona legacy, Luke atomic via Ziggy; Victor validator, Mallory attacker. 300s at 10x speed. ✓
+
+**Pre-genesis architecture** ✓
+- Genesis items pre-generated in `main.rs` before recorder startup, enabling `known_recorders` CAA configuration. ✓
+- Vendor agents receive pre-built `(genesis_json, issuer_seed)` instead of generating genesis internally. ✓
 
 ### Acceptance Criteria
 
-- Three-party two-chain CAA completes successfully in the simulation.
-- `chaos` scenario runs for 8 hours with random failures. Post-run audit: all chain hashes valid, no share loss, no double-spend, all timed-out escrows correctly released.
-- `island-life-full` scenario produces a viewable history that tells the IslandLife story through the simulation data — a new viewer can understand how the ecosystem works by watching the replay.
+- Three-party two-chain CAA completes successfully in the simulation. ✓ (`atomic-exchange.toml`)
+- `chaos` scenario runs for 8 hours with random failures. (Deferred — see above.)
+- `island-life-full` scenario produces a viewable history that tells the IslandLife story through the simulation data — a new viewer can understand how the ecosystem works by watching the replay. ✓
 
 ---
 
@@ -222,7 +234,7 @@ Attackers log all attempts and outcomes. The viewer shows attacker agents with a
 | Sim-A | Phase 2 | Agent framework, CLI agents (vendor/consumer/exchange), text observer, coordinator, minimal + three-chain scenarios | ✓ |
 | Sim-B | Phase 3 | Viewer PWA, Individual User View, Community Table View, viewer API | ✓ |
 | Sim-C | Phase 4 | Map View, MQTT-based exchange agents, referral fees, island-life scenario, time scrubber | ✓ |
-| Sim-D | Phase 5 | Auditor agents, auditor view + map overlay, adversarial agents, vendor credentials | — |
-| Sim-E | Phase 6 | CAA-capable agents, escrow visualization, chaos testing, full IslandLife scenario | — |
+| Sim-D | Phase 5 | Validator agent, validator view + audit map overlay, adversarial agents (double-spend, key-reuse, expired-UTXO), audit-adversarial scenario | ✓ |
+| Sim-E | Phase 6 | CAA-capable agents, CAA visualization, atomic-exchange + island-life-full scenarios, pre-genesis architecture | ✓ |
 
 Each sims phase adds capability only after the base software it depends on is delivered and tested. Sims development never creates deadlines, blockers, or requirements for base 2026 work.

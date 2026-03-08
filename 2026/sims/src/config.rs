@@ -103,6 +103,7 @@ pub fn auto_fee_den(coins: &str) -> num_bigint::BigInt {
 }
 
 #[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)] // atomic deserialized for scenario documentation; behavior driven by message type
 pub struct ExchangeConfig {
     /// Single-chain mode: vendor name to buy initial inventory from.
     #[serde(default)]
@@ -128,9 +129,16 @@ pub struct ExchangeConfig {
     /// How often (in seconds) to adjust rates when price_discovery is enabled.
     #[serde(default = "default_adjust_interval")]
     pub adjust_interval_secs: u64,
+    /// Enable CAA atomic swaps (default false for backward compat).
+    #[serde(default)]
+    pub atomic: bool,
+    /// CAA escrow deadline in seconds (default 120).
+    #[serde(default = "default_escrow_secs")]
+    pub escrow_secs: u64,
 }
 
 fn default_adjust_interval() -> u64 { 30 }
+fn default_escrow_secs() -> u64 { 120 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct TradingPairConfig {
@@ -177,6 +185,9 @@ pub struct ConsumerConfig {
     /// Seconds between purchases (sim time).
     #[serde(default = "default_interval")]
     pub interval_secs: u64,
+    /// Use CAA atomic swap instead of two-leg cross-chain (default false).
+    #[serde(default)]
+    pub atomic: bool,
 }
 
 fn default_interval() -> u64 { 30 }
@@ -196,7 +207,7 @@ fn default_batch_size() -> u64 { 100 }
 
 #[derive(Deserialize, Debug, Clone)]
 pub struct AttackerConfig {
-    /// Attack type: "double_spend", "expired_utxo", "key_reuse".
+    /// Attack type: "double_spend", "expired_utxo", "key_reuse", "chain_tamper".
     pub attack: String,
     /// Target vendor name to interact with.
     pub target_vendor: String,

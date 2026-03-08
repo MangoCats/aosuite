@@ -1,0 +1,120 @@
+# Sim-E: Atomic exchange using CAA (Conditional Assignment Agreements)
+# Tests: CAA atomic cross-chain swaps via exchange agent.
+#
+# Chains:
+#   BCG — Bob's Curry Goat (want chain for Alice)
+#   CCC — Carol's Cold Coffee (payment chain / want chain for Dan)
+#
+# Flow:
+#   Alice pays CCC, receives BCG via Charlie (atomic CAA swap)
+#   Dan pays BCG, receives CCC via Charlie (atomic CAA swap, reverse direction)
+#   Victor validates both chains during CAA activity
+
+[simulation]
+name = "atomic-exchange"
+recorder_port = 0
+speed = 10.0
+duration_secs = 180
+mqtt_port = 0
+
+# ── Vendors ─────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Bob"
+role = "vendor"
+lat = 18.2027
+lon = -63.0490
+
+[agent.vendor]
+symbol = "BCG"
+description = "Bob's Curry Goat"
+coins = "1000000000"
+shares = "2^40"
+plate_price = 25
+initial_float = 50
+
+[[agent]]
+name = "Carol"
+role = "vendor"
+lat = 18.2070
+lon = -63.0460
+
+[agent.vendor]
+symbol = "CCC"
+description = "Carol's Cold Coffee"
+coins = "500000000"
+shares = "2^38"
+plate_price = 8
+initial_float = 100
+
+# ── Recorder (embedded) ────────────────────────────────────────────
+
+[[agent]]
+name = "Gene"
+role = "recorder"
+
+# ── Exchange agent (atomic CAA) ────────────────────────────────────
+
+[[agent]]
+name = "Charlie"
+role = "exchange"
+lat = 18.2060
+lon = -63.0519
+
+[agent.exchange]
+atomic = true
+escrow_secs = 60
+pairs = [
+    { sell = "BCG", buy = "CCC", rate = 3.0 },
+    { sell = "CCC", buy = "BCG", rate = 0.33 },
+]
+
+[[agent.exchange.inventory]]
+vendor = "Bob"
+plates = 40
+
+[[agent.exchange.inventory]]
+vendor = "Carol"
+plates = 120
+
+# ── Consumers (atomic CAA mode) ────────────────────────────────────
+
+[[agent]]
+name = "Alice"
+role = "consumer"
+lat = 18.2040
+lon = -63.0500
+
+[agent.consumer]
+buy_from = "Charlie"
+want_symbol = "BCG"
+pay_symbol = "CCC"
+fund_from = "Carol"
+interval_secs = 30
+atomic = true
+
+[[agent]]
+name = "Dan"
+role = "consumer"
+lat = 18.2055
+lon = -63.0495
+
+[agent.consumer]
+buy_from = "Charlie"
+want_symbol = "CCC"
+pay_symbol = "BCG"
+fund_from = "Bob"
+interval_secs = 45
+atomic = true
+
+# ── Validator ──────────────────────────────────────────────────────
+
+[[agent]]
+name = "Victor"
+role = "validator"
+lat = 18.2050
+lon = -63.0530
+
+[agent.validator]
+poll_interval_secs = 5
+batch_size = 50

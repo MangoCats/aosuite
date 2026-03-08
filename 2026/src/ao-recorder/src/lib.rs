@@ -88,6 +88,31 @@ impl ChainState {
 pub struct ExchangeAgentEntry {
     pub name: String,
     pub pairs: Vec<ExchangePairEntry>,
+    /// URL where consumers can request trades from this agent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub contact_url: Option<String>,
+    /// Unix timestamp when this registration was last refreshed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub registered_at: Option<u64>,
+    /// TTL in seconds (default 3600). Registration expires after this.
+    #[serde(default = "default_agent_ttl")]
+    pub ttl: u64,
+}
+
+fn default_agent_ttl() -> u64 { 3600 }
+
+impl ExchangeAgentEntry {
+    pub fn is_expired(&self) -> bool {
+        if let Some(registered_at) = self.registered_at {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock")
+                .as_secs();
+            now > registered_at + self.ttl
+        } else {
+            false
+        }
+    }
 }
 
 /// A trading pair offered by an exchange agent.
@@ -96,6 +121,28 @@ pub struct ExchangePairEntry {
     pub sell_symbol: String,
     pub buy_symbol: String,
     pub rate: f64,
+    /// Bid/ask spread as a fraction (e.g. 0.02 = 2%).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spread: Option<f64>,
+    /// Minimum trade size in sell-chain shares.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_trade: Option<u64>,
+    /// Maximum trade size in sell-chain shares.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_trade: Option<u64>,
+}
+
+/// Vendor profile metadata: name, description, and optional GPS location.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct VendorProfile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lat: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lon: Option<f64>,
 }
 
 /// Shared application state — holds all hosted chains.
@@ -111,6 +158,8 @@ pub struct AppState {
     validator_cache: RwLock<HashMap<String, Vec<ValidatorEndorsement>>>,
     /// Known recorder public keys for CAA proof verification: chain_id bytes → pubkey bytes.
     pub known_recorders: std::collections::HashMap<[u8; 32], [u8; 32]>,
+    /// Vendor profiles per chain: chain_id → VendorProfile.
+    vendor_profiles: RwLock<HashMap<String, VendorProfile>>,
 }
 
 /// Cached result from polling a validator's GET /validate/{chain_id}.
@@ -142,6 +191,7 @@ impl AppState {
             exchange_agents: RwLock::new(HashMap::new()),
             validator_cache: RwLock::new(HashMap::new()),
             known_recorders: std::collections::HashMap::new(),
+            vendor_profiles: RwLock::new(HashMap::new()),
         }
     }
 
@@ -155,6 +205,7 @@ impl AppState {
             exchange_agents: RwLock::new(HashMap::new()),
             validator_cache: RwLock::new(HashMap::new()),
             known_recorders: std::collections::HashMap::new(),
+            vendor_profiles: RwLock::new(HashMap::new()),
         }
     }
 
@@ -225,6 +276,8 @@ struct ChainListEntry {
     block_height: u64,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     exchange_agents: Vec<ExchangeAgentEntry>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vendor_profile: Option<VendorProfile>,
 }
 
 #[derive(Serialize)]
@@ -268,6 +321,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/chain/{id}/caa/submit", axum::routing::post(caa_submit))
         .route("/chain/{id}/caa/bind", axum::routing::post(caa_bind))
         .route("/chain/{id}/caa/{caa_hash}", get(caa_status))
+        .route("/chain/{id}/profile", get(get_vendor_profile).post(set_vendor_profile))
         .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .with_state(state)
 }
@@ -317,6 +371,13 @@ async fn list_chains(
         agents.clone()
     };
 
+    // Snapshot vendor profiles
+    let profiles_snapshot: HashMap<String, VendorProfile> = {
+        let profiles = state.vendor_profiles.read()
+            .map_err(|e| RecorderError::LockPoisoned(format!("profiles read: {}", e)))?;
+        profiles.clone()
+    };
+
     // Query each store on the blocking pool
     let entries = blocking(move || {
         let mut entries = Vec::new();
@@ -325,12 +386,16 @@ async fn list_chains(
             let meta = store.load_chain_meta()
                 .map_err(|e| RecorderError::Internal(e.to_string()))?
                 .ok_or(RecorderError::ChainNotLoaded)?;
-            let agents = agents_snapshot.get(&id).cloned().unwrap_or_default();
+            let agents: Vec<ExchangeAgentEntry> = agents_snapshot.get(&id)
+                .cloned().unwrap_or_default()
+                .into_iter().filter(|a| !a.is_expired()).collect();
+            let profile = profiles_snapshot.get(&id).cloned();
             entries.push(ChainListEntry {
                 chain_id: id,
                 symbol: meta.symbol,
                 block_height: meta.block_height,
                 exchange_agents: agents,
+                vendor_profile: profile,
             });
         }
         entries.sort_by(|a, b| a.chain_id.cmp(&b.chain_id));
@@ -616,17 +681,30 @@ async fn ws_handler(
 }
 
 /// POST /chain/{id}/exchange-agent — register an exchange agent for a chain.
+///
+/// Upserts by agent name. Sets `registered_at` to current time on each POST.
+/// Expired agents (past TTL) are removed on each registration and listing.
 async fn register_exchange_agent(
     State(state): State<Arc<AppState>>,
     Path(chain_id_hex): Path<String>,
-    Json(entry): Json<ExchangeAgentEntry>,
+    Json(mut entry): Json<ExchangeAgentEntry>,
 ) -> Result<StatusCode, RecorderError> {
     // Verify chain exists
     let _chain = state.get_chain_or_err(&chain_id_hex)?;
 
+    // Stamp registration time
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("system clock")
+        .as_secs();
+    entry.registered_at = Some(now);
+
     let mut agents = state.exchange_agents.write()
         .map_err(|e| RecorderError::LockPoisoned(format!("agents write: {}", e)))?;
     let chain_agents = agents.entry(chain_id_hex).or_default();
+
+    // Remove expired agents
+    chain_agents.retain(|a| !a.is_expired());
 
     // Replace existing entry with same name, or add new
     if let Some(existing) = chain_agents.iter_mut().find(|a| a.name == entry.name) {
@@ -635,6 +713,33 @@ async fn register_exchange_agent(
         chain_agents.push(entry);
     }
 
+    Ok(StatusCode::OK)
+}
+
+// ── Vendor Profile ───────────────────────────────────────────────────
+
+/// GET /chain/{id}/profile — get vendor profile metadata for a chain.
+async fn get_vendor_profile(
+    State(state): State<Arc<AppState>>,
+    Path(chain_id_hex): Path<String>,
+) -> Result<Json<VendorProfile>, RecorderError> {
+    let _chain = state.get_chain_or_err(&chain_id_hex)?;
+    let profiles = state.vendor_profiles.read()
+        .map_err(|e| RecorderError::LockPoisoned(format!("profiles read: {}", e)))?;
+    let profile = profiles.get(&chain_id_hex).cloned().unwrap_or_default();
+    Ok(Json(profile))
+}
+
+/// POST /chain/{id}/profile — set vendor profile metadata for a chain.
+async fn set_vendor_profile(
+    State(state): State<Arc<AppState>>,
+    Path(chain_id_hex): Path<String>,
+    Json(profile): Json<VendorProfile>,
+) -> Result<StatusCode, RecorderError> {
+    let _chain = state.get_chain_or_err(&chain_id_hex)?;
+    let mut profiles = state.vendor_profiles.write()
+        .map_err(|e| RecorderError::LockPoisoned(format!("profiles write: {}", e)))?;
+    profiles.insert(chain_id_hex, profile);
     Ok(StatusCode::OK)
 }
 

@@ -6,11 +6,24 @@ export interface ExchangePairEntry {
   sell_symbol: string;
   buy_symbol: string;
   rate: number;
+  spread?: number;
+  min_trade?: number;
+  max_trade?: number;
 }
 
 export interface ExchangeAgentEntry {
   name: string;
   pairs: ExchangePairEntry[];
+  contact_url?: string;
+  registered_at?: number;
+  ttl?: number;
+}
+
+export interface VendorProfile {
+  name?: string;
+  description?: string;
+  lat?: number;
+  lon?: number;
 }
 
 export interface ChainListEntry {
@@ -18,6 +31,7 @@ export interface ChainListEntry {
   symbol: string;
   block_height: number;
   exchange_agents?: ExchangeAgentEntry[];
+  vendor_profile?: VendorProfile;
 }
 
 export interface ValidatorEndorsement {
@@ -115,6 +129,20 @@ export class RecorderClient {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(authorization),
+    });
+  }
+
+  /** GET /chain/{id}/profile — get vendor profile. */
+  async getProfile(chainId: string): Promise<VendorProfile> {
+    return this.fetchJson(`/chain/${chainId}/profile`);
+  }
+
+  /** POST /chain/{id}/profile — set vendor profile. */
+  async setProfile(chainId: string, profile: VendorProfile): Promise<void> {
+    await fetch(`${this.baseUrl}/chain/${chainId}/profile`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profile),
     });
   }
 

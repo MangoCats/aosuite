@@ -130,14 +130,15 @@ export function MapView() {
 
       const age = Date.now() - tx.timestamp_ms;
       const opacity = Math.max(0.1, 1 - age / 60000); // fade over 60s
+      const isCaa = tx.description.includes('CAA');
 
       const arc = L.polyline(
         [[from.lat, from.lon], [to.lat, to.lon]],
         {
-          color: ROLE_COLORS[from.role] || '#868e96',
-          weight: 2,
+          color: isCaa ? '#7048e8' : (ROLE_COLORS[from.role] || '#868e96'),
+          weight: isCaa ? 3 : 2,
           opacity,
-          dashArray: '6 4',
+          dashArray: isCaa ? undefined : '6 4',
         },
       );
       arc.bindPopup(formatTxPopup(tx));

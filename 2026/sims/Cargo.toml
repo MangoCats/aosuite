@@ -13,6 +13,7 @@ ao-crypto = { path = "../src/ao-crypto" }
 ao-chain = { path = "../src/ao-chain" }
 ao-recorder = { path = "../src/ao-recorder" }
 ao-validator = { path = "../src/ao-validator" }
+ao-exchange = { path = "../src/ao-exchange" }
 
 axum = { version = "0.8", features = ["ws"] }
 tower-http = { version = "0.6", features = ["cors"] }

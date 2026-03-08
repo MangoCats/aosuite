@@ -101,6 +101,37 @@ function ExchangeScreen({ agent }: { agent: AgentState }) {
             ))}
           </>
         )}
+        {agent.caa_status && (
+          <>
+            <div style={{ fontSize: 11, color: '#868e96', textTransform: 'uppercase', fontWeight: 600, marginTop: 12, marginBottom: 8 }}>
+              CAA Atomic Swaps
+            </div>
+            <div style={{ ...rowStyle, display: 'flex', justifyContent: 'space-between' }}>
+              <span>Total</span>
+              <strong>{agent.caa_status.total_caas}</strong>
+            </div>
+            <div style={{ ...rowStyle, display: 'flex', justifyContent: 'space-between' }}>
+              <span>Successful</span>
+              <strong style={{ color: '#2b8a3e' }}>{agent.caa_status.successful}</strong>
+            </div>
+            <div style={{ ...rowStyle, display: 'flex', justifyContent: 'space-between' }}>
+              <span>Failed</span>
+              <strong style={{ color: agent.caa_status.failed > 0 ? '#e03131' : '#495057' }}>{agent.caa_status.failed}</strong>
+            </div>
+            {agent.caa_status.last_caa_hash && (
+              <div style={{ ...rowStyle, fontSize: 11, color: '#868e96' }}>
+                Last: {agent.caa_status.last_caa_hash.slice(0, 16)}... ({agent.caa_status.last_status})
+              </div>
+            )}
+            <div style={{
+              marginTop: 4, padding: '2px 8px', borderRadius: 8, display: 'inline-block', fontSize: 11, fontWeight: 600,
+              background: agent.caa_status.failed === 0 ? '#d3f9d8' : '#ffe3e3',
+              color: agent.caa_status.failed === 0 ? '#2b8a3e' : '#c92a2a',
+            }}>
+              {agent.caa_status.failed === 0 ? 'All OK' : `${agent.caa_status.failed} failures`}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

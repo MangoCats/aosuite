@@ -18,8 +18,8 @@ pub async fn run_observer(
             event = state_rx.recv() => {
                 match event {
                     Some(ViewerEvent::State(s)) => {
-                        viewer_state.update_agent(s.clone()).await;
-                        states.insert(s.name.clone(), s);
+                        viewer_state.update_agent((*s).clone()).await;
+                        states.insert(s.name.clone(), *s);
                     }
                     Some(ViewerEvent::Transaction(t)) => {
                         viewer_state.add_transaction(t).await;

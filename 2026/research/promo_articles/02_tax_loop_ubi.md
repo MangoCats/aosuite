@@ -101,11 +101,11 @@ There is a real dependency risk: if Mako loses interest or becomes unavailable, 
 
 Most blockchain systems assume reliable broadband internet. On Likiep, the satellite link drops during storms, overloads during school hours, and costs more per megabyte than anywhere in the continental US.
 
-A typical Assign Onward transaction is a few hundred bytes. At LoRa mesh speeds (22 kbps), that's under one second to transmit. A full day's activity might be 50-100 transactions, totaling a few tens of kilobytes. The entire chain could sync between the Pi and a backup server on Majuro using the bandwidth of a single low-resolution photo.
+A typical Assign Onward transaction is a few hundred bytes. At LoRa mesh speeds (22 kbps), that would be under one second to transmit. A full day's activity might be 50-100 transactions, totaling a few tens of kilobytes. The entire chain could sync between the Pi and a backup server on Majuro using the bandwidth of a single low-resolution photo.
 
-In an emergency -- typhoon, cable cut, satellite failure -- a Meshtastic LoRa node ($30 hardware, battery or solar powered) on each islet could relay transactions across the atoll entirely off-grid. Tia's store keeps operating while the rest of the world's digital payment infrastructure is down. When connectivity returns, the local chain syncs up automatically.
+In an emergency -- typhoon, cable cut, satellite failure -- a Meshtastic LoRa node ($30 hardware, battery or solar powered) on each islet could in principle relay transactions across the atoll entirely off-grid. Tia's store keeps operating while the rest of the world's digital payment infrastructure is down. When connectivity returns, the local chain syncs up automatically. LoRa mesh transport is not yet integrated into the software, but the wire format was designed from the beginning to support it -- every byte is compact enough for constrained radios, and the protocol requires no always-on connection.
 
-This isn't an afterthought. The wire format was designed from the beginning for environments where every byte costs money and every connection is unreliable.
+This isn't an afterthought. The wire format was designed from the beginning for environments where every byte costs money and every connection is unreliable. The LoRa transport layer is a planned addition, not yet built.
 
 ## Where Else This Applies
 
@@ -120,9 +120,9 @@ In each case: government distribution seeds the economy with tokens, local vendo
 
 ## What We Built
 
-The software exists. Seven Rust crates, 128 tests passing, MIT-licensed. Full protocol from genesis block through atomic multi-chain exchange. A simulation suite with agents that demonstrate the economic dynamics on a map. The recorder runs on a Raspberry Pi. The wallet runs in a browser.
+The core software exists. Seven Rust crates, 349 tests passing, MIT-licensed. Full protocol from genesis block through atomic multi-chain exchange. A simulation suite with agents that demonstrate the economic dynamics on a map. The recorder is designed to run on a Raspberry Pi (not yet field-tested on one). The wallet runs in a browser. M-Pesa and other fiat on/off-ramp integrations are not yet built -- the exchange agent role is implemented, but bridging to external payment systems would require additional development.
 
-What doesn't exist yet: a deployment on an actual atoll, with actual fishermen and shopkeepers, in actual conditions of intermittent satellite connectivity and 90-degree heat. The software is the easy part. Finding the Tia and the Mako -- the shopkeeper willing to try something new and the IT person willing to spend a weekend setting it up -- that's the hard part.
+What doesn't exist yet: a deployment on an actual atoll, with actual fishermen and shopkeepers, in actual conditions of intermittent satellite connectivity and 90-degree heat. Nor does LoRa mesh transport or fiat payment integration exist in code yet -- those are designed for but not implemented. The software is the easy part. Finding the Tia and the Mako -- the shopkeeper willing to try something new and the IT person willing to spend a weekend setting it up -- that's the hard part.
 
 If you work in Pacific island development, digital financial inclusion, or UBI implementation, and this matches a problem you've seen -- the code is open, the architecture is documented, and we'd like to hear from you.
 

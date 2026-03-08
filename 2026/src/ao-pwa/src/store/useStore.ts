@@ -1,7 +1,18 @@
-// Global application store — Zustand
+// Global application store — Zustand with localStorage persistence for wallet.
 
 import { create } from 'zustand';
 import type { ChainInfo, ChainListEntry } from '../api/client.ts';
+
+// localStorage helpers (silent on failure for SSR / private browsing)
+function loadString(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function saveString(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch { /* ignore */ }
+}
 
 export interface AppState {
   // Connection
@@ -18,10 +29,11 @@ export interface AppState {
   chainInfo: ChainInfo | null;
   setChainInfo: (info: ChainInfo | null) => void;
 
-  // Wallet
+  // Wallet — seed persisted to localStorage
   walletLabel: string | null;
   publicKeyHex: string | null;
-  setWallet: (label: string, publicKeyHex: string) => void;
+  seedHex: string | null;
+  setWallet: (label: string, publicKeyHex: string, seedHex: string) => void;
   clearWallet: () => void;
 
   // Multi-recorder connections for investor view
@@ -36,9 +48,12 @@ export interface AppState {
 }
 
 export const useStore = create<AppState>((set) => ({
-  recorderUrl: 'http://localhost:3000',
+  recorderUrl: loadString('ao_recorder_url') ?? 'http://localhost:3000',
   connected: false,
-  setRecorderUrl: (recorderUrl) => set({ recorderUrl }),
+  setRecorderUrl: (recorderUrl) => {
+    saveString('ao_recorder_url', recorderUrl);
+    set({ recorderUrl });
+  },
   setConnected: (connected) => set({ connected }),
 
   chains: [],
@@ -48,10 +63,21 @@ export const useStore = create<AppState>((set) => ({
   chainInfo: null,
   setChainInfo: (chainInfo) => set({ chainInfo }),
 
-  walletLabel: null,
-  publicKeyHex: null,
-  setWallet: (walletLabel, publicKeyHex) => set({ walletLabel, publicKeyHex }),
-  clearWallet: () => set({ walletLabel: null, publicKeyHex: null }),
+  walletLabel: loadString('ao_wallet_label'),
+  publicKeyHex: loadString('ao_wallet_pubkey'),
+  seedHex: loadString('ao_wallet_seed'),
+  setWallet: (walletLabel, publicKeyHex, seedHex) => {
+    saveString('ao_wallet_label', walletLabel);
+    saveString('ao_wallet_pubkey', publicKeyHex);
+    saveString('ao_wallet_seed', seedHex);
+    set({ walletLabel, publicKeyHex, seedHex });
+  },
+  clearWallet: () => {
+    saveString('ao_wallet_label', null);
+    saveString('ao_wallet_pubkey', null);
+    saveString('ao_wallet_seed', null);
+    set({ walletLabel: null, publicKeyHex: null, seedHex: null });
+  },
 
   recorderUrls: [],
   setRecorderUrls: (recorderUrls) => set({ recorderUrls }),

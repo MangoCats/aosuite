@@ -31,7 +31,7 @@ async fn wait_while_paused(paused: &PauseFlag) {
 }
 
 use crate::client::RecorderClient;
-use crate::config::{AgentConfig, VendorConfig, ExchangeConfig, ConsumerConfig, ValidatorConfig, AttackerConfig, parse_bigint, auto_fee_den};
+use crate::config::{AgentConfig, VendorConfig, ExchangeConfig, ConsumerConfig, ValidatorConfig, AttackerConfig, parse_bigint};
 use crate::transfer::{self, Giver, Receiver};
 use crate::wallet::{Wallet, now_ms};
 
@@ -68,6 +68,12 @@ pub enum AgentMessage {
         receiver_seed: [u8; 32],
         reply: oneshot::Sender<Result<CrossChainResult>>,
     },
+    /// Atomic cross-chain exchange: consumer provides all giver/receiver data,
+    /// exchange executes a CAA ouroboros swap via ao-exchange.
+    AtomicBuy {
+        request: AtomicBuyRequest,
+        reply: oneshot::Sender<Result<AtomicBuyResult>>,
+    },
     /// Notify an agent that one of its keys received a UTXO.
     NotifyUtxo {
         pubkey: [u8; 32],
@@ -95,6 +101,36 @@ pub struct CrossChainResult {
     pub sell_amount: BigInt,
 }
 
+/// Request for a CAA atomic cross-chain swap.
+pub struct AtomicBuyRequest {
+    pub buyer_name: String,
+    pub sell_chain_id: String,
+    pub pay_chain_id: String,
+    /// Consumer's giver UTXO on pay_chain.
+    pub pay_giver_seq_id: u64,
+    pub pay_giver_amount: BigInt,
+    pub pay_giver_seed: [u8; 32],
+    /// Consumer's receiver key on sell_chain.
+    pub sell_receiver_pubkey: [u8; 32],
+    pub sell_receiver_seed: [u8; 32],
+    /// Consumer's change key on pay_chain.
+    pub pay_change_pubkey: [u8; 32],
+    pub pay_change_seed: [u8; 32],
+}
+
+/// Result of a completed CAA atomic swap.
+#[derive(Debug, Clone)]
+pub struct AtomicBuyResult {
+    pub caa_hash: String,
+    pub pay_chain_block: u64,
+    pub sell_chain_block: u64,
+    pub sell_amount: BigInt,
+    /// Sequence IDs for consumer's new UTXOs.
+    pub sell_receiver_seq: u64,
+    pub pay_change_seq: u64,
+    pub pay_change_amount: BigInt,
+}
+
 // ── Agent state (reported to observer) ──────────────────────────────
 
 #[derive(Debug, Clone, Serialize)]
@@ -112,6 +148,7 @@ pub struct AgentState {
     pub trading_rates: Vec<TradingRate>,
     pub validator_status: Option<ValidatorStatus>,
     pub attacker_status: Option<AttackerStatus>,
+    pub caa_status: Option<CaaExchangeStatus>,
     pub transactions: u64,
     pub last_action: String,
 }
@@ -158,6 +195,15 @@ pub struct AttackerStatus {
 }
 
 #[derive(Debug, Clone, Serialize)]
+pub struct CaaExchangeStatus {
+    pub total_caas: u64,
+    pub successful: u64,
+    pub failed: u64,
+    pub last_caa_hash: String,
+    pub last_status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ChainHolding {
     pub chain_id: String,
     pub symbol: String,
@@ -187,7 +233,7 @@ pub struct TransactionEvent {
 
 /// Message types sent to the viewer state collector.
 pub enum ViewerEvent {
-    State(AgentState),
+    State(Box<AgentState>),
     Transaction(TransactionEvent),
 }
 
@@ -318,6 +364,7 @@ impl AgentDirectory {
 
 // ── Vendor agent ────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run_vendor(
     config: AgentConfig,
     vendor_cfg: VendorConfig,
@@ -326,27 +373,16 @@ pub async fn run_vendor(
     state_tx: StateCollector,
     mut mailbox: mpsc::Receiver<AgentMessage>,
     paused: PauseFlag,
+    pre_genesis: (serde_json::Value, [u8; 32]),
 ) -> Result<()> {
     let name = config.name.clone();
     let (lat, lon) = (config.lat, config.lon);
     let mut wallet = Wallet::new(&name);
     let mut tx_count: u64 = 0;
 
-    // Create genesis
-    let issuer_key = ao_crypto::sign::SigningKey::generate();
-    let seed = *issuer_key.seed();
+    let (genesis_json, seed) = pre_genesis;
     let coins = parse_bigint(&vendor_cfg.coins);
     let shares = parse_bigint(&vendor_cfg.shares);
-
-    let fee_num = parse_bigint(&vendor_cfg.fee_num);
-    let fee_den = vendor_cfg.fee_den.as_ref()
-        .map(|s| parse_bigint(s))
-        .unwrap_or_else(|| auto_fee_den(&vendor_cfg.coins));
-    let fee_rate = transfer::FeeRate { num: fee_num, den: fee_den };
-
-    let (_genesis, genesis_json) = transfer::build_genesis(
-        &seed, &vendor_cfg.symbol, &vendor_cfg.description, &coins, &shares, &fee_rate,
-    );
 
     let chain_info = client.create_chain(&genesis_json).await?;
     let chain_id = chain_info.chain_id.clone();
@@ -361,7 +397,7 @@ pub async fn run_vendor(
     wallet.register_utxo(&issuer_entry.pubkey, 1, shares.clone());
     let chain_meta: HashMap<String, (String, String)> = [(chain_id.clone(), (coins.to_string(), shares.to_string()))].into_iter().collect();
     let coverage = Some(vendor_cfg.coverage_radius_m);
-    let _ = state_tx.send(ViewerEvent::State(build_state(&name,"vendor", "ready", lat, lon, &wallet, &chain_id, &vendor_cfg.symbol, &chain_meta, coverage, &paused, tx_count, "genesis created"))).await;
+    let _ = state_tx.send(ViewerEvent::State(Box::new(build_state(&name,"vendor", "ready", lat, lon, &wallet, &chain_id, &vendor_cfg.symbol, &chain_meta, coverage, &paused, tx_count, "genesis created")))).await;
 
     // Handle messages
     while let Some(msg) = mailbox.recv().await {
@@ -379,16 +415,19 @@ pub async fn run_vendor(
                     let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
                         &cid, &vendor_cfg.symbol, &name, &buyer_name, r.block_height, "vendor sold shares",
                     ))).await;
-                    let _ = state_tx.send(ViewerEvent::State(build_state(&name,"vendor", "ready", lat, lon, &wallet, &chain_id, &vendor_cfg.symbol, &chain_meta, coverage, &paused, tx_count, &format!("block {}", r.block_height)))).await;
+                    let _ = state_tx.send(ViewerEvent::State(Box::new(build_state(&name,"vendor", "ready", lat, lon, &wallet, &chain_id, &vendor_cfg.symbol, &chain_meta, coverage, &paused, tx_count, &format!("block {}", r.block_height))))).await;
                 }
                 let _ = reply.send(result);
             }
             AgentMessage::NotifyUtxo { pubkey, seq_id, amount } => {
                 wallet.register_utxo(&pubkey, seq_id, amount);
-                let _ = state_tx.send(ViewerEvent::State(build_state(&name,"vendor", "ready", lat, lon, &wallet, &chain_id, &vendor_cfg.symbol, &chain_meta, coverage, &paused, tx_count, "received redemption"))).await;
+                let _ = state_tx.send(ViewerEvent::State(Box::new(build_state(&name,"vendor", "ready", lat, lon, &wallet, &chain_id, &vendor_cfg.symbol, &chain_meta, coverage, &paused, tx_count, "received redemption")))).await;
             }
             AgentMessage::CrossChainBuy { reply, .. } => {
                 let _ = reply.send(Err(anyhow::anyhow!("{}: vendors do not handle cross-chain buys", name)));
+            }
+            AgentMessage::AtomicBuy { reply, .. } => {
+                let _ = reply.send(Err(anyhow::anyhow!("{}: vendors do not handle atomic buys", name)));
             }
         }
     }
@@ -408,6 +447,7 @@ pub async fn run_exchange(
     speed: SharedSpeed,
     mut block_rx: Option<mpsc::Receiver<crate::mqtt::BlockNotification>>,
     paused: PauseFlag,
+    recorder_url: String,
 ) -> Result<()> {
     let name = config.name.clone();
     let (lat, lon) = (config.lat, config.lon);
@@ -519,7 +559,7 @@ pub async fn run_exchange(
             &name, "exchange", "ready", lat, lon, &wallet, &my_chains, &chain_meta, &paused, tx_count, "inventory acquired",
         );
         state.trading_rates = rates_vec(&pair_rates, &my_chains);
-        let _ = state_tx.send(ViewerEvent::State(state)).await;
+        let _ = state_tx.send(ViewerEvent::State(Box::new(state))).await;
     }
 
     // Price discovery timer — scaled by speed
@@ -619,7 +659,7 @@ pub async fn run_exchange(
                                         {
                                             let mut s = build_multi_state(&name, "exchange", "ready", lat, lon, &wallet, &my_chains, &chain_meta, &paused, tx_count, &format!("restocked {}", sym));
                                             s.trading_rates = rates_vec(&pair_rates, &my_chains);
-                                            let _ = state_tx.send(ViewerEvent::State(s)).await;
+                                            let _ = state_tx.send(ViewerEvent::State(Box::new(s))).await;
                                         }
                                     }
                                     Err(e) => warn!("{}: Restock failed: {}", name, e),
@@ -650,7 +690,7 @@ pub async fn run_exchange(
                 {
                     let mut s = build_multi_state(&name, "exchange", "ready", lat, lon, &wallet, &my_chains, &chain_meta, &paused, tx_count, &format!("sold {}", sym));
                     s.trading_rates = rates_vec(&pair_rates, &my_chains);
-                    let _ = state_tx.send(ViewerEvent::State(s)).await;
+                    let _ = state_tx.send(ViewerEvent::State(Box::new(s))).await;
                 }
                 let _ = reply.send(result);
             }
@@ -682,7 +722,35 @@ pub async fn run_exchange(
                 {
                     let mut s = build_multi_state(&name, "exchange", "ready", lat, lon, &wallet, &my_chains, &chain_meta, &paused, tx_count, "cross-chain trade");
                     s.trading_rates = rates_vec(&pair_rates, &my_chains);
-                    let _ = state_tx.send(ViewerEvent::State(s)).await;
+                    let _ = state_tx.send(ViewerEvent::State(Box::new(s))).await;
+                }
+                let _ = reply.send(result);
+            }
+            AgentMessage::AtomicBuy { request, reply } => {
+                let result = handle_atomic_buy(
+                    &name, &mut wallet, &recorder_url,
+                    &request, &pair_rates, exchange_cfg.referral_fee,
+                    exchange_cfg.escrow_secs as i64,
+                ).await;
+                if let Ok(ref r) = result {
+                    tx_count += 2;
+                    let sell_sym = my_chains.get(&request.sell_chain_id).cloned().unwrap_or_default();
+                    let pay_sym = my_chains.get(&request.pay_chain_id).cloned().unwrap_or_default();
+                    info!("{}: CAA atomic {}↔{}: hash {} (tx #{})",
+                        name, pay_sym, sell_sym, &r.caa_hash[..12], tx_count);
+                    let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                        &request.pay_chain_id, &pay_sym, &request.buyer_name, &name, r.pay_chain_block,
+                        &format!("CAA atomic: {} paid {}", request.buyer_name, pay_sym),
+                    ))).await;
+                    let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                        &request.sell_chain_id, &sell_sym, &name, &request.buyer_name, r.sell_chain_block,
+                        &format!("CAA atomic: exchange sent {}", sell_sym),
+                    ))).await;
+                }
+                {
+                    let mut s = build_multi_state(&name, "exchange", "ready", lat, lon, &wallet, &my_chains, &chain_meta, &paused, tx_count, "CAA atomic trade");
+                    s.trading_rates = rates_vec(&pair_rates, &my_chains);
+                    let _ = state_tx.send(ViewerEvent::State(Box::new(s))).await;
                 }
                 let _ = reply.send(result);
             }
@@ -773,6 +841,146 @@ async fn handle_cross_chain_buy(
     })
 }
 
+/// Handle an atomic CAA cross-chain buy using ao-exchange's execute_caa.
+#[allow(clippy::too_many_arguments)]
+#[allow(unused_variables)] // recorder_url used in CAA client creation
+async fn handle_atomic_buy(
+    name: &str,
+    wallet: &mut Wallet,
+    recorder_url: &str,
+    request: &AtomicBuyRequest,
+    pair_rates: &HashMap<(String, String), f64>,
+    referral_fee: f64,
+    escrow_secs: i64,
+) -> Result<AtomicBuyResult> {
+    use anyhow::Context as _;
+    use ao_exchange::caa::{self, CaaChainComponent, CaaGiver, CaaReceiver};
+
+    // Look up exchange rate
+    let rate = pair_rates.get(&(request.sell_chain_id.clone(), request.pay_chain_id.clone()))
+        .ok_or_else(|| anyhow::anyhow!("{}: no trading pair for this chain combination", name))?;
+
+    // Calculate sell amount from pay amount and rate, minus referral fee
+    let rate_scale = 1_000_000u64;
+    let rate_num = BigInt::from((*rate * rate_scale as f64) as u64);
+    let rate_den = BigInt::from(rate_scale);
+    let mut sell_amount = &request.pay_giver_amount * &rate_den / &rate_num;
+
+    if referral_fee > 0.0 {
+        let fee_keep = &sell_amount * BigInt::from((referral_fee * rate_scale as f64) as u64) / BigInt::from(rate_scale);
+        sell_amount -= fee_keep;
+    }
+
+    if sell_amount <= BigInt::from(0) {
+        anyhow::bail!("{}: sell amount too small after rate conversion", name);
+    }
+
+    // Find exchange's UTXO on sell_chain
+    let sell_utxo = wallet.find_unspent(&request.sell_chain_id)
+        .ok_or_else(|| anyhow::anyhow!("{}: no unspent UTXO on sell chain for CAA", name))?;
+
+    // Generate exchange's receiver key on pay_chain and change key on sell_chain
+    let exchange_pay_recv = wallet.generate_key(&request.pay_chain_id);
+    let exchange_sell_change = wallet.generate_key(&request.sell_chain_id);
+
+    // Decode chain_ids to [u8; 32]
+    let pay_chain_bytes: [u8; 32] = hex::decode(&request.pay_chain_id)
+        .context("invalid pay_chain_id hex")?
+        .try_into().map_err(|_| anyhow::anyhow!("pay_chain_id not 32 bytes"))?;
+    let sell_chain_bytes: [u8; 32] = hex::decode(&request.sell_chain_id)
+        .context("invalid sell_chain_id hex")?
+        .try_into().map_err(|_| anyhow::anyhow!("sell_chain_id not 32 bytes"))?;
+
+    let ex_client = ao_exchange::client::RecorderClient::new(recorder_url);
+
+    // Component 0 (pay_chain): consumer gives, exchange + consumer receive
+    // Component 1 (sell_chain): exchange gives, consumer + exchange receive
+    let mut components = vec![
+        CaaChainComponent {
+            chain_id: pay_chain_bytes,
+            client: ao_exchange::client::RecorderClient::new(recorder_url),
+            givers: vec![CaaGiver {
+                seq_id: request.pay_giver_seq_id,
+                amount: request.pay_giver_amount.clone(),
+                seed: request.pay_giver_seed,
+            }],
+            receivers: vec![
+                CaaReceiver {
+                    pubkey: exchange_pay_recv.pubkey,
+                    seed: exchange_pay_recv.seed,
+                    amount: request.pay_giver_amount.clone(), // will be fee-adjusted by execute_caa
+                },
+                CaaReceiver {
+                    pubkey: request.pay_change_pubkey,
+                    seed: request.pay_change_seed,
+                    amount: BigInt::from(0), // change — last receiver is auto-adjusted
+                },
+            ],
+        },
+        CaaChainComponent {
+            chain_id: sell_chain_bytes,
+            client: ex_client,
+            givers: vec![CaaGiver {
+                seq_id: sell_utxo.seq_id,
+                amount: sell_utxo.amount.clone(),
+                seed: sell_utxo.seed,
+            }],
+            receivers: vec![
+                CaaReceiver {
+                    pubkey: request.sell_receiver_pubkey,
+                    seed: request.sell_receiver_seed,
+                    amount: sell_amount.clone(),
+                },
+                CaaReceiver {
+                    pubkey: exchange_sell_change.pubkey,
+                    seed: exchange_sell_change.seed,
+                    amount: BigInt::from(0), // change — last receiver is auto-adjusted
+                },
+            ],
+        },
+    ];
+
+    let caa_result = caa::execute_caa(&mut components, escrow_secs).await
+        .context(format!("{}: CAA execute_caa failed", name))?;
+
+    // Mark old UTXOs as spent
+    wallet.mark_spent(&sell_utxo.pubkey);
+
+    // Register exchange's new UTXOs
+    // Component 0 (pay_chain): exchange_pay_recv is receiver 0 → first_seq from proof 0
+    // Component 1 (sell_chain): exchange_sell_change is receiver 1 → first_seq + 1 from proof 1
+    // Note: we don't get exact seq_ids from CaaResult — we need to query chain info
+    // For now, use the chain's next_seq_id to figure out what was assigned
+    let pay_info = ao_exchange::client::RecorderClient::new(recorder_url)
+        .chain_info(&request.pay_chain_id).await
+        .context("failed to get pay chain info after CAA")?;
+    let sell_info = ao_exchange::client::RecorderClient::new(recorder_url)
+        .chain_info(&request.sell_chain_id).await
+        .context("failed to get sell chain info after CAA")?;
+
+    // Exchange received on pay_chain (receiver 0 of component 0)
+    // The CAA created 2 UTXOs per component: next_seq_id was advanced by 2 per component
+    // Component 0: receivers got seq_ids (pay_next - 2) and (pay_next - 1)
+    let pay_exchange_seq = pay_info.next_seq_id - 2;
+    let pay_change_seq = pay_info.next_seq_id - 1;
+    wallet.register_utxo(&exchange_pay_recv.pubkey, pay_exchange_seq, components[0].receivers[0].amount.clone());
+
+    // Exchange change on sell_chain (receiver 1 of component 1)
+    let sell_consumer_seq = sell_info.next_seq_id - 2;
+    let sell_change_seq = sell_info.next_seq_id - 1;
+    wallet.register_utxo(&exchange_sell_change.pubkey, sell_change_seq, components[1].receivers[1].amount.clone());
+
+    Ok(AtomicBuyResult {
+        caa_hash: caa_result.caa_hash,
+        pay_chain_block: pay_info.block_height,
+        sell_chain_block: sell_info.block_height,
+        sell_amount: components[1].receivers[0].amount.clone(),
+        sell_receiver_seq: sell_consumer_seq,
+        pay_change_seq,
+        pay_change_amount: components[0].receivers[1].amount.clone(),
+    })
+}
+
 // ── Consumer agent ──────────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
@@ -793,7 +1001,12 @@ pub async fn run_consumer(
 
     let is_cross_chain = consumer_cfg.want_symbol.is_some() && consumer_cfg.pay_symbol.is_some();
 
-    if is_cross_chain {
+    if is_cross_chain && consumer_cfg.atomic {
+        run_atomic_consumer(
+            &name, lat, lon, &consumer_cfg, &client, &directory, &state_tx,
+            &mut wallet, &mut tx_count, &speed, &paused,
+        ).await
+    } else if is_cross_chain {
         run_cross_chain_consumer(
             &name, lat, lon, &consumer_cfg, &client, &directory, &state_tx,
             &mut wallet, &mut tx_count, &speed, &paused,
@@ -873,7 +1086,7 @@ async fn run_single_chain_consumer(
             }
         }
 
-        let _ = state_tx.send(ViewerEvent::State(build_state(name, "consumer", "active", lat, lon, wallet, &chain_id, &symbol, &chain_meta, None, paused, *tx_count, "purchased + redeemed"))).await;
+        let _ = state_tx.send(ViewerEvent::State(Box::new(build_state(name, "consumer", "active", lat, lon, wallet, &chain_id, &symbol, &chain_meta, None, paused, *tx_count, "purchased + redeemed")))).await;
     }
 }
 
@@ -1044,9 +1257,145 @@ async fn run_cross_chain_consumer(
             }
         }
 
-        let _ = state_tx.send(ViewerEvent::State(build_multi_state(
+        let _ = state_tx.send(ViewerEvent::State(Box::new(build_multi_state(
             name, "consumer", "active", lat, lon, wallet, &my_chains, &chain_meta, paused, *tx_count, "cross-chain trade",
-        ))).await;
+        )))).await;
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn run_atomic_consumer(
+    name: &str, lat: f64, lon: f64,
+    consumer_cfg: &ConsumerConfig,
+    client: &RecorderClient,
+    directory: &Arc<RwLock<AgentDirectory>>,
+    state_tx: &StateCollector,
+    wallet: &mut Wallet,
+    tx_count: &mut u64,
+    speed: &SharedSpeed,
+    paused: &PauseFlag,
+) -> Result<()> {
+    let want_sym = consumer_cfg.want_symbol.as_deref().unwrap();
+    let pay_sym = consumer_cfg.pay_symbol.as_deref().unwrap();
+
+    // Wait for both chains to exist
+    let (want_chain_id, _want_vendor, want_plate_price) = wait_for_chain_symbol(directory, want_sym).await?;
+    let (pay_chain_id, _pay_vendor, _pay_plate_price) = wait_for_chain_symbol(directory, pay_sym).await?;
+
+    // Fund ourselves: buy initial pay_chain shares from fund_from vendor
+    if let Some(fund_from) = &consumer_cfg.fund_from {
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+        let info = client.chain_info(&pay_chain_id).await?;
+        let total_shares: BigInt = info.shares_out.parse()?;
+        let total_coins: BigInt = info.coin_count.parse()?;
+        let fund_coins = BigInt::from(want_plate_price) * BigInt::from(150u64);
+        let fund_shares = &total_shares * &fund_coins / &total_coins;
+
+        request_purchase(name, wallet, directory, fund_from, &pay_chain_id, &fund_shares).await?;
+        *tx_count += 1;
+        info!("{}: Funded with {} shares on {}", name, fund_shares, pay_sym);
+    }
+
+    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+    let base_interval = consumer_cfg.interval_secs as f64;
+    info!("{}: Starting atomic CAA loop {} → {} (base interval {}s)", name, pay_sym, want_sym, base_interval);
+
+    let mut my_chains = HashMap::new();
+    my_chains.insert(want_chain_id.clone(), want_sym.to_string());
+    my_chains.insert(pay_chain_id.clone(), pay_sym.to_string());
+
+    let chain_meta: HashMap<String, (String, String)> = {
+        let dir = directory.read().await;
+        my_chains.keys().filter_map(|cid| {
+            dir.chains.get(cid).map(|reg| (cid.clone(), (reg.coin_count.clone(), reg.total_shares.clone())))
+        }).collect()
+    };
+
+    loop {
+        wait_while_paused(paused).await;
+        let interval = std::time::Duration::from_secs_f64(base_interval / read_speed(speed).max(0.1));
+        tokio::time::sleep(interval).await;
+
+        // Find our unspent UTXO on pay_chain
+        let pay_utxo = match wallet.find_unspent(&pay_chain_id) {
+            Some(u) => u,
+            None => { warn!("{}: No unspent UTXO on {}", name, pay_sym); continue; }
+        };
+
+        // Calculate pay amount: 1 plate worth
+        let info = match client.chain_info(&pay_chain_id).await {
+            Ok(i) => i,
+            Err(e) => { warn!("{}: chain_info failed: {}", name, e); continue; }
+        };
+        let total_shares: BigInt = info.shares_out.parse().unwrap_or_default();
+        let total_coins: BigInt = info.coin_count.parse().unwrap_or_default();
+        let plate_coins = BigInt::from(want_plate_price);
+        let pay_amount = &total_shares * &plate_coins / &total_coins;
+
+        if pay_amount > pay_utxo.amount {
+            warn!("{}: Insufficient funds on {} ({} < {})", name, pay_sym, pay_utxo.amount, pay_amount);
+            continue;
+        }
+
+        // Generate receiver key on want_chain and change key on pay_chain
+        let sell_recv = wallet.generate_key(&want_chain_id);
+        let pay_change = wallet.generate_key(&pay_chain_id);
+
+        // Send AtomicBuy to exchange
+        let exchange_sender = {
+            let dir = directory.read().await;
+            dir.get(&consumer_cfg.buy_from).cloned()
+        };
+        let exchange_sender = match exchange_sender {
+            Some(s) => s,
+            None => { warn!("{}: Exchange {} not found", name, consumer_cfg.buy_from); continue; }
+        };
+
+        let (reply_tx, reply_rx) = oneshot::channel();
+        let request = AtomicBuyRequest {
+            buyer_name: name.to_string(),
+            sell_chain_id: want_chain_id.clone(),
+            pay_chain_id: pay_chain_id.clone(),
+            pay_giver_seq_id: pay_utxo.seq_id,
+            pay_giver_amount: pay_amount.clone(),
+            pay_giver_seed: pay_utxo.seed,
+            sell_receiver_pubkey: sell_recv.pubkey,
+            sell_receiver_seed: sell_recv.seed,
+            pay_change_pubkey: pay_change.pubkey,
+            pay_change_seed: pay_change.seed,
+        };
+
+        if exchange_sender.send(AgentMessage::AtomicBuy { request, reply: reply_tx }).await.is_err() {
+            warn!("{}: Failed to send AtomicBuy to {}", name, consumer_cfg.buy_from);
+            continue;
+        }
+
+        match reply_rx.await {
+            Ok(Ok(result)) => {
+                wallet.mark_spent(&pay_utxo.pubkey);
+                wallet.register_utxo(&sell_recv.pubkey, result.sell_receiver_seq, result.sell_amount.clone());
+                wallet.register_utxo(&pay_change.pubkey, result.pay_change_seq, result.pay_change_amount.clone());
+                *tx_count += 1;
+                info!("{}: CAA atomic done: {} → {} (caa {})",
+                    name, pay_sym, want_sym, &result.caa_hash[..12.min(result.caa_hash.len())]);
+                let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                    &want_chain_id, want_sym, &consumer_cfg.buy_from, name, result.sell_chain_block,
+                    &format!("{}: CAA atomic {} → {}", name, pay_sym, want_sym),
+                ))).await;
+            }
+            Ok(Err(e)) => {
+                warn!("{}: AtomicBuy failed: {}", name, e);
+            }
+            Err(_) => {
+                warn!("{}: AtomicBuy reply channel dropped", name);
+            }
+        }
+
+        let _ = state_tx.send(ViewerEvent::State(Box::new(build_multi_state(
+            name, "consumer", "active", lat, lon, wallet, &my_chains, &chain_meta, paused, *tx_count, "atomic trade",
+        )))).await;
     }
 }
 
@@ -1159,12 +1508,13 @@ pub async fn run_validator(
                 total_blocks_verified: total_verified,
             }),
             attacker_status: None,
+            caa_status: None,
             transactions: 0,
             last_action: last_action.to_string(),
         }
     };
 
-    let _ = state_tx.send(ViewerEvent::State(report_state(&chain_states, &alerts, total_verified, &paused, "initialized"))).await;
+    let _ = state_tx.send(ViewerEvent::State(Box::new(report_state(&chain_states, &alerts, total_verified, &paused, "initialized")))).await;
 
     // Poll loop
     loop {
@@ -1261,7 +1611,15 @@ pub async fn run_validator(
                     }
                     Ok(_) => {} // empty batch, nothing to verify
                     Err(e) => {
-                        warn!("{}: get_blocks failed for {}: {}", name, cs.symbol, e);
+                        cs.status = "alert".to_string();
+                        let msg = format!("block fetch failed at height {}: {}", from, e);
+                        warn!("{}: {} — {}", name, cs.symbol, msg);
+                        alerts.push(AlertEntry {
+                            timestamp_ms: now_ms(),
+                            chain_id: cs.chain_id.clone(),
+                            alert_type: "alteration".to_string(),
+                            message: msg,
+                        });
                     }
                 }
             }
@@ -1272,10 +1630,10 @@ pub async fn run_validator(
             alerts.drain(..alerts.len() - 100);
         }
 
-        let _ = state_tx.send(ViewerEvent::State(report_state(
+        let _ = state_tx.send(ViewerEvent::State(Box::new(report_state(
             &chain_states, &alerts, total_verified, &paused,
             &format!("poll #{}", poll_count),
-        ))).await;
+        )))).await;
     }
 }
 
@@ -1291,6 +1649,7 @@ pub async fn run_attacker(
     _mailbox: mpsc::Receiver<AgentMessage>,
     speed: SharedSpeed,
     paused: PauseFlag,
+    recorder_state: Option<Arc<ao_recorder::AppState>>,
 ) -> Result<()> {
     let name = config.name.clone();
     let (lat, lon) = (config.lat, config.lon);
@@ -1349,12 +1708,13 @@ pub async fn run_attacker(
                 unexpected_accepts,
                 last_result: last_result.to_string(),
             }),
+            caa_status: None,
             transactions: attempts,
             last_action: last_result.to_string(),
         }
     };
 
-    let _ = state_tx.send(ViewerEvent::State(make_state(&wallet, 0, 0, 0, "ready", &paused))).await;
+    let _ = state_tx.send(ViewerEvent::State(Box::new(make_state(&wallet, 0, 0, 0, "ready", &paused)))).await;
 
     // Attack loop
     loop {
@@ -1379,6 +1739,7 @@ pub async fn run_attacker(
             "double_spend" => attempt_double_spend(&name, &mut wallet, &client, &chain_id).await,
             "key_reuse" => attempt_key_reuse(&name, &mut wallet, &client, &directory, &attacker_cfg.target_vendor, &chain_id).await,
             "expired_utxo" => attempt_expired_utxo(&name, &mut wallet, &client, &chain_id).await,
+            "chain_tamper" => attempt_chain_tamper(&name, &chain_id, &recorder_state).await,
             other => {
                 warn!("{}: unknown attack type: {}", name, other);
                 Err(anyhow::anyhow!("unknown attack type"))
@@ -1406,7 +1767,7 @@ pub async fn run_attacker(
             }
         }
 
-        let _ = state_tx.send(ViewerEvent::State(make_state(&wallet, attempts, rejections, unexpected_accepts, &last_result, &paused))).await;
+        let _ = state_tx.send(ViewerEvent::State(Box::new(make_state(&wallet, attempts, rejections, unexpected_accepts, &last_result, &paused)))).await;
         let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
             &chain_id, &symbol, &name, &attacker_cfg.target_vendor, 0,
             &format!("{}: {}", attack_type, &last_result),
@@ -1573,6 +1934,45 @@ async fn attempt_expired_utxo(
         }
         Err(_) => Ok(false),  // rejected for any reason = good
     }
+}
+
+/// Tamper with the recorder's stored block data to test validator detection.
+/// Returns Ok(false) after tampering — counted as "rejected" since the tampering
+/// itself isn't a protocol vulnerability (the validator should catch it).
+async fn attempt_chain_tamper(
+    name: &str,
+    chain_id: &str,
+    recorder_state: &Option<Arc<ao_recorder::AppState>>,
+) -> Result<bool> {
+    let state = recorder_state.as_ref()
+        .ok_or_else(|| anyhow::anyhow!("{}: chain_tamper requires recorder_state", name))?;
+
+    let chains = state.chains.read().unwrap();
+    let chain_state = chains.get(chain_id)
+        .ok_or_else(|| anyhow::anyhow!("{}: chain {} not found in recorder", name, &chain_id[..12]))?;
+
+    // Tamper with the latest block — must be one the validator hasn't verified yet.
+    let tampered = {
+        let store = chain_state.store.lock().unwrap();
+        let height = store.block_count()?;
+        if height < 2 {
+            return Ok(false); // not enough blocks yet
+        }
+        // Tamper with the most recent block (height - 1 is the latest, 0-indexed count).
+        // The validator verifies forward from its last checkpoint, so new blocks
+        // that arrive after the last poll will be verified on the next poll.
+        let target_height = height - 1;
+        info!("{}: Targeting block {} on chain {}", name, target_height, &chain_id[..12]);
+        store.tamper_block(target_height)?
+    };
+
+    if tampered {
+        info!("{}: Tampered with block data on chain {} — validator should detect this", name, &chain_id[..12]);
+    }
+
+    // Return false — tampering is not a vulnerability (the validator should catch it).
+    // If the validator fails to detect it, that's a separate issue visible in Victor's alerts.
+    Ok(false)
 }
 
 // ── Shared helpers ──────────────────────────────────────────────────
@@ -1806,6 +2206,7 @@ fn build_state(
         trading_rates: Vec::new(),
         validator_status: None,
         attacker_status: None,
+        caa_status: None,
         transactions,
         last_action: last_action.to_string(),
     }
@@ -1846,6 +2247,7 @@ fn build_multi_state(
         trading_rates: Vec::new(),
         validator_status: None,
         attacker_status: None,
+        caa_status: None,
         transactions,
         last_action: last_action.to_string(),
     }

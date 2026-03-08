@@ -120,3 +120,16 @@ lon = -63.0545
 attack = "expired_utxo"
 target_vendor = "Carol"
 attack_interval_secs = 15
+
+# ── Eve: chain tamper attacker (tests validator detection) ────────
+
+[[agent]]
+name = "Eve"
+role = "attacker"
+lat = 18.2090
+lon = -63.0520
+
+[agent.attacker]
+attack = "chain_tamper"
+target_vendor = "Bob"
+attack_interval_secs = 30

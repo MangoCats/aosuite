@@ -39,16 +39,7 @@ impl Wallet {
         let key = SigningKey::generate();
         let mut pubkey = [0u8; 32];
         pubkey.copy_from_slice(key.public_key_bytes());
-        let entry = KeyEntry {
-            seed: *key.seed(),
-            pubkey,
-            chain_id: chain_id.to_string(),
-            seq_id: None,
-            amount: None,
-            spent: false,
-        };
-        self.keys.push(entry.clone());
-        entry
+        self.push_key(*key.seed(), pubkey, chain_id)
     }
 
     /// Import a known key (e.g. from config seed).
@@ -56,6 +47,10 @@ impl Wallet {
         let key = SigningKey::from_seed(&seed);
         let mut pubkey = [0u8; 32];
         pubkey.copy_from_slice(key.public_key_bytes());
+        self.push_key(seed, pubkey, chain_id)
+    }
+
+    fn push_key(&mut self, seed: [u8; 32], pubkey: [u8; 32], chain_id: &str) -> KeyEntry {
         let entry = KeyEntry {
             seed,
             pubkey,
@@ -79,12 +74,11 @@ impl Wallet {
     /// Find an unspent UTXO on a given chain.
     pub fn find_unspent(&self, chain_id: &str) -> Option<RegisteredUtxo> {
         self.keys.iter()
-            .find(|k| k.chain_id == chain_id && k.seq_id.is_some() && !k.spent)
-            .map(|k| RegisteredUtxo {
-                seed: k.seed,
-                pubkey: k.pubkey,
-                seq_id: k.seq_id.expect("filter guarantees seq_id is Some"),
-                amount: k.amount.clone().expect("registered UTXO has amount"),
+            .filter(|k| k.chain_id == chain_id && !k.spent)
+            .find_map(|k| {
+                let seq_id = k.seq_id?;
+                let amount = k.amount.clone()?;
+                Some(RegisteredUtxo { seed: k.seed, pubkey: k.pubkey, seq_id, amount })
             })
     }
 

@@ -33,7 +33,11 @@ export function Header() {
           {connected ? 'Connected' : 'Disconnected'}
         </span>
         <span style={{ color: '#666' }}>{recorderUrl}</span>
-        {walletLabel && <span>{walletLabel}</span>}
+        {walletLabel && (
+          <span title={useStore.getState().publicKeyHex ?? undefined}>
+            {walletLabel}
+          </span>
+        )}
       </div>
     </header>
   );

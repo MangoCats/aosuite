@@ -1,0 +1,329 @@
+# Island Life Full — complete IslandLife narrative with CAA atomic exchange
+#
+# Extension of island-life.toml with:
+#   - Charlie and Ziggy use CAA atomic swaps
+#   - Some consumers use atomic mode, others use legacy two-leg
+#   - Victor validates all chains
+#   - Mallory attempts double-spend attacks
+#
+# Vendors:
+#   Bob — BCG (Bob's Curry Goat) at Sandy Ground
+#   Rita — RMF (Rita's Mango Futures) at George Hill
+#   Dave — DEB (Dave's E-Bikes) at Blowing Point
+#   Oscar — OGP (Oscar's Goat Plates) at The Valley
+#
+# Exchange agents (atomic CAA):
+#   Charlie — CCC (Charlie's Cruise Credits), main exchange, atomic
+#   Ziggy — ZIC (Ziggy's Island Credits), aggressive competitor, atomic
+#   Ted — TCC (Ted's Caribbean Credits), regional, legacy
+#
+# Consumers (mixed atomic and legacy):
+#   Alice, Eddie — atomic via Charlie
+#   Karen — legacy via Charlie
+#   Luke — atomic via Ziggy
+#   Mona — legacy via Ziggy
+#
+# MQTT enabled for exchange agent block notifications.
+
+[simulation]
+name = "island-life-full"
+recorder_port = 0
+speed = 10.0
+duration_secs = 300
+mqtt_port = 1884
+
+# ── Vendors ──────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Bob"
+role = "vendor"
+lat = 18.2027
+lon = -63.0890   # Sandy Ground
+
+[agent.vendor]
+symbol = "BCG"
+description = "Bob's Curry Goat"
+coins = "1000000000"
+shares = "2^40"
+plate_price = 25
+initial_float = 100
+
+[[agent]]
+name = "Rita"
+role = "vendor"
+lat = 18.2173
+lon = -63.0578   # George Hill
+
+[agent.vendor]
+symbol = "RMF"
+description = "Rita's Mango Futures"
+coins = "500000000"
+shares = "2^38"
+plate_price = 10
+initial_float = 200
+
+[[agent]]
+name = "Dave"
+role = "vendor"
+lat = 18.1755
+lon = -63.0925   # Blowing Point
+
+[agent.vendor]
+symbol = "DEB"
+description = "Dave's E-Bikes"
+coins = "200000000"
+shares = "2^36"
+plate_price = 50
+initial_float = 40
+
+[[agent]]
+name = "Oscar"
+role = "vendor"
+lat = 18.2167
+lon = -63.0500   # The Valley
+
+[agent.vendor]
+symbol = "OGP"
+description = "Oscar's Goat Plates"
+coins = "2000000000"
+shares = "2^42"
+plate_price = 20
+initial_float = 50
+
+# ── Recorders ────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Gene"
+role = "recorder"
+lat = 18.2060
+lon = -63.1510   # Crocus Bay
+
+[[agent]]
+name = "Faythe"
+role = "recorder"
+lat = 18.2173
+lon = -63.0578   # George Hill
+
+# ── Exchange agents ──────────────────────────────────────────────────
+
+[[agent]]
+name = "Charlie"
+role = "exchange"
+lat = 18.2190
+lon = -63.0350   # near cruise port
+
+[agent.exchange]
+atomic = true
+escrow_secs = 120
+referral_fee = 0.05
+rebalance_threshold = 0.25
+
+pairs = [
+    { sell = "BCG", buy = "CCC", rate = 12.0 },
+    { sell = "RMF", buy = "CCC", rate = 5.0 },
+    { sell = "DEB", buy = "CCC", rate = 24.0 },
+    { sell = "OGP", buy = "CCC", rate = 8.0 },
+]
+
+[[agent.exchange.inventory]]
+vendor = "Bob"
+plates = 80
+
+[[agent.exchange.inventory]]
+vendor = "Rita"
+plates = 150
+
+[[agent.exchange.inventory]]
+vendor = "Dave"
+plates = 30
+
+[[agent.exchange.inventory]]
+vendor = "Oscar"
+plates = 20
+
+[[agent]]
+name = "Ziggy"
+role = "exchange"
+lat = 18.2100
+lon = -63.0600   # The Valley area
+
+[agent.exchange]
+atomic = true
+escrow_secs = 90
+referral_fee = 0.02
+rebalance_threshold = 0.30
+
+pairs = [
+    { sell = "BCG", buy = "ZIC", rate = 11.4 },
+    { sell = "DEB", buy = "ZIC", rate = 22.0 },
+]
+
+[[agent.exchange.inventory]]
+vendor = "Bob"
+plates = 60
+
+[[agent.exchange.inventory]]
+vendor = "Dave"
+plates = 25
+
+[[agent]]
+name = "Ted"
+role = "exchange"
+lat = 18.4400
+lon = -64.6200   # Road Town, Tortola
+
+[agent.exchange]
+referral_fee = 0.03
+rebalance_threshold = 0.20
+
+pairs = [
+    { sell = "BCG", buy = "TCC", rate = 10.0 },
+    { sell = "RMF", buy = "TCC", rate = 4.0 },
+]
+
+[[agent.exchange.inventory]]
+vendor = "Bob"
+plates = 40
+
+[[agent.exchange.inventory]]
+vendor = "Rita"
+plates = 80
+
+# ── Payment chain issuers ───────────────────────────────────────────
+
+[[agent]]
+name = "CCC-Issuer"
+role = "vendor"
+lat = 18.2190
+lon = -63.0355
+
+[agent.vendor]
+symbol = "CCC"
+description = "Charlie's Cruise Credits"
+coins = "10000000000"
+shares = "2^44"
+plate_price = 1
+initial_float = 5000
+
+[[agent]]
+name = "ZIC-Issuer"
+role = "vendor"
+lat = 18.2105
+lon = -63.0605
+
+[agent.vendor]
+symbol = "ZIC"
+description = "Ziggy's Island Credits"
+coins = "5000000000"
+shares = "2^42"
+plate_price = 1
+initial_float = 3000
+
+[[agent]]
+name = "TCC-Issuer"
+role = "vendor"
+lat = 18.4405
+lon = -64.6205
+
+[agent.vendor]
+symbol = "TCC"
+description = "Ted's Caribbean Credits"
+coins = "5000000000"
+shares = "2^42"
+plate_price = 1
+initial_float = 2000
+
+# ── Consumers ────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Alice"
+role = "consumer"
+lat = 18.2030
+lon = -63.0885   # Sandy Ground (tourist, atomic)
+
+[agent.consumer]
+buy_from = "Charlie"
+want_symbol = "BCG"
+pay_symbol = "CCC"
+fund_from = "CCC-Issuer"
+interval_secs = 30
+atomic = true
+
+[[agent]]
+name = "Eddie"
+role = "consumer"
+lat = 18.2050
+lon = -63.0870   # Sandy Ground (local investor, atomic)
+
+[agent.consumer]
+buy_from = "Charlie"
+want_symbol = "BCG"
+pay_symbol = "CCC"
+fund_from = "CCC-Issuer"
+interval_secs = 45
+atomic = true
+
+[[agent]]
+name = "Karen"
+role = "consumer"
+lat = 18.2165
+lon = -63.0560   # George Hill (nurse, legacy two-leg)
+
+[agent.consumer]
+buy_from = "Charlie"
+want_symbol = "RMF"
+pay_symbol = "CCC"
+fund_from = "CCC-Issuer"
+interval_secs = 40
+
+[[agent]]
+name = "Luke"
+role = "consumer"
+lat = 18.1760
+lon = -63.0920   # Blowing Point (tourist, atomic via Ziggy)
+
+[agent.consumer]
+buy_from = "Ziggy"
+want_symbol = "DEB"
+pay_symbol = "ZIC"
+fund_from = "ZIC-Issuer"
+interval_secs = 60
+atomic = true
+
+[[agent]]
+name = "Mona"
+role = "consumer"
+lat = 18.2100
+lon = -63.0500   # The Valley (local, legacy via Ziggy)
+
+[agent.consumer]
+buy_from = "Ziggy"
+want_symbol = "BCG"
+pay_symbol = "ZIC"
+fund_from = "ZIC-Issuer"
+interval_secs = 35
+
+# ── Validator ────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Victor"
+role = "validator"
+lat = 18.2050
+lon = -63.0530
+
+[agent.validator]
+poll_interval_secs = 5
+batch_size = 100
+
+# ── Attacker ─────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Mallory"
+role = "attacker"
+lat = 18.2015
+lon = -63.0475
+
+[agent.attacker]
+attack = "double_spend"
+target_vendor = "Bob"
+attack_interval_secs = 20

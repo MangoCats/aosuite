@@ -1,10 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore.ts';
 import { RecorderClient } from '../api/client.ts';
 import { TrustIndicator } from './TrustIndicator.tsx';
+import { QrCode } from './QrCode.tsx';
 
 export function ChainDetail() {
   const { recorderUrl, selectedChainId, chainInfo, setChainInfo } = useStore();
+  const [showQr, setShowQr] = useState(false);
 
   useEffect(() => {
     if (!selectedChainId) return;
@@ -48,6 +50,20 @@ export function ChainDetail() {
           <Row label="Next Seq ID" value={String(chainInfo.next_seq_id)} />
         </tbody>
       </table>
+      <button
+        onClick={() => setShowQr(!showQr)}
+        style={{ marginTop: 8, fontSize: 12 }}
+      >
+        {showQr ? 'Hide QR' : 'Show QR Code'}
+      </button>
+      {showQr && (
+        <div style={{ marginTop: 8 }}>
+          <QrCode value={`${recorderUrl}/chain/${chainInfo.chain_id}/info`} size={180} />
+          <div style={{ fontSize: 11, color: '#666', marginTop: 4 }}>
+            Scan to connect to this chain
+          </div>
+        </div>
+      )}
       {chainInfo.validators && chainInfo.validators.length > 0 && (
         <TrustIndicator
           validators={chainInfo.validators}

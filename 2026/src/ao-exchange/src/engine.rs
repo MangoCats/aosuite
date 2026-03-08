@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Result, bail};
 use num_bigint::BigInt;
@@ -6,6 +7,7 @@ use tracing::info;
 
 use crate::client::RecorderClient;
 use crate::config::Config;
+use crate::trade::{PendingTrade, TradeManager};
 use crate::transfer::{self, Giver, Receiver};
 use crate::wallet::Wallet;
 
@@ -34,6 +36,25 @@ pub struct ExchangeEngine {
     pub chains: HashMap<String, ChainState>, // chain_id → state
     pub symbol_to_chain: HashMap<String, String>, // symbol → chain_id
     pub pairs: Vec<ResolvedPair>,
+    pub trades: TradeManager,
+    /// Tracks last-seen next_seq_id per chain for deposit detection.
+    pub last_seq: HashMap<String, u64>,
+}
+
+/// Convert a buy amount to sell amount using rate and spread.
+/// Returns None if the result is non-positive (too small to trade).
+fn compute_sell_amount(buy_amount: &BigInt, rate: f64, spread: f64) -> Option<BigInt> {
+    let buy_f64 = buy_amount.to_string().parse::<f64>().unwrap_or(0.0);
+    let effective_rate = rate * (1.0 + spread / 2.0);
+    if effective_rate <= 0.0 {
+        return None;
+    }
+    let sell_f64 = buy_f64 / effective_rate;
+    // Guard: f64 values beyond i64 range would wrap silently
+    if sell_f64 < 1.0 || sell_f64 > i64::MAX as f64 {
+        return None;
+    }
+    Some(BigInt::from(sell_f64 as i64))
 }
 
 impl ExchangeEngine {
@@ -96,11 +117,16 @@ impl ExchangeEngine {
             });
         }
 
+        let mut trades = TradeManager::new();
+        trades.trade_ttl_secs = config.trade_ttl_secs;
+
         Ok(ExchangeEngine {
             wallet,
             chains,
             symbol_to_chain,
             pairs,
+            trades,
+            last_seq: HashMap::new(),
         })
     }
 
@@ -118,17 +144,12 @@ impl ExchangeEngine {
         // Calculate sell amount using f64 arithmetic. Exchange rates are inherently
         // approximate (configured as floats, subject to spread), and this is a
         // unilateral agent decision — not consensus-critical like on-chain fee math.
-        let pay_f64 = pay_amount.to_string().parse::<f64>().unwrap_or(0.0);
-        let effective_rate = pair.rate * (1.0 + pair.spread / 2.0);
-        let sell_f64 = pay_f64 / effective_rate;
-        let sell_amount = BigInt::from(sell_f64 as i64);
-
-        if sell_amount <= BigInt::from(0) {
-            bail!("sell amount too small after rate conversion");
-        }
+        let sell_amount = compute_sell_amount(pay_amount, pair.rate, pair.spread)
+            .ok_or_else(|| anyhow::anyhow!("sell amount too small after rate conversion"))?;
 
         let sell_chain_id = pair.sell_chain_id.clone();
         let sell_symbol = pair.sell_symbol.clone();
+        let buy_symbol = pair.buy_symbol.clone();
 
         let sell_client = &self.chains.get(&sell_chain_id)
             .ok_or_else(|| anyhow::anyhow!("sell chain {} not connected", sell_symbol))?
@@ -160,8 +181,15 @@ impl ExchangeEngine {
             },
         ];
 
+        // Attach EXCHANGE_LISTING: counterpart chain symbol, payment amount, agent label
+        let listing = transfer::build_exchange_listing(
+            &buy_symbol,
+            pay_amount,
+            "ao-exchange",
+        );
+
         let result = transfer::execute_transfer(
-            sell_client, &sell_chain_id, &[giver], &mut receivers,
+            sell_client, &sell_chain_id, &[giver], &mut receivers, &[listing],
         ).await?;
 
         self.wallet.mark_spent(&giver_pubkey);
@@ -190,5 +218,222 @@ impl ExchangeEngine {
         }
         result.sort_by(|a, b| a.0.cmp(&b.0));
         result
+    }
+
+    /// Create a pending trade request. Returns the trade details for the consumer.
+    ///
+    /// The consumer must:
+    /// 1. Build an assignment on the buy chain with `deposit_pubkey` as a receiver
+    ///    (using `deposit_seed` for the receiver signature).
+    /// 2. Wait for the exchange agent to detect the deposit and execute the reverse leg.
+    /// 3. The consumer receives shares at `receive_pubkey` on the sell chain
+    ///    (they hold `receive_seed` to spend later).
+    pub fn request_trade(
+        &mut self,
+        sell_symbol: &str,
+        buy_symbol: &str,
+        buy_amount: &BigInt,
+    ) -> Result<&PendingTrade> {
+        let pair_index = self.find_pair(sell_symbol, buy_symbol)
+            .ok_or_else(|| anyhow::anyhow!("no trading pair {}/{}", sell_symbol, buy_symbol))?;
+        let pair = &self.pairs[pair_index];
+
+        // Validate trade size
+        let amount_u64 = buy_amount.to_string().parse::<u64>().unwrap_or(0);
+        if let Some(min) = pair.min_trade
+            && amount_u64 < min
+        {
+            bail!("amount {} below minimum trade {}", buy_amount, min);
+        }
+        if let Some(max) = pair.max_trade
+            && amount_u64 > max
+        {
+            bail!("amount {} above maximum trade {}", buy_amount, max);
+        }
+
+        // Check sell-chain inventory
+        let sell_balance = self.wallet.balance(&pair.sell_chain_id);
+        let estimated_sell = compute_sell_amount(buy_amount, pair.rate, pair.spread)
+            .unwrap_or(BigInt::from(0));
+        if estimated_sell > sell_balance {
+            bail!(
+                "insufficient {} inventory: need ~{}, have {}",
+                pair.sell_symbol, estimated_sell, sell_balance
+            );
+        }
+
+        // Generate deposit key (buy chain — consumer sends payment here)
+        let deposit_key = self.wallet.generate_key(&pair.buy_chain_id);
+
+        // Generate receive key (sell chain — agent sends payout here, consumer holds seed)
+        let receive_key = self.wallet.generate_key(&pair.sell_chain_id);
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock")
+            .as_secs();
+
+        let trade_id = uuid::Uuid::new_v4().to_string();
+        let trade = PendingTrade {
+            trade_id: trade_id.clone(),
+            pair_index,
+            buy_chain_id: pair.buy_chain_id.clone(),
+            buy_symbol: pair.buy_symbol.clone(),
+            sell_chain_id: pair.sell_chain_id.clone(),
+            sell_symbol: pair.sell_symbol.clone(),
+            expected_amount: buy_amount.clone(),
+            deposit_pubkey: deposit_key.pubkey,
+            deposit_seed: deposit_key.seed,
+            receive_pubkey: receive_key.pubkey,
+            receive_seed: receive_key.seed,
+            estimated_receive_amount: estimated_sell,
+            expires_at: now + self.trades.trade_ttl_secs,
+        };
+
+        self.trades.insert(trade);
+        Ok(self.trades.find_by_deposit(&hex::encode(deposit_key.pubkey))
+            .expect("just inserted"))
+    }
+
+    /// Poll chains for new UTXOs. When a deposit matches a pending trade,
+    /// execute the reverse-leg trade automatically.
+    ///
+    /// Returns a list of (trade_id, result) for trades attempted this cycle.
+    pub async fn check_deposits(&mut self) -> Vec<(String, Result<(u64, BigInt)>)> {
+        // Expire stale trade requests
+        let expired = self.trades.expire_stale();
+        if expired > 0 {
+            tracing::info!(expired, "Expired stale trade requests");
+        }
+
+        // Collect chain IDs to check (avoid borrow issues)
+        let chain_ids: Vec<String> = self.chains.keys().cloned().collect();
+        let mut matched_trades: Vec<(String, BigInt)> = Vec::new();
+
+        for chain_id in &chain_ids {
+            let chain_state = &self.chains[chain_id];
+            let info = match chain_state.client.chain_info(chain_id).await {
+                Ok(info) => info,
+                Err(e) => {
+                    tracing::warn!(
+                        chain = %chain_state.symbol, "poll failed: {}", e
+                    );
+                    continue;
+                }
+            };
+
+            let prev_seq = *self.last_seq.get(chain_id).unwrap_or(&info.next_seq_id);
+            let current_seq = info.next_seq_id;
+            self.last_seq.insert(chain_id.clone(), current_seq);
+
+            // Check new UTXOs
+            for seq_id in prev_seq..current_seq {
+                let utxo = match chain_state.client.get_utxo(chain_id, seq_id).await {
+                    Ok(u) => u,
+                    Err(e) => {
+                        tracing::debug!(seq_id, "utxo fetch failed: {}", e);
+                        continue;
+                    }
+                };
+
+                if utxo.status != "Unspent" {
+                    continue;
+                }
+
+                // Check if this UTXO's pubkey matches a pending trade deposit
+                if let Some(trade) = self.trades.find_by_deposit(&utxo.pubkey) {
+                    let amount: BigInt = match utxo.amount.parse() {
+                        Ok(a) => a,
+                        Err(_) => continue,
+                    };
+                    info!(
+                        trade_id = %trade.trade_id,
+                        chain = %trade.buy_symbol,
+                        amount = %amount,
+                        "Deposit detected"
+                    );
+                    // Register the deposited UTXO in wallet so agent can spend it later
+                    let deposit_pub = trade.deposit_pubkey;
+                    self.wallet.register_utxo(&deposit_pub, seq_id, amount.clone());
+
+                    matched_trades.push((trade.trade_id.clone(), amount));
+                }
+            }
+        }
+
+        // Execute matched trades
+        let mut results = Vec::new();
+        for (trade_id, pay_amount) in matched_trades {
+            // Remove trade from pending (consume it)
+            let trade = match self.trades.remove(&trade_id) {
+                Some(t) => t,
+                None => continue,
+            };
+
+            let result = self.execute_trade(
+                trade.pair_index,
+                &pay_amount,
+                trade.receive_pubkey,
+                trade.receive_seed,
+            ).await;
+
+            match &result {
+                Ok((height, amount)) => {
+                    info!(
+                        trade_id = %trade_id,
+                        sell = %trade.sell_symbol,
+                        amount = %amount,
+                        block = height,
+                        "Auto-trade completed"
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        trade_id = %trade_id,
+                        sell = %trade.sell_symbol,
+                        "Auto-trade failed: {}", e
+                    );
+                }
+            }
+
+            results.push((trade_id, result));
+        }
+
+        results
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_compute_sell_amount_normal() {
+        // rate=2.0, spread=0.02: effective_rate = 2.0 * 1.01 = 2.02
+        // sell = 1000 / 2.02 ≈ 495
+        let result = compute_sell_amount(&BigInt::from(1000), 2.0, 0.02);
+        assert!(result.is_some());
+        let sell = result.unwrap();
+        assert!(sell > BigInt::from(0));
+        assert!(sell < BigInt::from(1000));
+    }
+
+    #[test]
+    fn test_compute_sell_amount_too_small() {
+        // 1 share at rate 1000 → sell would be ~0
+        let result = compute_sell_amount(&BigInt::from(1), 1000.0, 0.0);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_compute_sell_amount_zero_rate() {
+        let result = compute_sell_amount(&BigInt::from(1000), 0.0, 0.0);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_compute_sell_amount_negative_rate() {
+        let result = compute_sell_amount(&BigInt::from(1000), -1.0, 0.0);
+        assert!(result.is_none());
     }
 }

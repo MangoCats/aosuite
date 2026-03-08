@@ -880,6 +880,55 @@ async fn test_exchange_agent_registration() {
     assert_eq!(resp.status(), 404);
 }
 
+/// Test that exchange agent registration supports extended fields:
+/// contact_url, spread, min_trade, max_trade, TTL, and registered_at.
+#[tokio::test]
+async fn test_exchange_agent_extended_fields() {
+    let issuer = SigningKey::from_seed(&[0x50; 32]);
+    let blockmaker = SigningKey::from_seed(&[0x51; 32]);
+    let (base, chain_id) = start_test_server(&issuer, &blockmaker).await;
+
+    let client = reqwest::Client::new();
+
+    // Register with extended fields
+    let resp = client
+        .post(format!("{}/chain/{}/exchange-agent", base, chain_id))
+        .json(&serde_json::json!({
+            "name": "Mako",
+            "pairs": [
+                {
+                    "sell_symbol": "ENRA",
+                    "buy_symbol": "TGS",
+                    "rate": 1.5,
+                    "spread": 0.03,
+                    "min_trade": 100,
+                    "max_trade": 50000
+                }
+            ],
+            "contact_url": "http://localhost:3100/trade",
+            "ttl": 7200
+        }))
+        .send().await.unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // Verify fields come back in listing
+    let chains: Vec<serde_json::Value> = client
+        .get(format!("{}/chains", base))
+        .send().await.unwrap()
+        .json().await.unwrap();
+    let agents = chains[0]["exchange_agents"].as_array().unwrap();
+    assert_eq!(agents.len(), 1);
+    assert_eq!(agents[0]["name"], "Mako");
+    assert_eq!(agents[0]["contact_url"], "http://localhost:3100/trade");
+    assert_eq!(agents[0]["ttl"], 7200);
+    assert!(agents[0]["registered_at"].as_u64().unwrap() > 0);
+
+    let pair = &agents[0]["pairs"][0];
+    assert_eq!(pair["spread"], 0.03);
+    assert_eq!(pair["min_trade"], 100);
+    assert_eq!(pair["max_trade"], 50000);
+}
+
 // ============ CAA escrow tests ============
 
 /// Start a server with known_recorders configured.

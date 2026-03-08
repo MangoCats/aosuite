@@ -43,6 +43,8 @@ export interface ViewerStore {
   toggleCoverage: () => void;
   showAuditOverlay: boolean;
   toggleAuditOverlay: () => void;
+  showCaaArcs: boolean;
+  toggleCaaArcs: () => void;
 
   // Agent control
   setAgentPaused: (name: string, paused: boolean) => void;
@@ -97,6 +99,8 @@ export const useStore = create<ViewerStore>((set) => ({
   toggleCoverage: () => set((s) => ({ showCoverage: !s.showCoverage })),
   showAuditOverlay: false,
   toggleAuditOverlay: () => set((s) => ({ showAuditOverlay: !s.showAuditOverlay })),
+  showCaaArcs: true,
+  toggleCaaArcs: () => set((s) => ({ showCaaArcs: !s.showCaaArcs })),
 
   setAgentPaused: (name, paused) => set((s) => ({
     agents: s.agents.map((a) => a.name === name ? { ...a, paused } : a),

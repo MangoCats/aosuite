@@ -9,7 +9,20 @@ pub struct Config {
     /// Optional MQTT config for real-time block notifications.
     #[serde(default)]
     pub mqtt: Option<MqttConfig>,
+    /// Polling interval in seconds for deposit detection (default: 5).
+    #[serde(default = "default_poll_interval")]
+    pub poll_interval_secs: u64,
+    /// Trade request TTL in seconds (default: 300).
+    #[serde(default = "default_trade_ttl")]
+    pub trade_ttl_secs: u64,
+    /// Assignment deadline in seconds from now (default: 86400).
+    #[serde(default = "default_deadline")]
+    pub deadline_secs: i64,
 }
+
+fn default_poll_interval() -> u64 { 5 }
+fn default_trade_ttl() -> u64 { 300 }
+fn default_deadline() -> i64 { 86400 }
 
 #[derive(Deserialize, Clone)]
 pub struct TradingPair {

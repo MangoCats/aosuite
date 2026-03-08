@@ -259,7 +259,9 @@ fn build_assignment(
     bigint::encode_rational(fee_rate, &mut bid_bytes);
     children.push(DataItem::bytes(RECORDING_BID, bid_bytes));
 
-    let deadline_ts = Timestamp::from_unix_seconds(base_unix_secs + 86400);
+    /// Default assignment deadline: 24 hours from creation.
+    const DEADLINE_SECS: i64 = 86400;
+    let deadline_ts = Timestamp::from_unix_seconds(base_unix_secs + DEADLINE_SECS);
     children.push(DataItem::bytes(DEADLINE, deadline_ts.to_bytes().to_vec()));
 
     DataItem::container(ASSIGNMENT, children)

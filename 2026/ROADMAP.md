@@ -375,11 +375,272 @@ Specification: [specs/AtomicExchange.md](specs/AtomicExchange.md) ✓ 2026-03-07
 
 **6G: Integration tests** — ✓: CAA submit and status query across two independent chains with escrowed UTXO verification and idempotent re-submission. 1 integration test.
 
-**Tests:** 128 tests total (42 ao-types + 13 ao-crypto + 29 ao-chain unit + 10 ao-chain integration + 6 ao-exchange + 17 ao-recorder + 11 ao-validator). 0 new clippy warnings.
+**Tests:** 140 Rust tests (42 ao-types + 13 ao-crypto + 29 ao-chain unit + 10 ao-chain integration + 17 ao-exchange + 18 ao-recorder + 11 ao-validator) + 209 PWA tests = 349 total. 0 new clippy warnings.
 
 ### Acceptance Criteria
 
 Escrowed shares cannot be spent in regular assignments ✓. Expired escrow correctly returns shares to Unspent ✓. Idempotent CAA submission ✓. Recording proof verification against known recorder keys ✓. Remaining: chaos testing with random kills and partitions; PWA CAA UI (deferred — Phase 4's exchange-agent model sufficient for end users).
+
+---
+
+## Next Steps: Deployment-Driven Gaps
+
+Phases 0–6 produced working protocol software. The three updated deployment stories — [Tourism Vendors](../docs/html/TourismVendors.html), [Island UBI](../docs/html/IslandUBI.html), and [Farming Cooperatives](../docs/html/FarmingCooperatives.html) — identify concrete gaps between what's built and what a pilot deployment requires. Gaps are prioritized by how many stories they unblock and how close the existing code is to closing them.
+
+### N1: Exchange Agent Auto-Trade Loop — *all three stories* ✓
+
+The ao-exchange daemon now supports autonomous trading via a request→deposit→execute flow:
+
+1. **Trade Request API** (`POST /trade`): Consumer requests a trade specifying sell/buy symbols and amount. Agent generates fresh deposit key (buy chain) and receive key (sell chain), validates against pair limits and inventory, returns both key pairs with seeds. Trade requests expire after configurable TTL (default 5 minutes).
+
+2. **Deposit Detection**: Polling loop (`check_deposits()`) tracks `next_seq_id` per chain. When new UTXOs appear, matches pubkeys against pending trade deposits. Registered UTXOs are immediately available for the reverse-leg execution.
+
+3. **Auto-Execution**: Matched deposits trigger `execute_trade()` on the sell chain, sending shares to the consumer's receive key with an attached EXCHANGE_LISTING (see N6). Trades are logged with full context. Insufficient inventory is rejected at request time.
+
+4. **HTTP Status API** (`GET /status`): Returns current trading pairs, positions, and pending trade count. Exchange daemon serves Axum HTTP alongside the polling loop.
+
+**Implementation:** [trade.rs](src/ao-exchange/src/trade.rs) (PendingTrade, TradeManager), [engine.rs](src/ao-exchange/src/engine.rs) (`request_trade`, `check_deposits`), [main.rs](src/ao-exchange/src/main.rs) (Axum HTTP + polling loop). 3 trade manager tests + 4 transfer tests.
+
+**Remaining:** SSE-driven detection (upgrade from polling), MQTT integration, multi-recorder failover.
+
+**Unblocks:** Charlie bridging CCC↔BCG (Tourism), Mako bridging ENRA↔TGS (UBI), Wanjiku bridging MPC↔M-Pesa (Cooperative).
+
+### N2: PWA End-to-End Assignment Flow — *Tourism + UBI* ✓
+
+The PWA now supports the full browser-based sign-and-submit flow with persistent wallet, UTXO discovery, and real-time vendor notification:
+
+1. **Wallet Persistence**: Ed25519 seed, public key, and label stored in localStorage. Generate new wallet or import existing seed. Survives page refreshes and browser restarts. Recorder URL also persisted.
+
+2. **UTXO Balance Scanner**: Consumer clicks "Scan UTXOs" to discover unspent UTXOs on the selected chain matching their wallet pubkey. Displays total balance and individual UTXOs with a picker for multi-UTXO wallets.
+
+3. **Transfer with Change**: Consumer selects UTXO, enters amount (or blank for full UTXO minus fee). Two-receiver assignment: recipient + change key. 3-round iterative fee convergence. Optional recipient pubkey field (generates fresh key if blank).
+
+4. **Vendor SSE Monitor**: VendorView subscribes to SSE block events on the selected chain. Incoming blocks display in real-time with block height, assignment count, and seq range. Genesis creation collapsed into an expandable section.
+
+**Implementation:** [useStore.ts](src/ao-pwa/src/store/useStore.ts) (localStorage persistence), [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx) (wallet + UTXO scanner + transfer), [VendorView.tsx](src/ao-pwa/src/components/VendorView.tsx) (SSE monitor + genesis creator). 209 PWA tests passing, TypeScript clean, 70KB gzipped production build.
+
+**Remaining:** Two-device <3s latency test (requires hardware), iOS/Android PWA install test, Lighthouse audit.
+
+**Unblocks:** Alice paying Bob at Sandy Ground (Tourism), Nalu paying Tia at her store (UBI).
+
+### N3: QR Code Chain Discovery — *Tourism + UBI* ✓
+
+QR-based chain discovery for tourist/consumer onboarding:
+
+1. **QR Code Display**: `QrCode` component renders chain info URLs (`{recorder}/chain/{id}/info`) as QR codes on canvas. Available in ChainDetail — vendors show this on signage, laminated cards, or screen. Uses `qrcode` npm package.
+
+2. **QR Scanner**: `QrScanner` component uses `getUserMedia` camera access + `jsqr` library for real-time QR decode. Full-screen overlay with video preview. Available in Settings panel.
+
+3. **Auto-Discovery**: Scanned chain URLs are parsed to extract recorder base URL and chain ID. App automatically connects to the recorder and selects the chain. Also handles plain recorder URLs.
+
+**Implementation:** [QrCode.tsx](src/ao-pwa/src/components/QrCode.tsx), [QrScanner.tsx](src/ao-pwa/src/components/QrScanner.tsx), [Settings.tsx](src/ao-pwa/src/components/Settings.tsx) (scan trigger + URL parsing), [ChainDetail.tsx](src/ao-pwa/src/components/ChainDetail.tsx) (QR display toggle).
+
+**Remaining:** Print-optimized QR generation for physical signage, deep-link PWA install flow.
+
+**Unblocks:** Tourist onboarding on launch ride (Tourism), customer onboarding at Tia's store (UBI).
+
+### N4: PWA Offline Assignment Queue — *UBI + Cooperative* ✓
+
+Offline transaction support for low-connectivity environments:
+
+1. **Service Worker**: Upgraded cache strategy — stale-while-revalidate for app shell, immutable caching for hashed assets, network-only for API calls. App loads fully offline after first visit.
+
+2. **IndexedDB Queue**: `offlineQueue.ts` module stores signed authorizations in IndexedDB when the recorder is unreachable. Schema: chain ID, recorder URL, authorization JSON, queued timestamp, status (pending/submitted/failed).
+
+3. **Auto-Submit**: `flushPending()` retries queued assignments when connectivity returns. Triggered by `online` event listener and 30-second polling interval. Successfully submitted assignments marked as complete; server errors marked as failed with error message.
+
+4. **Queue Indicator**: Yellow banner in ConsumerView shows count of queued assignments and connectivity status. Transfer flow catches network errors (`TypeError` from fetch) and queues automatically.
+
+**Implementation:** [sw.js](src/ao-pwa/public/sw.js) (service worker), [offlineQueue.ts](src/ao-pwa/src/core/offlineQueue.ts) (IndexedDB queue), [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx) (queue integration + indicator).
+
+**Remaining:** Background Sync API integration (Chrome-only, progressive enhancement), cached balance display from IndexedDB.
+
+**Unblocks:** Tia's store on Likiep during satellite outages (UBI), Ouma recording deliveries at the collection point with spotty Safaricom coverage (Cooperative).
+
+### N5: Vendor Profile + Location Beacon — *Tourism* ✓
+
+Vendor discovery with GPS location and map display:
+
+1. **Vendor Profile API**: `POST /chain/{id}/profile` and `GET /chain/{id}/profile` endpoints on ao-recorder. In-memory storage (`VendorProfile` struct with optional name, description, lat, lon). Profiles included in `GET /chains` listing via `vendor_profile` field.
+
+2. **Profile Editor**: VendorView includes a profile editor with business name, description, and GPS coordinates. "GPS" button uses `navigator.geolocation` for one-tap location capture. Saved to recorder via POST.
+
+3. **Vendor Map**: ConsumerView displays a Leaflet/OpenStreetMap map showing all chains with vendor profiles that include lat/lon. Circle markers with popup showing symbol and name. Map appears automatically when location data is available, hidden otherwise.
+
+**Implementation:** [lib.rs](src/ao-recorder/src/lib.rs) (`VendorProfile` struct, profile endpoints, chain listing integration), [VendorMap.tsx](src/ao-pwa/src/components/VendorMap.tsx) (Leaflet map), [VendorView.tsx](src/ao-pwa/src/components/VendorView.tsx) (profile editor), [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx) (map display), [client.ts](src/ao-pwa/src/api/client.ts) (profile API methods).
+
+**Remaining:** Profile persistence across recorder restarts (currently in-memory only), vendor profile as on-chain VENDOR_PROFILE separable item.
+
+**Unblocks:** Tourist discovering Bob's grill, Patrice's jewelry, Lucia's kayaks on the beach (Tourism).
+
+### N6: EXCHANGE_LISTING On-Chain Structure — *all three stories* ✓
+
+**EXCHANGE_LISTING children defined and implemented:**
+- `CHAIN_SYMBOL` (21): counterpart chain symbol (UTF-8 bytes)
+- `AMOUNT` (6): counterpart share amount (VBC-encoded BigInt)
+- `NOTE` (32): agent label (UTF-8 bytes)
+- Rate is implicit from the assignment's sell amount and the listing's counterpart amount.
+
+`build_exchange_listing()` in [transfer.rs](src/ao-exchange/src/transfer.rs) constructs the separable container. `execute_trade()` attaches it to every agent-initiated assignment via the new `separable_items` parameter on `execute_transfer()` and `build_assignment()`.
+
+**Registration protocol extended:** `ExchangeAgentEntry` now includes `contact_url` (trade request endpoint), `registered_at` (set by recorder on POST), and `ttl` (default 3600s). `ExchangePairEntry` includes `spread`, `min_trade`, `max_trade`. Expired agents are filtered from `GET /chains` listings and cleaned up on each registration POST. PWA TypeScript interfaces updated to match.
+
+**Tests:** 4 transfer tests (listing structure, separability, assignment with/without separable items) + 1 recorder integration test (extended registration fields).
+
+**Unblocks:** Transparent exchange pricing for tourists (Tourism), tax audit trail for Tia's remittances (UBI), cooperative accounting for middleman price verification (Cooperative).
+
+### N7: Cooperative Metadata Conventions — *Cooperative* ✓
+
+Convention document specifying how cooperatives encode structured metadata using existing AO separable types:
+
+1. **NOTE (type 32) key:value format**: `type:delivery`, `crop:tomatoes`, `weight_kg:180`, `grade:A`, `lot:2026-W10-012`, `location:Riuki Collection Point`. Human-readable, machine-parseable, one field per line.
+
+2. **Record types**: Delivery (farmer→cooperative), sale (cooperative→buyer), cost allocation (expense distribution), advance/credit (pre-season advances).
+
+3. **DESCRIPTION (type 34)**: Free-text extended notes — inspector comments, damage assessments, quality observations.
+
+4. **DATA_BLOB (type 33)**: Binary attachments with MIME-type prefix — photos of deliveries, weighbridge receipts. Separable: binary content can be stripped while preserving hash for verification.
+
+5. **Provenance chain**: Lot identifiers linking delivery and sale records across assignments, combined with EXCHANGE_LISTING for cross-chain provenance.
+
+**Specification:** [specs/CooperativeMetadata.md](specs/CooperativeMetadata.md)
+
+**Unblocks:** Structured accounting for Riuki Cooperative (Cooperative), credit-building from documented production history (Cooperative).
+
+### N8: Binary Attachments with MIME Metadata — *Cooperative + Tourism*
+
+Photo and document attachments on assignments, using the existing DATA_BLOB (type 33) separable item with standardized MIME metadata.
+
+#### Wire Format
+
+DATA_BLOB already exists as a separable type code. The payload format is standardized as:
+
+```
+[MIME type as UTF-8, NUL-terminated] [raw binary content]
+```
+
+Examples: `image/jpeg\0<JPEG bytes>`, `application/pdf\0<PDF bytes>`, `image/webp\0<WebP bytes>`.
+
+The NUL delimiter is unambiguous because MIME type strings are ASCII. The entire DATA_BLOB is separable — when stripped, only the SHA2-256 hash remains on-chain. Full binary content is available from the recorder or any node that retained it.
+
+#### Recorder Support
+
+1. **Storage**: Separable items already have hash-based storage. Extend `ao-recorder` to persist DATA_BLOB content alongside the block in a content-addressed blob store (`data_dir/blobs/{sha256hex}`). Serve via `GET /chain/{id}/blob/{hash}` with the correct `Content-Type` header extracted from the MIME prefix.
+
+2. **Size limits**: Configurable per-chain `max_blob_bytes` (default 5 MB). Recorder rejects assignments with DATA_BLOB items exceeding the limit. Total per-assignment blob size also capped (default 10 MB). These limits are separate from the existing 256 KB HTTP body limit — blob submissions use `multipart/form-data` or a two-phase upload (blob first, then assignment referencing its hash).
+
+3. **Retention policy**: Configurable `blob_retention_days` (default: indefinite). Expired blobs are pruned from local storage but their hashes remain on-chain permanently. Validators can verify blob hashes were correct at recording time even after blob content is pruned.
+
+#### PWA Upload UI
+
+1. **Attachment button**: In ConsumerView's transfer form, an "Attach" button opens a file picker (accept `image/*,application/pdf`). Selected files are previewed (image thumbnail or filename+size for PDFs). Multiple attachments per assignment supported.
+
+2. **Camera capture**: On mobile, the file picker offers camera capture directly. For cooperative use (photographing deliveries, weighbridge readings), this is the primary flow.
+
+3. **Compression**: Images over 1 MB are compressed client-side using canvas resize to max 2048px longest edge, WebP format where supported, JPEG fallback. Original MIME type preserved in the DATA_BLOB prefix.
+
+4. **Upload flow**: Blobs are uploaded to the recorder before the assignment is submitted. The assignment references blobs by hash. This avoids bloating the assignment JSON and allows the recorder to reject oversized blobs before the cryptographic signing step.
+
+5. **Blob viewer**: In transaction history / block detail, DATA_BLOB items render as thumbnails (images) or download links (PDFs). Click to view full-size. Hash verification indicator (green check if blob content matches on-chain hash).
+
+#### Offline Handling
+
+Blobs queued offline are stored in IndexedDB alongside the assignment. `flushPending()` uploads blobs first, then submits the assignment. Failed blob uploads leave the assignment in pending state.
+
+**Implementation scope:** ao-recorder blob endpoints + storage, PWA upload/capture/compress/preview UI, offline blob queue.
+
+**Remaining from N7:** The cooperative metadata spec (NOTE key:value fields) already references DATA_BLOB for photos. N8 builds the actual infrastructure that N7's spec assumed.
+
+**Unblocks:** Ouma photographing tomato deliveries (Cooperative), crop damage documentation for insurance (Cooperative), vendor product photos (Tourism).
+
+### N9: Server Operations Dashboard — *all three stories*
+
+Evaluate and improve the sysop experience for recorder and validator deployment. Goal: a non-expert operator (Mako on Likiep, Wanjiku in Kiambu) can set up, monitor, and maintain the system with minimal technical support.
+
+#### Platform Installers
+
+One-step installers for each target environment. The operator should not need to compile from source, configure PATH, or create systemd units manually.
+
+1. **Raspberry Pi OS (64-bit, Debian-based)**: `.deb` package built via `cargo-deb`. Includes ao-recorder binary, ao-validator binary, systemd service unit (`ao-recorder.service`), logrotate config, and a default TOML config in `/etc/ao-recorder/`. Post-install script creates `ao-recorder` system user, data directory (`/var/lib/ao-recorder/`), and enables the service. Operator edits one TOML file and runs `sudo systemctl start ao-recorder`. Pre-built `.deb` published as GitHub Release artifact for `aarch64`.
+
+2. **Generic Debian / Ubuntu (x86_64)**: Same `.deb` structure as Pi, different architecture. Built in CI alongside the ARM package. Covers cloud VMs (the "backup server on Majuro" or "KES 500/month VM in Nairobi" from deployment stories).
+
+3. **Windows**: `.msi` installer built via `cargo-wix` or a simple self-extracting archive with a PowerShell install script. Installs ao-recorder binary to `Program Files\AssignOnward\`, creates a Windows Service (via `sc.exe` or NSSM), data directory in `%ProgramData%\ao-recorder\`, and a starter TOML config. Start Menu shortcut opens the `/dashboard` page in the default browser. Targets Windows 10/11 x86_64.
+
+4. **Install verification**: All installers include `ao-recorder --version` and `ao-recorder doctor` — a post-install diagnostic that checks: binary runs, data directory writable, port available, config parseable, SQLite functional. Prints green/red checklist. Exits non-zero on any failure.
+
+5. **Uninstall**: Each installer provides clean removal — stop service, remove binaries, optionally preserve or remove data directory (with confirmation prompt for data deletion).
+
+#### Setup Simplification
+
+1. **Config generator**: `ao-recorder init` command that creates a starter TOML config with sensible defaults, generates a blockmaker keypair, creates the data directory, and prints the chain info URL. Interactive prompts for chain symbol and coin name only. Everything else has safe defaults. On package-installed systems, runs automatically on first start if no config exists.
+
+2. **TLS**: Document the recommended approach (reverse proxy via Caddy or nginx with automatic Let's Encrypt, OR direct TLS in Axum via `axum-server` with `rustls`). Provide a sample Caddyfile. Do not require TLS for localhost/LAN-only deployments.
+
+3. **Validator co-deployment**: Optional `[validator]` section in the recorder's TOML config that starts an embedded ao-validator polling the local chain(s). Eliminates the need to run a separate validator binary for single-recorder deployments.
+
+4. **Quick-start guide**: One-page document per platform (Pi, Linux, Windows) covering: install package, run `ao-recorder init`, start service, open dashboard in browser. Target: zero to running chain in under 10 minutes.
+
+#### Runtime Monitoring
+
+1. **Health endpoint**: `GET /health` returns JSON with:
+   - `status`: "ok" | "degraded" | "error"
+   - `uptime_seconds`: time since process start
+   - `version`: binary version string
+   - `chains`: array of per-chain health: chain_id, block_height, last_block_age_seconds, utxo_count, db_size_bytes
+   - `system`: `ram_used_bytes`, `ram_available_bytes`, `cpu_load_1m` (Linux `/proc` or `sysinfo` crate), `disk_free_bytes` (data directory filesystem), `disk_used_bytes` (data directory)
+   - `capacity`: estimated assignments/second throughput (from last 100 blocks), estimated days until disk full (linear extrapolation from current growth rate)
+
+2. **Structured logging**: ao-recorder already uses `tracing`. Add `tracing-subscriber` JSON formatter option for machine-parseable logs. Key events: block recorded (chain_id, height, assignment_count, processing_ms), chain created, config loaded, error conditions. Log rotation via systemd journal or configurable file rotation.
+
+3. **Metrics endpoint** (optional): `GET /metrics` in Prometheus exposition format. Counters: blocks_recorded_total, assignments_submitted_total, assignments_rejected_total (by reason), http_requests_total (by route, status). Gauges: chains_hosted, utxos_total, db_size_bytes, connected_sse_clients. Histograms: block_processing_duration_seconds, http_request_duration_seconds. Only compiled when `metrics` feature flag is enabled (avoids dependency overhead for simple deployments).
+
+#### Operational Alerts
+
+1. **Disk space warning**: Log warning when data directory filesystem drops below 10% free. Log error at 5%. Configurable thresholds.
+
+2. **Stale chain detection**: Log warning if a chain has not recorded a block in longer than a configurable threshold (default 24 hours). Helps catch stuck blockmaker processes or misconfigured chains.
+
+3. **Memory baseline**: Log RSS memory usage on startup and every hour. Establishes baseline for detecting leaks in long-running deployments.
+
+4. **Webhook integration**: Extend the existing validator webhook (Phase 5D) to also cover recorder operational alerts. Single `[alerts]` config section with `webhook_url` and event filter.
+
+#### Capacity Planning
+
+1. **Benchmark harness**: `ao-recorder bench` command that creates a temporary chain, submits N assignments (default 1000), reports: assignments/second, average block time, peak RSS, database growth per 1000 assignments. Runnable on the target hardware to establish baseline capacity.
+
+2. **Dashboard page**: Optional static HTML page served at `/dashboard` (disabled by default, enabled via config). Shows the health endpoint data in a human-readable format with auto-refresh. No JavaScript framework — plain HTML + fetch + CSS. Resource gauges (RAM, disk, CPU) with green/amber/red thresholds. Chain table with block heights and age. No authentication (LAN-only use or behind reverse proxy auth).
+
+#### Acceptance Criteria
+
+- `.deb` install on fresh Pi OS: `sudo dpkg -i ao-recorder_*.deb && ao-recorder doctor` passes, chain running in under 10 minutes.
+- `.deb` install on fresh Ubuntu 24.04 VM: same flow, same outcome.
+- `.msi` install on Windows 11: double-click install, service starts, dashboard opens in browser.
+- `ao-recorder doctor` catches and clearly reports: missing data directory, port conflict, invalid config, unwritable paths.
+- Uninstall on all platforms removes binaries and service without data loss (data directory preserved by default).
+- `/health` endpoint returns accurate system metrics within 5% of actual values.
+- Disk space and stale chain alerts fire correctly in test scenarios.
+- `ao-recorder bench` produces reproducible throughput numbers (±10%) across runs.
+- Dashboard page loads and auto-refreshes without JavaScript errors.
+- Mako-grade operator (IT-literate but not a Rust developer) can install, configure, and diagnose common issues (disk full, chain stalled, high memory) without SSH or command-line expertise beyond the quick-start guide.
+
+### Priority Summary
+
+| # | Gap | Stories | Effort | Depends On | Status |
+|:-:|-----|---------|--------|------------|--------|
+| N1 | Exchange agent auto-trade | All three | Medium | — | ✓ Done |
+| N2 | PWA end-to-end assignment | Tourism, UBI | Medium | — | ✓ Done |
+| N3 | QR code chain discovery | Tourism, UBI | Small | N2 | ✓ Done |
+| N4 | Offline assignment queue | UBI, Coop | Medium | N2 | ✓ Done |
+| N5 | Vendor profile + location | Tourism | Small–Medium | N2 | ✓ Done |
+| N6 | EXCHANGE_LISTING structure | All three | Small | N1 | ✓ Done |
+| N7 | Cooperative metadata conventions | Coop | Small | — | ✓ Done |
+| N8 | Binary attachments (photo/doc) | Coop, Tourism | Medium | N2, N7 | Planned |
+| N9 | Server operations dashboard | All three | Medium–Large | — | Planned |
+
+N1–N7 are complete. N8 and N9 are the next deployment-readiness gaps. N8 builds the infrastructure that the cooperative metadata spec (N7) and promo articles assume exists. N9 addresses the operational sustainability risk identified in all three deployment stories — the "what happens when Mako moves away" problem requires that the system be monitorable and diagnosable by someone with basic IT skills.
+
+Remaining hardware-dependent acceptance tests from earlier phases: two-device <3s latency, iOS/Android PWA install, Pi stress tests, Lighthouse PWA audit.
 
 ---
 

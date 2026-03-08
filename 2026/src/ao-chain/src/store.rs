@@ -707,6 +707,42 @@ impl ChainStore {
         Ok(count as u64)
     }
 
+    /// Count all UTXOs (any status).
+    pub fn count_utxos(&self) -> Result<u64> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM utxos", [], |row| row.get(0)
+        )?;
+        Ok(count as u64)
+    }
+
+    /// Get the database file size in bytes. Returns 0 for in-memory databases.
+    pub fn db_file_size(&self) -> Result<u64> {
+        let path: String = self.conn.query_row(
+            "PRAGMA database_list", [], |row| row.get::<_, String>(2)
+        )?;
+        if path.is_empty() {
+            return Ok(0); // in-memory
+        }
+        match std::fs::metadata(&path) {
+            Ok(m) => Ok(m.len()),
+            Err(_) => Ok(0),
+        }
+    }
+
+    /// Get the timestamp (Unix seconds) of the most recent block.
+    pub fn last_block_timestamp(&self) -> Result<Option<i64>> {
+        let result: rusqlite::Result<i64> = self.conn.query_row(
+            "SELECT timestamp FROM blocks ORDER BY height DESC LIMIT 1",
+            [],
+            |row| row.get(0),
+        );
+        match result {
+            Ok(ts) => Ok(Some(ts)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
     /// Begin a transaction.
     pub fn begin_transaction(&self) -> Result<()> {
         self.conn.execute_batch("BEGIN IMMEDIATE")?;

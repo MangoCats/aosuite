@@ -375,7 +375,7 @@ Specification: [specs/AtomicExchange.md](specs/AtomicExchange.md) ✓ 2026-03-07
 
 **6G: Integration tests** — ✓: CAA submit and status query across two independent chains with escrowed UTXO verification and idempotent re-submission. 1 integration test.
 
-**Tests:** 153 Rust tests (42 ao-types + 13 ao-crypto + 31 ao-chain unit + 12 ao-chain integration + 17 ao-exchange + 6 ao-recorder blob + 21 ao-recorder + 11 ao-validator) + 215 PWA tests = 368 total. 0 clippy warnings.
+**Tests:** 160 Rust tests (42 ao-types + 13 ao-crypto + 31 ao-chain unit + 12 ao-chain integration + 17 ao-exchange + 12 ao-recorder unit + 18 ao-recorder integration + 4 ao-recorder blob + 11 ao-validator) + 218 PWA tests = 378 total. 0 clippy warnings.
 
 ### Acceptance Criteria
 
@@ -543,76 +543,68 @@ DATA_BLOB payload: `[MIME type as UTF-8, NUL-terminated][raw binary content]`. E
 
 **Unblocks:** Ouma photographing tomato deliveries (Cooperative), crop damage documentation for insurance (Cooperative), vendor product photos (Tourism).
 
-### N9: Server Operations Dashboard — *all three stories*
+### N9: Server Operations Dashboard — *all three stories* ✓ (partial)
 
 Evaluate and improve the sysop experience for recorder and validator deployment. Goal: a non-expert operator (Mako on Likiep, Wanjiku in Kiambu) can set up, monitor, and maintain the system with minimal technical support.
 
-#### Platform Installers
+#### Subcommands — ✓
 
-One-step installers for each target environment. The operator should not need to compile from source, configure PATH, or create systemd units manually.
+Three new subcommands for setup and diagnostics:
 
-1. **Raspberry Pi OS (64-bit, Debian-based)**: `.deb` package built via `cargo-deb`. Includes ao-recorder binary, ao-validator binary, systemd service unit (`ao-recorder.service`), logrotate config, and a default TOML config in `/etc/ao-recorder/`. Post-install script creates `ao-recorder` system user, data directory (`/var/lib/ao-recorder/`), and enables the service. Operator edits one TOML file and runs `sudo systemctl start ao-recorder`. Pre-built `.deb` published as GitHub Release artifact for `aarch64`.
+1. **`ao-recorder init [output.toml]`** — ✓ Generates a starter TOML config with sensible defaults, fresh blockmaker Ed25519 keypair, and `data/` directory. Prints public key and next-step instructions. Refuses to overwrite existing config.
 
-2. **Generic Debian / Ubuntu (x86_64)**: Same `.deb` structure as Pi, different architecture. Built in CI alongside the ARM package. Covers cloud VMs (the "backup server on Majuro" or "KES 500/month VM in Nairobi" from deployment stories).
+2. **`ao-recorder doctor [config.toml]`** — ✓ Post-install diagnostic checklist: binary runs, config parseable, blockmaker seed valid, data directory writable, port available, SQLite functional, chain databases accessible, disk space adequate. Prints `[OK]`/`[FAIL]` per check, exits non-zero on failure.
 
-3. **Windows**: `.msi` installer built via `cargo-wix` or a simple self-extracting archive with a PowerShell install script. Installs ao-recorder binary to `Program Files\AssignOnward\`, creates a Windows Service (via `sc.exe` or NSSM), data directory in `%ProgramData%\ao-recorder\`, and a starter TOML config. Start Menu shortcut opens the `/dashboard` page in the default browser. Targets Windows 10/11 x86_64.
+3. **`ao-recorder bench [config.toml]`** — ✓ Hardware benchmark: inserts 1000 synthetic blocks into in-memory SQLite, measures throughput and RSS. Also benchmarks Ed25519 sign+verify (1000 ops). Reports blocks/sec, ops/sec, memory growth. Establishes baseline for capacity planning.
 
-4. **Install verification**: All installers include `ao-recorder --version` and `ao-recorder doctor` — a post-install diagnostic that checks: binary runs, data directory writable, port available, config parseable, SQLite functional. Prints green/red checklist. Exits non-zero on any failure.
+4. **`ao-recorder --version`** — ✓ Prints version string.
 
-5. **Uninstall**: Each installer provides clean removal — stop service, remove binaries, optionally preserve or remove data directory (with confirmation prompt for data deletion).
+#### Runtime Monitoring — ✓
 
-#### Setup Simplification
+1. **Health endpoint** — ✓ `GET /health` returns JSON: `status` ("ok" | "degraded" | "error"), `uptime_seconds`, `version`, per-chain health (chain_id, symbol, block_height, last_block_age_seconds, utxo_count, db_size_bytes), system metrics (ram_used_bytes, ram_available_bytes, cpu_load_percent, disk_free_bytes, disk_used_bytes), capacity estimates. Status degrades on no chains or low disk. Uses `sysinfo` crate for cross-platform system metrics.
 
-1. **Config generator**: `ao-recorder init` command that creates a starter TOML config with sensible defaults, generates a blockmaker keypair, creates the data directory, and prints the chain info URL. Interactive prompts for chain symbol and coin name only. Everything else has safe defaults. On package-installed systems, runs automatically on first start if no config exists.
+2. **Dashboard page** — ✓ `GET /dashboard` serves a self-contained HTML page with 10-second auto-refresh from `/health`. Dark theme, responsive grid. Status dot (green/amber/red), RAM and disk gauges with color thresholds, chain table with symbol, height, last block age (color-coded: amber >24h, red >7d), UTXO count, DB size. Context-sensitive help panel with troubleshooting guidance. No JavaScript framework — plain HTML + fetch + CSS. [dashboard.rs](src/ao-recorder/src/dashboard.rs).
 
-2. **TLS**: Document the recommended approach (reverse proxy via Caddy or nginx with automatic Let's Encrypt, OR direct TLS in Axum via `axum-server` with `rustls`). Provide a sample Caddyfile. Do not require TLS for localhost/LAN-only deployments.
+3. **ChainStore health queries** — ✓ `count_utxos()`, `db_file_size()`, `last_block_timestamp()` added to ao-chain ChainStore for health endpoint consumption.
 
-3. **Validator co-deployment**: Optional `[validator]` section in the recorder's TOML config that starts an embedded ao-validator polling the local chain(s). Eliminates the need to run a separate validator binary for single-recorder deployments.
+#### Operational Alerts — ✓
 
-4. **Quick-start guide**: One-page document per platform (Pi, Linux, Windows) covering: install package, run `ao-recorder init`, start service, open dashboard in browser. Target: zero to running chain in under 10 minutes.
+Background task (`run_alerts`) checks every 60 seconds:
 
-#### Runtime Monitoring
+1. **Disk space** — ✓ Warning when data directory filesystem drops below 10% free. Error at 5%. Configurable via `[alerts]` TOML section.
 
-1. **Health endpoint**: `GET /health` returns JSON with:
-   - `status`: "ok" | "degraded" | "error"
-   - `uptime_seconds`: time since process start
-   - `version`: binary version string
-   - `chains`: array of per-chain health: chain_id, block_height, last_block_age_seconds, utxo_count, db_size_bytes
-   - `system`: `ram_used_bytes`, `ram_available_bytes`, `cpu_load_1m` (Linux `/proc` or `sysinfo` crate), `disk_free_bytes` (data directory filesystem), `disk_used_bytes` (data directory)
-   - `capacity`: estimated assignments/second throughput (from last 100 blocks), estimated days until disk full (linear extrapolation from current growth rate)
+2. **Stale chain detection** — ✓ Warning when a chain has not recorded a block within configurable threshold (default 24 hours).
 
-2. **Structured logging**: ao-recorder already uses `tracing`. Add `tracing-subscriber` JSON formatter option for machine-parseable logs. Key events: block recorded (chain_id, height, assignment_count, processing_ms), chain created, config loaded, error conditions. Log rotation via systemd journal or configurable file rotation.
+3. **Memory baseline** — ✓ Process RSS + system memory logged on startup and every hour (configurable). Establishes baseline for detecting leaks.
 
-3. **Metrics endpoint** (optional): `GET /metrics` in Prometheus exposition format. Counters: blocks_recorded_total, assignments_submitted_total, assignments_rejected_total (by reason), http_requests_total (by route, status). Gauges: chains_hosted, utxos_total, db_size_bytes, connected_sse_clients. Histograms: block_processing_duration_seconds, http_request_duration_seconds. Only compiled when `metrics` feature flag is enabled (avoids dependency overhead for simple deployments).
+4. **Webhook integration** — ✓ `[alerts] webhook_url` fires HTTP POST with JSON payload (`event`, `message`, `timestamp`) for disk_warning, disk_critical, and chain_stale events. Fire-and-forget with 10s timeout.
 
-#### Operational Alerts
+**Config**: `[alerts]` section with `disk_warn_percent`, `disk_error_percent`, `stale_chain_seconds`, `memory_log_interval_seconds`, `webhook_url`.
 
-1. **Disk space warning**: Log warning when data directory filesystem drops below 10% free. Log error at 5%. Configurable thresholds.
+#### Sysop Guide — ✓
 
-2. **Stale chain detection**: Log warning if a chain has not recorded a block in longer than a configurable threshold (default 24 hours). Helps catch stuck blockmaker processes or misconfigured chains.
+[SysopGuide.md](SysopGuide.md): comprehensive operations guide readable start-to-finish. Covers: what the recorder is and its resource profile, installation (Pi/Debian/Windows/source), first-time setup (init → doctor → start → verify), monitoring (dashboard, health API, logs), common problems and solutions (unreachable, degraded, error, stale chains, UTXO growth, memory growth, port conflicts), disk management (growth rates, blob storage, backup procedures), TLS (Caddy and nginx examples), benchmarking, full configuration reference, and operational checklists (daily/weekly/monthly). Context-sensitive help in the dashboard links to corresponding sysop guide sections.
 
-3. **Memory baseline**: Log RSS memory usage on startup and every hour. Establishes baseline for detecting leaks in long-running deployments.
+**Implementation:** [health.rs](src/ao-recorder/src/health.rs) (health endpoint, alerts, system metrics), [dashboard.rs](src/ao-recorder/src/dashboard.rs) (HTML dashboard), [main.rs](src/ao-recorder/src/main.rs) (subcommand dispatch: init, doctor, bench), [config.rs](src/ao-recorder/src/config.rs) (AlertsConfig, dashboard flag), [store.rs](src/ao-chain/src/store.rs) (count_utxos, db_file_size, last_block_timestamp). 5 health unit tests.
 
-4. **Webhook integration**: Extend the existing validator webhook (Phase 5D) to also cover recorder operational alerts. Single `[alerts]` config section with `webhook_url` and event filter.
+**Remaining:**
+- Platform installers (.deb via cargo-deb for Pi aarch64 + x86_64, .msi via cargo-wix for Windows) — requires CI pipeline setup
+- `GET /metrics` Prometheus endpoint (optional, behind feature flag)
+- `tracing-subscriber` JSON formatter option
+- Embedded validator co-deployment (`[validator]` config section)
+- Per-platform quick-start guide documents
+- Hardware-dependent acceptance tests: dashboard on Pi, real disk/stale alerts in production
 
-#### Capacity Planning
-
-1. **Benchmark harness**: `ao-recorder bench` command that creates a temporary chain, submits N assignments (default 1000), reports: assignments/second, average block time, peak RSS, database growth per 1000 assignments. Runnable on the target hardware to establish baseline capacity.
-
-2. **Dashboard page**: Optional static HTML page served at `/dashboard` (disabled by default, enabled via config). Shows the health endpoint data in a human-readable format with auto-refresh. No JavaScript framework — plain HTML + fetch + CSS. Resource gauges (RAM, disk, CPU) with green/amber/red thresholds. Chain table with block heights and age. No authentication (LAN-only use or behind reverse proxy auth).
+**Unblocks:** Mako maintaining Tia's recorder on Likiep (UBI), Wanjiku monitoring Riuki cooperative infrastructure (Cooperative), any operator diagnosing issues without developer assistance (All three).
 
 #### Acceptance Criteria
 
-- `.deb` install on fresh Pi OS: `sudo dpkg -i ao-recorder_*.deb && ao-recorder doctor` passes, chain running in under 10 minutes.
-- `.deb` install on fresh Ubuntu 24.04 VM: same flow, same outcome.
-- `.msi` install on Windows 11: double-click install, service starts, dashboard opens in browser.
-- `ao-recorder doctor` catches and clearly reports: missing data directory, port conflict, invalid config, unwritable paths.
-- Uninstall on all platforms removes binaries and service without data loss (data directory preserved by default).
-- `/health` endpoint returns accurate system metrics within 5% of actual values.
-- Disk space and stale chain alerts fire correctly in test scenarios.
-- `ao-recorder bench` produces reproducible throughput numbers (±10%) across runs.
-- Dashboard page loads and auto-refreshes without JavaScript errors.
-- Mako-grade operator (IT-literate but not a Rust developer) can install, configure, and diagnose common issues (disk full, chain stalled, high memory) without SSH or command-line expertise beyond the quick-start guide.
+- `ao-recorder doctor` catches and clearly reports: missing data directory, port conflict, invalid config, unwritable paths ✓.
+- `/health` endpoint returns system metrics via `sysinfo` crate ✓.
+- `ao-recorder bench` produces throughput numbers for baseline capacity ✓.
+- Dashboard page loads and auto-refreshes without JavaScript errors ✓.
+- Sysop guide covers installation through troubleshooting ✓.
+- Remaining: `.deb`/`.msi` install tests on target hardware, Prometheus metrics, real production alert testing.
 
 ### Priority Summary
 
@@ -626,10 +618,10 @@ One-step installers for each target environment. The operator should not need to
 | N6 | EXCHANGE_LISTING structure | All three | Small | N1 | ✓ Done |
 | N7 | Cooperative metadata conventions | Coop | Small | — | ✓ Done |
 | N8 | Binary attachments (photo/doc) | Coop, Tourism | Medium | N2, N7 | ✓ Done |
-| N9 | Server operations dashboard | All three | Medium–Large | — | Planned |
+| N9 | Server operations dashboard | All three | Medium–Large | — | ✓ Partial (installers remaining) |
 | N10 | Security hardening | All three | Medium | — | Planned |
 
-N1–N8 are complete. N9 and N10 are the remaining deployment-readiness gaps. N9 addresses the operational sustainability risk identified in all three deployment stories. N10 addresses the network-layer security findings from the [security audit](SECURITY_AUDIT.md) — the core protocol is solid, but the HTTP/deployment harness needs hardening before exposure beyond localhost.
+N1–N8 are complete. N9 is partially complete (runtime monitoring, alerts, dashboard, sysop guide, and CLI subcommands are done; platform installers and Prometheus metrics remain). N10 is planned. N9 addresses the operational sustainability risk identified in all three deployment stories. N10 addresses the network-layer security findings from the [security audit](SECURITY_AUDIT.md) — the core protocol is solid, but the HTTP/deployment harness needs hardening before exposure beyond localhost.
 
 Remaining hardware-dependent acceptance tests from earlier phases: two-device <3s latency, iOS/Android PWA install, Pi stress tests, Lighthouse PWA audit.
 

@@ -25,6 +25,8 @@ use ao_chain::{genesis, validate, block, caa};
 
 pub mod blob;
 pub mod config;
+pub mod dashboard;
+pub mod health;
 pub mod mqtt;
 
 // ── Error type ──────────────────────────────────────────────────────
@@ -316,6 +318,8 @@ const MAX_BLOCK_RANGE: u64 = 1000;
 pub fn build_router(state: Arc<AppState>) -> Router {
     // Standard routes get the default 256 KB body limit.
     let standard_routes = Router::new()
+        .route("/health", get(health::health))
+        .route("/dashboard", get(dashboard::dashboard))
         .route("/chains", get(list_chains).post(create_chain))
         .route("/chain/{id}/info", get(chain_info))
         .route("/chain/{id}/utxo/{seq_id}", get(get_utxo))

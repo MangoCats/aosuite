@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { RecorderClient } from '../api/client.ts';
 
 interface BlobViewerProps {
@@ -11,24 +11,34 @@ export function BlobViewer({ chainId, recorderUrl, hash }: BlobViewerProps) {
   const [url, setUrl] = useState<string | null>(null);
   const [mime, setMime] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const objectUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    let objectUrl: string | null = null;
+    // Revoke any URL from the previous render/effect run
+    if (objectUrlRef.current) {
+      URL.revokeObjectURL(objectUrlRef.current);
+      objectUrlRef.current = null;
+    }
+    setUrl(null);
     const client = new RecorderClient(recorderUrl);
     client.getBlob(chainId, hash)
       .then(({ mime: m, data }) => {
         if (cancelled) return;
         setMime(m);
-        objectUrl = URL.createObjectURL(new Blob([data], { type: m }));
-        setUrl(objectUrl);
+        const newUrl = URL.createObjectURL(new Blob([data], { type: m }));
+        objectUrlRef.current = newUrl;
+        setUrl(newUrl);
       })
       .catch((e) => {
         if (!cancelled) setError(String(e));
       });
     return () => {
       cancelled = true;
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      if (objectUrlRef.current) {
+        URL.revokeObjectURL(objectUrlRef.current);
+        objectUrlRef.current = null;
+      }
     };
   }, [chainId, recorderUrl, hash]);
 

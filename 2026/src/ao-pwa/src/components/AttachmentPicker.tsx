@@ -15,6 +15,7 @@ export function AttachmentPicker({ onAttach, attachments, maxFiles = 5 }: Attach
   async function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
     setProcessing(true);
+    const createdUrls: string[] = [];
     try {
       const newBlobs: AttachedBlob[] = [];
       for (const file of Array.from(files)) {
@@ -38,10 +39,15 @@ export function AttachmentPicker({ onAttach, attachments, maxFiles = 5 }: Attach
         const previewUrl = file.type.startsWith('image/')
           ? URL.createObjectURL(new Blob([content], { type: mime }))
           : '';
+        if (previewUrl) createdUrls.push(previewUrl);
 
         newBlobs.push({ file, mime, payload, previewUrl });
       }
       onAttach([...attachments, ...newBlobs]);
+    } catch (e) {
+      // Revoke any preview URLs created before the error
+      for (const u of createdUrls) URL.revokeObjectURL(u);
+      throw e;
     } finally {
       setProcessing(false);
       if (inputRef.current) inputRef.current.value = '';

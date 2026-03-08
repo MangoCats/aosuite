@@ -210,8 +210,14 @@ export function ConsumerView() {
       // linked on-chain.
       if (attachments.length > 0) {
         setStatus('Uploading attachments...');
-        for (const blob of attachments) {
-          await client.uploadBlob(selectedChainId, blob.payload);
+        try {
+          for (const blob of attachments) {
+            await client.uploadBlob(selectedChainId, blob.payload);
+          }
+        } catch (blobErr) {
+          setStatus(`Blob upload failed: ${blobErr}. Transfer aborted — no shares were moved.`);
+          setLoading(false);
+          return;
         }
       }
 

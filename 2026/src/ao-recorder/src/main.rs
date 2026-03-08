@@ -70,6 +70,10 @@ async fn main() -> Result<()> {
         None
     };
 
+    if blob_store.is_none() {
+        tracing::warn!("Blob storage disabled: no data_dir configured. Blob upload/download endpoints will return errors.");
+    }
+
     let mut state_inner = AppState::new_multi(data_dir, SigningKey::from_seed(default_key.seed()));
     state_inner.blob_store = blob_store;
     let state = Arc::new(state_inner);

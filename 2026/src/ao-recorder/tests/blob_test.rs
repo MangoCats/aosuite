@@ -202,5 +202,31 @@ async fn test_blob_not_found_404() {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), 500); // IoError wrapping NotFound
+    assert_eq!(resp.status(), 404);
+}
+
+#[tokio::test]
+async fn test_blob_invalid_hash_format_400() {
+    let issuer_key = SigningKey::generate();
+    let blockmaker_key = SigningKey::generate();
+    let (base_url, chain_id) = start_blob_server(&issuer_key, &blockmaker_key).await;
+
+    let client = reqwest::Client::new();
+
+    // Too short hash
+    let resp = client
+        .get(format!("{}/chain/{}/blob/{}", base_url, chain_id, "abcd"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
+
+    // Non-hex characters, correct length
+    let bad_hash = "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz";
+    let resp = client
+        .get(format!("{}/chain/{}/blob/{}", base_url, chain_id, bad_hash))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 400);
 }

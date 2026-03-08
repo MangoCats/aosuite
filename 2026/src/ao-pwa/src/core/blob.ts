@@ -9,8 +9,17 @@ export function parseBlobPayload(data: Uint8Array): { mime: string; content: Uin
   return { mime, content };
 }
 
+/** Validate a MIME type string: must be non-empty, contain '/', and have no control characters. */
+function validateMime(mime: string): void {
+  if (!mime) throw new Error('MIME type must not be empty');
+  if (!mime.includes('/')) throw new Error(`MIME type must contain '/': ${mime}`);
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(mime)) throw new Error(`MIME type contains control characters: ${JSON.stringify(mime)}`);
+}
+
 /** Build a DATA_BLOB payload from MIME type and content */
 export function buildBlobPayload(mime: string, content: Uint8Array): Uint8Array {
+  validateMime(mime);
   const mimeBytes = new TextEncoder().encode(mime);
   const result = new Uint8Array(mimeBytes.length + 1 + content.length);
   result.set(mimeBytes, 0);

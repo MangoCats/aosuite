@@ -25,6 +25,10 @@ pub enum BlobError {
     IoError(#[from] std::io::Error),
     #[error("invalid hash format")]
     InvalidHash,
+    #[error("chain not found")]
+    ChainNotFound,
+    #[error("blob not found")]
+    NotFound,
 }
 
 impl IntoResponse for BlobError {
@@ -34,6 +38,7 @@ impl IntoResponse for BlobError {
             BlobError::NoMimeDelimiter | BlobError::InvalidMime | BlobError::InvalidHash => {
                 StatusCode::BAD_REQUEST
             }
+            BlobError::ChainNotFound | BlobError::NotFound => StatusCode::NOT_FOUND,
             BlobError::IoError(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
         (status, Json(json!({ "error": self.to_string() }))).into_response()
@@ -42,11 +47,14 @@ impl IntoResponse for BlobError {
 
 // ── MIME extraction ─────────────────────────────────────────────────
 
-/// Find the first NUL byte in `data`, parse the prefix as a UTF-8 MIME type.
-/// Returns `(mime_type, offset_to_content)` where offset is the byte after NUL.
-/// Returns `None` if no NUL found or prefix is not valid UTF-8.
+/// Extract the MIME type from the wire format: `<mime-type-utf8> NUL <content-bytes>`.
+/// Returns `(mime_type, offset_to_content)` where offset is the byte after the NUL delimiter.
+/// Returns `None` if no NUL found, the prefix is empty, or the prefix is not valid UTF-8.
 pub fn extract_mime(data: &[u8]) -> Option<(&str, usize)> {
     let nul_pos = data.iter().position(|&b| b == 0)?;
+    if nul_pos == 0 {
+        return None;
+    }
     let prefix = std::str::from_utf8(&data[..nul_pos]).ok()?;
     Some((prefix, nul_pos + 1))
 }
@@ -87,9 +95,18 @@ impl BlobStore {
         // Atomic write: write to temp file then rename.
         let tmp_path = self.dir.join(format!(".tmp_{}", hash_hex));
         std::fs::write(&tmp_path, data)?;
-        std::fs::rename(&tmp_path, &target)?;
-
-        Ok(hash_hex)
+        match std::fs::rename(&tmp_path, &target) {
+            Ok(()) => Ok(hash_hex),
+            Err(_) if target.exists() => {
+                // Another thread already renamed the file — clean up our temp and succeed.
+                let _ = std::fs::remove_file(&tmp_path);
+                Ok(hash_hex)
+            }
+            Err(e) => {
+                let _ = std::fs::remove_file(&tmp_path);
+                Err(BlobError::IoError(e))
+            }
+        }
     }
 
     /// Retrieve blob data by its SHA-256 hex hash.
@@ -129,7 +146,7 @@ pub async fn upload_blob(
     body: Bytes,
 ) -> Result<impl IntoResponse, BlobError> {
     // Verify chain exists.
-    state.get_chain_or_err(&chain_id).map_err(|_| BlobError::InvalidHash)?;
+    state.get_chain_or_err(&chain_id).map_err(|_| BlobError::ChainNotFound)?;
 
     let blob_store = state
         .blob_store
@@ -142,14 +159,20 @@ pub async fn upload_blob(
     let data = body.as_ref();
 
     // Validate MIME delimiter exists.
-    let (mime, _offset) = extract_mime(data).ok_or(BlobError::NoMimeDelimiter)?;
+    let (mime, _) = extract_mime(data).ok_or(BlobError::NoMimeDelimiter)?;
 
     // Basic MIME validation: must contain a '/'.
     if !mime.contains('/') {
         return Err(BlobError::InvalidMime);
     }
 
+    // Reject MIME types with control characters or excessive length.
+    if mime.len() >= 200 || mime.chars().any(|c| c.is_control()) {
+        return Err(BlobError::InvalidMime);
+    }
+
     let hash_hex = blob_store.store(data)?;
+    tracing::info!(size = data.len(), hash = %hash_hex, "Blob stored");
 
     Ok(Json(json!({ "hash": hash_hex })))
 }
@@ -160,7 +183,7 @@ pub async fn get_blob(
     Path((chain_id, hash)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, BlobError> {
     // Verify chain exists.
-    state.get_chain_or_err(&chain_id).map_err(|_| BlobError::InvalidHash)?;
+    state.get_chain_or_err(&chain_id).map_err(|_| BlobError::ChainNotFound)?;
 
     let blob_store = state
         .blob_store
@@ -172,12 +195,10 @@ pub async fn get_blob(
 
     let data = blob_store
         .get(&hash)?
-        .ok_or_else(|| BlobError::IoError(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            "blob not found",
-        )))?;
+        .ok_or(BlobError::NotFound)?;
 
     let (mime, offset) = extract_mime(&data).ok_or(BlobError::NoMimeDelimiter)?;
+    tracing::debug!(%hash, "Blob retrieved");
     let content = data[offset..].to_vec();
 
     Ok((
@@ -221,6 +242,12 @@ mod tests {
         assert_eq!(mime, "image/jpeg");
         assert_eq!(offset, 11); // "image/jpeg" is 10 bytes + 1 for NUL
         assert_eq!(data[offset], 0xff);
+    }
+
+    #[test]
+    fn test_extract_mime_empty_returns_none() {
+        let data = b"\0some content after empty mime";
+        assert!(extract_mime(data).is_none());
     }
 
     #[test]

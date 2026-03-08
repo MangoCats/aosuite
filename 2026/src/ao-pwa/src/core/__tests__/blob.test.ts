@@ -44,4 +44,20 @@ describe('blob utilities', () => {
     expect(parsed!.mime).toBe(mime);
     expect(parsed!.content).toEqual(content);
   });
+
+  it('buildBlobPayload: rejects empty MIME', () => {
+    const content = new Uint8Array([0x01]);
+    expect(() => buildBlobPayload('', content)).toThrow('MIME type must not be empty');
+  });
+
+  it('buildBlobPayload: rejects MIME without slash', () => {
+    const content = new Uint8Array([0x01]);
+    expect(() => buildBlobPayload('textplain', content)).toThrow("MIME type must contain '/'");
+  });
+
+  it('buildBlobPayload: rejects MIME with control characters', () => {
+    const content = new Uint8Array([0x01]);
+    expect(() => buildBlobPayload('text/plain\x00', content)).toThrow('control characters');
+    expect(() => buildBlobPayload('text/\nplain', content)).toThrow('control characters');
+  });
 });

@@ -293,12 +293,13 @@ describe('csvExporter', () => {
     const cols = lines[1].split(',');
     expect(cols[2]).toBe('received');
     expect(cols[3]).toBe('1000');
+    expect(cols[5]).toBe(ALICE_PUB); // full pubkey in CSV
     expect(cols[6]).toBe('5');
     expect(cols[7]).toBe('2'); // receiverSeqId
     expect(cols[8]).toBe('false');
   });
 
-  it('computes coin amount from shares and coin_count', () => {
+  it('computes coin amount using bigint division (no floating-point loss)', () => {
     const records: TxRecord[] = [
       {
         blockHeight: 1, pageIndex: 0, timestampMs: 1700000000000,

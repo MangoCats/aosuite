@@ -159,6 +159,14 @@ impl ChainStore {
                 added_at INTEGER NOT NULL,
                 revoked_at INTEGER,
                 PRIMARY KEY (chain_id, pubkey)
+            );
+            CREATE TABLE IF NOT EXISTS vendor_profile (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                name TEXT,
+                description TEXT,
+                lat REAL,
+                lon REAL,
+                updated_at INTEGER NOT NULL
             );"
         )?;
         Ok(())
@@ -903,6 +911,40 @@ impl ChainStore {
         self.conn.execute_batch("ROLLBACK")?;
         Ok(())
     }
+
+    // --- Vendor profile persistence ---
+
+    /// Get the stored vendor profile. Returns None if not set.
+    pub fn get_vendor_profile(&self) -> Result<Option<(Option<String>, Option<String>, Option<f64>, Option<f64>)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT name, description, lat, lon FROM vendor_profile WHERE id = 1"
+        )?;
+        let mut rows = stmt.query([])?;
+        match rows.next()? {
+            Some(row) => Ok(Some((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))),
+            None => Ok(None),
+        }
+    }
+
+    /// Set or update the vendor profile.
+    pub fn set_vendor_profile(
+        &self,
+        name: Option<&str>,
+        description: Option<&str>,
+        lat: Option<f64>,
+        lon: Option<f64>,
+    ) -> Result<()> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        self.conn.execute(
+            "INSERT OR REPLACE INTO vendor_profile (id, name, description, lat, lon, updated_at)
+             VALUES (1, ?1, ?2, ?3, ?4, ?5)",
+            params![name, description, lat, lon, now],
+        )?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -1090,5 +1132,47 @@ mod tests {
         let expired = store.find_expired_utxos(300, 150).unwrap();
         assert_eq!(expired.len(), 1);
         assert_eq!(expired[0].seq_id, 1);
+    }
+
+    #[test]
+    fn test_vendor_profile_roundtrip() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        // No profile initially
+        assert!(store.get_vendor_profile().unwrap().is_none());
+
+        // Set profile
+        store.set_vendor_profile(
+            Some("Bob's Curry Goat"),
+            Some("Best curry in town"),
+            Some(18.1096),
+            Some(-77.2975),
+        ).unwrap();
+
+        let (name, desc, lat, lon) = store.get_vendor_profile().unwrap().unwrap();
+        assert_eq!(name.as_deref(), Some("Bob's Curry Goat"));
+        assert_eq!(desc.as_deref(), Some("Best curry in town"));
+        assert!((lat.unwrap() - 18.1096).abs() < 1e-6);
+        assert!((lon.unwrap() - (-77.2975)).abs() < 1e-6);
+
+        // Overwrite
+        store.set_vendor_profile(Some("Updated Name"), None, None, None).unwrap();
+        let (name, desc, lat, lon) = store.get_vendor_profile().unwrap().unwrap();
+        assert_eq!(name.as_deref(), Some("Updated Name"));
+        assert!(desc.is_none());
+        assert!(lat.is_none());
+        assert!(lon.is_none());
+    }
+
+    #[test]
+    fn test_init_schema_idempotent() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+        // Second call should succeed (CREATE TABLE IF NOT EXISTS)
+        store.init_schema().unwrap();
+        // Profile operations still work
+        store.set_vendor_profile(Some("Test"), None, None, None).unwrap();
+        assert!(store.get_vendor_profile().unwrap().is_some());
     }
 }

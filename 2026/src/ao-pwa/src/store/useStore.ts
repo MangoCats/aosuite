@@ -49,9 +49,9 @@ export interface AppState {
 
   // Cached balance (IndexedDB-backed, shown immediately on load)
   cachedBalance: string | null; // stringified bigint, null = unknown
-  lastValidatedAt: number | null; // Unix ms timestamp
+  lastValidatedAt: Record<string, number>; // chainId → Unix ms timestamp
   setCachedBalance: (balance: string | null) => void;
-  setLastValidatedAt: (ts: number | null) => void;
+  setLastValidatedAt: (chainId: string, ts: number) => void;
 
   // Relay sync
   relayUrl: string;
@@ -105,9 +105,11 @@ export const useStore = create<AppState>((set) => ({
   setWalletPassphrase: (walletPassphrase) => set({ walletPassphrase }),
 
   cachedBalance: null,
-  lastValidatedAt: null,
+  lastValidatedAt: {},
   setCachedBalance: (cachedBalance) => set({ cachedBalance }),
-  setLastValidatedAt: (lastValidatedAt) => set({ lastValidatedAt }),
+  setLastValidatedAt: (chainId, ts) => set(state => ({
+    lastValidatedAt: { ...state.lastValidatedAt, [chainId]: ts },
+  })),
 
   relayUrl: loadString('ao_relay_url') ?? 'ws://localhost:3001',
   relayConnected: false,

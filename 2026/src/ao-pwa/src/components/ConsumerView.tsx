@@ -57,9 +57,11 @@ export function ConsumerView() {
     seedHex: storedSeedHex, publicKeyHex, walletPassphrase,
     setWallet, clearWallet,
     setUnsyncedKeyCount, setWalletKeyCount,
-    cachedBalance, lastValidatedAt,
+    cachedBalance, lastValidatedAt: lastValidatedAtMap,
     setCachedBalance, setLastValidatedAt,
   } = useStore();
+
+  const lastValidatedAt = selectedChainId ? lastValidatedAtMap[selectedChainId] ?? null : null;
 
   // Wallet management
   const [importSeed, setImportSeed] = useState('');
@@ -140,7 +142,7 @@ export function ConsumerView() {
         // Update cached balance and validation timestamp (N14)
         const bal = await walletDb.chainBalance(selectedChainId!);
         setCachedBalance(bal.toString());
-        setLastValidatedAt(Date.now());
+        setLastValidatedAt(selectedChainId!, Date.now());
       }).catch(() => {
         // Validation failure is non-fatal — balance may be stale
       });
@@ -298,7 +300,7 @@ export function ConsumerView() {
       const receivers: Receiver[] = [{
         pubkey: recipientPubkey ? hexToBytes(recipientPubkey) : recipientKey!.publicKey,
         amount: sendAmt,
-        key: recipientPubkey ? undefined : recipientKey!,
+        key: recipientPubkey ? null : recipientKey!,
       }];
 
       if (needsChange) {

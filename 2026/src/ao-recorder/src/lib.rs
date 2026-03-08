@@ -250,6 +250,13 @@ impl AppState {
         }
     }
 
+    /// Set a vendor profile in the in-memory cache (for chain listing).
+    pub fn set_vendor_profile_cache(&self, chain_id: String, profile: VendorProfile) {
+        if let Ok(mut profiles) = self.vendor_profiles.write() {
+            profiles.insert(chain_id, profile);
+        }
+    }
+
     /// Register a chain. Panics if the chains lock is poisoned (unrecoverable).
     pub fn add_chain(&self, chain_id: String, chain_state: Arc<ChainState>) {
         self.chains.write()
@@ -841,6 +848,7 @@ async fn register_exchange_agent(
 // ── Vendor Profile ───────────────────────────────────────────────────
 
 /// GET /chain/{id}/profile — get vendor profile metadata for a chain.
+/// Reads from in-memory cache (populated on startup and after writes).
 async fn get_vendor_profile(
     State(state): State<Arc<AppState>>,
     Path(chain_id_hex): Path<String>,
@@ -853,15 +861,26 @@ async fn get_vendor_profile(
 }
 
 /// POST /chain/{id}/profile — set vendor profile metadata for a chain.
+/// Persists to SQLite and updates in-memory cache for chain listing.
 async fn set_vendor_profile(
     State(state): State<Arc<AppState>>,
     Path(chain_id_hex): Path<String>,
     Json(profile): Json<VendorProfile>,
 ) -> Result<StatusCode, RecorderError> {
-    let _chain = state.get_chain_or_err(&chain_id_hex)?;
-    let mut profiles = state.vendor_profiles.write()
-        .map_err(|e| RecorderError::LockPoisoned(format!("profiles write: {}", e)))?;
-    profiles.insert(chain_id_hex, profile);
+    let chain = state.get_chain_or_err(&chain_id_hex)?;
+    let p = profile.clone();
+    tokio::task::spawn_blocking(move || {
+        let store = chain.store.lock()
+            .map_err(|e| RecorderError::LockPoisoned(format!("store lock: {}", e)))?;
+        store.set_vendor_profile(
+            p.name.as_deref(),
+            p.description.as_deref(),
+            p.lat,
+            p.lon,
+        ).map_err(|e| RecorderError::Internal(format!("profile write: {}", e)))
+    }).await.map_err(|e| RecorderError::Internal(format!("spawn: {}", e)))??;
+    // Keep in-memory cache in sync for chain listing
+    state.set_vendor_profile_cache(chain_id_hex, profile);
     Ok(StatusCode::OK)
 }
 

@@ -599,7 +599,7 @@ Five sub-phases (S1–S5) delivering multi-device key sync for AO's single-use k
 | N13 | Wallet backup/restore UX | All three | Small | N11 | ✓ Done |
 | N14 | Offline balance cache | All three | Small | N11 | ✓ Done |
 | N15 | Transaction history + CSV export | All three | Medium | N2 | ✓ Done |
-| N16 | Vendor profile persistence + on-chain | Tourism | Small | N5 | — |
+| N16 | Vendor profile persistence + on-chain | Tourism | Small | N5 | ✓ Done |
 | N17 | On-chain blob linking + blob fees | Coop, Tourism | Medium | N8 | — |
 | **Tier 2: Adoption** | | | | | |
 | N18 | Payment notifications (chime) | Tourism, UBI | Small | N2 | — |
@@ -657,17 +657,11 @@ Scrollable transaction list with date, direction, amount, counterparty (truncate
 
 **Implementation:** [txHistory.ts](src/ao-pwa/src/core/txHistory.ts) (block parser, IndexedDB cache, CSV exporter, `Exporter` interface), [TransactionHistory.tsx](src/ao-pwa/src/components/TransactionHistory.tsx) (UI), [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx) (integration). 10 tests (block parsing: received/sent/self-transfer/multi-block/timestamp/blob detection; CSV: header/coins/multi-seq).
 
-### N16: Vendor Profile Persistence + On-Chain Records — *Tourism*
+### N16: Vendor Profile Persistence + On-Chain Records — *Tourism* ✓
 
-Profiles survive recorder restarts. On-chain `VENDOR_PROFILE` (type 36) recording for tamper-proof audit trail.
+Vendor profiles persist in per-chain SQLite via `vendor_profile` table. API handlers read/write SQLite (in `spawn_blocking`) with in-memory cache for chain listing. Profiles loaded from SQLite on recorder startup. PWA `buildVendorProfile()` constructs `VENDOR_PROFILE` (type 36, separable) container; `buildAssignment()` extended with optional `separableItems` parameter for on-chain profile recording. VendorView editor unchanged — persistence is transparent.
 
-**Deliverables:**
-- `vendor_profiles` SQLite table: `(chain_id, name, description, lat, lng, updated_at)`.
-- `POST /chain/{id}/profile` writes to SQLite. `GET /chain/{id}/profile` reads from SQLite.
-- On-chain recording: vendor submits profile as `VENDOR_PROFILE` separable item in an assignment. SQLite serves as fast-access cache.
-- PWA `VendorView` profile editor unchanged — persistence is transparent.
-
-**Depends on:** N5 (existing profile infrastructure).
+**Implementation:** [store.rs](src/ao-chain/src/store.rs) (`vendor_profile` table, get/set methods), [lib.rs](src/ao-recorder/src/lib.rs) (SQLite-backed handlers, `set_vendor_profile_cache`), [main.rs](src/ao-recorder/src/main.rs) (startup profile loading), [assignment.ts](src/ao-pwa/src/core/assignment.ts) (`buildVendorProfile`, separable items parameter).
 
 ### N17: On-Chain Blob Linking + Pre-Substitution Fees — *Coop + Tourism*
 

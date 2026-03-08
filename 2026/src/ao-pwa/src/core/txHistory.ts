@@ -210,6 +210,19 @@ export interface Exporter {
   export(records: TxRecord[], chainSymbol: string, coinCount: string): string;
 }
 
+/** String-based decimal division for bigints — no floating-point precision loss. */
+function bigintDivDecimal(numerator: bigint, denominator: bigint, decimals: number): string {
+  const negative = numerator < 0n !== denominator < 0n;
+  const absNum = numerator < 0n ? -numerator : numerator;
+  const absDen = denominator < 0n ? -denominator : denominator;
+  const scale = 10n ** BigInt(decimals);
+  const scaled = absNum * scale / absDen;
+  const intPart = scaled / scale;
+  const fracPart = scaled % scale;
+  const fracStr = fracPart.toString().padStart(decimals, '0');
+  return `${negative ? '-' : ''}${intPart}.${fracStr}`;
+}
+
 /** CSV exporter — default format. */
 export const csvExporter: Exporter = {
   format: 'CSV',
@@ -223,14 +236,15 @@ export const csvExporter: Exporter = {
       const date = d.toISOString().split('T')[0];
       const time = d.toISOString().split('T')[1].replace('Z', '');
       const shares = r.amount;
-      // Coin value: shares / coinCount (approximate — display only)
+      // Coin value: integer division with 6 decimal places via string math
       const coins = coinTotal > 0n
-        ? (Number(BigInt(shares)) / Number(coinTotal)).toFixed(6)
+        ? bigintDivDecimal(BigInt(shares), coinTotal, 6)
         : '';
       const seqId = r.direction === 'sent'
         ? r.giverSeqIds.join(';')
         : (r.receiverSeqId?.toString() ?? '');
-      const cp = r.counterparty ? r.counterparty.slice(0, 16) + '...' : '';
+      // Full pubkey in CSV (truncation only for UI display)
+      const cp = r.counterparty;
       return `${date},${time},${r.direction},${shares},${coins},${cp},${r.blockHeight},${seqId},${r.hasBlob}`;
     });
     return [header, ...lines].join('\n');
@@ -243,17 +257,23 @@ export const exporters: Exporter[] = [csvExporter];
 // ── IndexedDB Cache ──────────────────────────────────────────────────
 
 const TX_DB_NAME = 'ao-tx-history';
-const TX_DB_VERSION = 1;
+const TX_DB_VERSION = 2; // v2: compound keyPath prevents duplicates
 const TX_STORE = 'transactions';
 const TX_META_STORE = 'meta';
 
 function openTxDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(TX_DB_NAME, TX_DB_VERSION);
-    req.onupgradeneeded = () => {
+    req.onupgradeneeded = (event) => {
       const db = req.result;
+      const oldVersion = event.oldVersion;
+      // v1→v2 migration: delete old auto-increment store, recreate with compound key
+      if (oldVersion < 2 && db.objectStoreNames.contains(TX_STORE)) {
+        db.deleteObjectStore(TX_STORE);
+      }
       if (!db.objectStoreNames.contains(TX_STORE)) {
-        const store = db.createObjectStore(TX_STORE, { autoIncrement: true });
+        // Compound key: [chainId, blockHeight, pageIndex, direction] prevents duplicates
+        const store = db.createObjectStore(TX_STORE, { keyPath: ['chainId', 'blockHeight', 'pageIndex', 'direction'] });
         store.createIndex('chainId', 'chainId', { unique: false });
         store.createIndex('blockHeight', 'blockHeight', { unique: false });
       }
@@ -305,7 +325,7 @@ export async function saveTxRecords(
       const tx = db.transaction([TX_STORE, TX_META_STORE], 'readwrite');
       const store = tx.objectStore(TX_STORE);
       for (const r of records) {
-        store.add({ ...r, chainId } as StoredTx);
+        store.put({ ...r, chainId } as StoredTx);
       }
       tx.objectStore(TX_META_STORE).put({ chainId, lastScannedHeight: scannedUpTo } as TxMeta);
       tx.oncomplete = () => resolve();

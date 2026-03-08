@@ -23,6 +23,10 @@ fn load_chain(db_path: &str, genesis_path: &str, blockmaker_key: &SigningKey) ->
     let store = ChainStore::open(db_path)
         .context("failed to open database")?;
 
+    // Always run init_schema to apply new tables to existing databases.
+    // CREATE TABLE IF NOT EXISTS makes this idempotent and safe.
+    store.init_schema().context("failed to initialize schema")?;
+
     let meta = match store.load_chain_meta()
         .context("failed to query chain metadata")?
     {
@@ -125,6 +129,20 @@ async fn main() -> Result<()> {
         let chain_state = Arc::new(ChainState::new(store, bm_key));
         info!(chain_id = %chain_id, "Registered chain");
         state.add_chain(chain_id, chain_state);
+    }
+
+    // Load vendor profiles from SQLite into in-memory cache
+    {
+        let chains = state.chains.read().expect("chains lock");
+        for (chain_id, chain_state) in chains.iter() {
+            if let Ok(store) = chain_state.store.lock() {
+                if let Ok(Some((name, description, lat, lon))) = store.get_vendor_profile() {
+                    state.set_vendor_profile_cache(chain_id.clone(), ao_recorder::VendorProfile {
+                        name, description, lat, lon,
+                    });
+                }
+            }
+        }
     }
 
     // Load known recorder keys from config

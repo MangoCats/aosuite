@@ -19,7 +19,7 @@ export interface Giver {
 export interface Receiver {
   pubkey: Uint8Array;
   amount: bigint;
-  key: SigningKey;
+  key: SigningKey | null;  // null for external recipients (no signing key available)
 }
 
 export interface FeeRate {
@@ -27,11 +27,29 @@ export interface FeeRate {
   den: bigint;
 }
 
-/** Build an ASSIGNMENT DataItem from givers and receivers. */
+export interface VendorProfileData {
+  name?: string;
+  description?: string;
+  lat?: number;
+  lon?: number;
+}
+
+/** Build a VENDOR_PROFILE DataItem from profile fields.
+ *  Encodes as JSON in a NOTE child (all fields including lat/lon). */
+export function buildVendorProfile(profile: VendorProfileData): DataItem {
+  const enc = new TextEncoder();
+  const json = JSON.stringify(profile);
+  return containerItem(tc.VENDOR_PROFILE, [
+    bytesItem(tc.NOTE, enc.encode(json)),
+  ]);
+}
+
+/** Build an ASSIGNMENT DataItem from givers, receivers, and optional separable items. */
 export function buildAssignment(
   givers: Giver[],
   receivers: Receiver[],
   feeRate: FeeRate,
+  separableItems?: DataItem[],
 ): DataItem {
   const participantCount = givers.length + receivers.length;
   const children: DataItem[] = [vbcItem(tc.LIST_SIZE, BigInt(participantCount))];
@@ -56,6 +74,11 @@ export function buildAssignment(
   const bid: Rational = { num: feeRate.num, den: feeRate.den };
   const bidBytes = encodeRational(bid);
   children.push(bytesItem(tc.RECORDING_BID, bidBytes));
+
+  // Optional separable items (VENDOR_PROFILE, DATA_BLOB, etc.)
+  if (separableItems) {
+    for (const item of separableItems) children.push(item);
+  }
 
   // Deadline: 1 day from now
   const deadlineSecs = nowUnixSeconds() + 86400n;
@@ -89,8 +112,9 @@ export async function buildAuthorization(
     ]));
   }
 
-  // Receiver signatures
+  // Receiver signatures (skip external recipients without signing key)
   for (let j = 0; j < receivers.length; j++) {
+    if (!receivers[j].key) continue;  // external recipient — no key to sign with
     const pageIdx = givers.length + j;
     const ts = fromUnixSeconds(
       baseUnixSecs + 1n + BigInt(participantCount) + BigInt(j),

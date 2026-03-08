@@ -61,6 +61,41 @@ The MSI installs to `Program Files\AssignOnward\bin\`, adds the bin directory to
 msiexec /i out\AssignOnward-0.1.0-x64.msi
 ```
 
+## Simulation Suite (separate package)
+
+The sims are packaged independently from the production suite.
+
+| Component | Description |
+|-----------|-------------|
+| `ao-sims` | CLI simulation engine |
+| `scenarios/` | TOML scenario files (island-life, exchange, adversarial, etc.) |
+| `viewer/` | Browser-based simulation viewer (pre-built PWA) |
+
+### Debian
+
+**Prerequisites**: `cargo`, `dpkg-deb`, `strip`, `node`/`npm`
+
+```bash
+cd installers/debian
+chmod +x build-sims.sh
+./build-sims.sh
+```
+
+Output: `out/ao-sims_0.1.0_amd64.deb`
+
+Installs binary to `/usr/bin/ao-sims`, scenarios to `/usr/share/ao-sims/scenarios/`, viewer to `/usr/share/ao-sims/viewer/`. Depends on `ao-recorder`.
+
+### Windows
+
+```powershell
+cd installers\windows
+.\build-sims.ps1
+```
+
+Output: `out\AssignOnward-Sims-0.1.0-x64.msi`
+
+Installs to `Program Files\AssignOnward\sims\` with selectable features for the engine and scenario files.
+
 ## Post-Install
 
 See [SysopGuide.md](../SysopGuide.md) for first-time setup, configuration, and operation.

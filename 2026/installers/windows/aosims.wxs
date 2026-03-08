@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+  WiX v4 manifest for Assign Onward Sims MSI installer.
+  Installs: ao-sims.exe, scenario files, viewer PWA static files
+  Target:   Program Files\AssignOnward\sims\
+-->
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <Package
+    Name="Assign Onward Sims"
+    Version="0.1.0"
+    Manufacturer="Assign Onward Project"
+    UpgradeCode="F8B4D2E1-9G5C-4F3B-AD7E-2C6G1B4F8E03"
+    Scope="perMachine">
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of Assign Onward Sims is already installed." />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Directory structure -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="AORoot" Name="AssignOnward">
+        <Directory Id="INSTALLFOLDER" Name="sims">
+          <Directory Id="BinFolder" Name="bin" />
+          <Directory Id="ScenariosFolder" Name="scenarios" />
+          <Directory Id="ViewerFolder" Name="viewer" />
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Binary -->
+    <ComponentGroup Id="SimsBinary" Directory="BinFolder">
+      <Component Id="AoSims" Guid="B2C3D4E5-1111-4F3B-AD7E-2C6G1B4F8E01">
+        <File Id="ao_sims_exe" Source="$(var.BinDir)\ao-sims.exe" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Scenario files (harvested at build time) -->
+    <ComponentGroup Id="Scenarios" Directory="ScenariosFolder">
+      <Component Id="ScenarioFiles" Guid="B2C3D4E5-2222-4F3B-AD7E-2C6G1B4F8E02">
+        <File Id="minimal_toml" Source="$(var.ScenariosDir)\minimal.toml" />
+        <File Id="island_life_toml" Source="$(var.ScenariosDir)\island-life.toml" />
+        <File Id="island_life_full_toml" Source="$(var.ScenariosDir)\island-life-full.toml" />
+        <File Id="three_chain_toml" Source="$(var.ScenariosDir)\three-chain.toml" />
+        <File Id="exchange_3chain_toml" Source="$(var.ScenariosDir)\exchange-3chain.toml" />
+        <File Id="atomic_exchange_toml" Source="$(var.ScenariosDir)\atomic-exchange.toml" />
+        <File Id="price_war_toml" Source="$(var.ScenariosDir)\price-war.toml" />
+        <File Id="audit_adversarial_toml" Source="$(var.ScenariosDir)\audit-adversarial.toml" />
+        <File Id="infra_resilience_toml" Source="$(var.ScenariosDir)\infra-resilience.toml" KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Add sims bin to PATH -->
+    <Component Id="SimsPathEntry" Directory="BinFolder"
+               Guid="B2C3D4E5-3333-4F3B-AD7E-2C6G1B4F8E03">
+      <CreateFolder />
+      <Environment Id="SIMSPATH" Name="PATH" Value="[BinFolder]"
+                   Permanent="no" Part="last" Action="set" System="yes" />
+    </Component>
+
+    <!-- Feature tree -->
+    <Feature Id="Complete" Title="Assign Onward Sims" Level="1">
+      <Feature Id="SimEngine" Title="Simulation Engine" Level="1">
+        <ComponentRef Id="AoSims" />
+        <ComponentRef Id="SimsPathEntry" />
+      </Feature>
+      <Feature Id="ScenarioData" Title="Scenario Files" Level="1">
+        <ComponentRef Id="ScenarioFiles" />
+      </Feature>
+    </Feature>
+
+    <!--
+      Note: The viewer PWA static files are not listed individually here.
+      Use the build script's WiX heat/harvesting to include the viewer/dist
+      directory, or serve the viewer from ao-sims itself at runtime.
+    -->
+
+  </Package>
+</Wix>

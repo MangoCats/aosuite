@@ -108,6 +108,9 @@ As Phase 0 deliverables and later code are produced, the folder will grow:
 │   ├── WireFormat.md
 │   ├── CryptoChoices.md
 │   ├── EconomicRules.md
+│   ├── ValidationAndTrust.md
+│   ├── AtomicExchange.md
+│   ├── CooperativeMetadata.md
 │   └── conformance/       # Test vectors
 ├── src/                   # Rust workspace (Phase 1+)
 │   ├── Cargo.toml

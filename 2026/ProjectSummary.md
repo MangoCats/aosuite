@@ -58,11 +58,13 @@ These are hard requirements from [CorePrinciples.html](../docs/html/CorePrincipl
 
 ## What's Been Built
 
-**C++ codebase (~15,600 lines, 2018–2021):** Implements only the data serialization layer — VBC encoding, DataItem types, hash wrappers, key structures, GMP integer storage, and a JSON codec. No protocol logic, no networking, no user-facing apps. Uses the 2018 crypto choices (ECDSA brainpool-256, RSA-3072, SHA3-512 via OpenPGP). Tests are GUI-based (Qt widgets), not automated. Last commit September 2021.
+**C++ codebase (~15,600 lines, 2018–2021):** Implements only the data serialization layer — VBC encoding, DataItem types, hash wrappers, key structures, GMP integer storage, and a JSON codec. No protocol logic, no networking, no user-facing apps. Uses the 2018 crypto choices (ECDSA brainpool-256, RSA-3072, SHA3-512 via OpenPGP). Tests are GUI-based (Qt widgets), not automated. Last commit September 2021. Useful as a reference for the binary wire format and the `byteCodeDefinitions.json` type code registry, but not directly portable due to changed cryptographic algorithms.
 
-**No Rust code exists yet.** The 2026 reboot starts from scratch.
+**Rust crates (Phases 0–6 complete):** 7 crates — ao-types, ao-crypto, ao-chain, ao-recorder, ao-exchange, ao-validator, ao-cli — covering serialization, cryptography, chain logic, HTTP recorder, atomic exchange, validation, and CLI tools. 140 Rust tests, 0 clippy warnings.
 
-The C++ code is useful as a reference for the binary wire format and the `byteCodeDefinitions.json` type code registry, but it cannot be ported directly because the cryptographic algorithms have changed.
+**React PWA (Phase 3):** TypeScript core data layer, Web Crypto signing, Zustand state, VendorView (AOS) and ConsumerView (AOE). 209 PWA tests.
+
+**349 total tests** (140 Rust + 209 PWA).
 
 ## The 2026 Technology Stack
 
@@ -71,7 +73,7 @@ The C++ code is useful as a reference for the binary wire format and the `byteCo
 | Language | Rust (edition 2024) | Memory safety for crypto, cross-compile to ARM |
 | Signatures | Ed25519 via `ring` 0.17 | Replaces ECDSA brainpool-256 and RSA-3072 |
 | Hashes | SHA2-256 + BLAKE3 | SHA3-512 dropped entirely |
-| Type codes | 44 codes (1–39, -1, -2, 64–68) | Compact registry, extensible via type-code dispatch |
+| Type codes | 53 codes (1–39, -1, -2, 64–68, 69–77) | Compact registry, extensible via type-code dispatch |
 | Big integers | `num-bigint` + `num-rational` | Pure Rust, replaces GMP |
 | Serialization | `serde` with custom binary + JSON | Preserves VBC binary on-chain format |
 | HTTP server | Axum 0.8+ | Async, lightweight, tokio ecosystem |

@@ -10,6 +10,8 @@ import { bytesToHex, hexToBytes } from '../core/hex.ts';
 import type { Giver, Receiver, FeeRate } from '../core/assignment.ts';
 import * as offlineQueue from '../core/offlineQueue.ts';
 import { VendorMap, type VendorPin } from './VendorMap.tsx';
+import { AttachmentPicker } from './AttachmentPicker.tsx';
+import type { AttachedBlob } from '../core/blob.ts';
 
 /** Scan chain for unspent UTXOs owned by the given pubkey hex. */
 async function scanUtxos(
@@ -53,6 +55,7 @@ export function ConsumerView() {
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [queuedCount, setQueuedCount] = useState(0);
+  const [attachments, setAttachments] = useState<AttachedBlob[]>([]);
 
   // Auto-flush offline queue when online
   useEffect(() => {
@@ -88,6 +91,10 @@ export function ConsumerView() {
 
   async function handleImport() {
     if (importSeed.length !== 64) return;
+    if (!/^[0-9a-fA-F]{64}$/.test(importSeed)) {
+      setStatus('Import error: seed must be 64 hex characters');
+      return;
+    }
     try {
       const key = await signingKeyFromSeed(hexToBytes(importSeed));
       setWallet('Wallet', bytesToHex(key.publicKey), importSeed);
@@ -125,6 +132,10 @@ export function ConsumerView() {
   // ── Transfer ──────────────────────────────────────────────────────
   async function handleTransfer() {
     if (!chainInfo || !selectedChainId || !storedSeedHex || !selectedUtxo) return;
+    if (recipientPubkey && !/^[0-9a-fA-F]{64}$/.test(recipientPubkey)) {
+      setStatus('Error: recipient pubkey must be 64 hex characters');
+      return;
+    }
     setLoading(true);
     setStatus('Building transfer...');
 
@@ -140,15 +151,8 @@ export function ConsumerView() {
       };
       const sharesOut = BigInt(chainInfo.shares_out);
 
-      // Generate receiver key (for the recipient)
-      let recipientKey;
-      if (recipientPubkey) {
-        // External recipient: generate a temporary signing key for the receiver slot
-        // (the real recipient holds their own key — we provide the pubkey only)
-        recipientKey = await generateSigningKey();
-      } else {
-        recipientKey = await generateSigningKey();
-      }
+      // Generate receiver key (only needed when no external recipient specified)
+      const recipientKey = recipientPubkey ? null : await generateSigningKey();
 
       // Generate change key (back to consumer)
       const changeKey = await generateSigningKey();
@@ -162,9 +166,9 @@ export function ConsumerView() {
       // If sending full amount: single receiver. Otherwise: receiver + change.
       const needsChange = sendAmt < giverAmt;
       const receivers: Receiver[] = [{
-        pubkey: recipientPubkey ? hexToBytes(recipientPubkey) : recipientKey.publicKey,
+        pubkey: recipientPubkey ? hexToBytes(recipientPubkey) : recipientKey!.publicKey,
         amount: sendAmt,
-        key: recipientPubkey ? recipientKey : recipientKey,
+        key: recipientPubkey ? undefined : recipientKey!,
       }];
 
       if (needsChange) {
@@ -200,13 +204,24 @@ export function ConsumerView() {
       setStatus(`Signing (sending ${receivers[0].amount} shares)...`);
       const authJson = await buildAuthorizationJson(givers, receivers, feeRate);
 
+      // Upload attached blobs to recorder (associated content for this transfer).
+      // TODO: Reference blob hashes in the assignment DataItem once buildAssignment
+      // supports DATA_BLOB children. For now, blobs are uploaded alongside but not
+      // linked on-chain.
+      if (attachments.length > 0) {
+        setStatus('Uploading attachments...');
+        for (const blob of attachments) {
+          await client.uploadBlob(selectedChainId, blob.payload);
+        }
+      }
+
       setStatus('Submitting to recorder...');
       try {
         const result = await client.submit(selectedChainId, authJson);
 
         let msg = `Block ${result.height} recorded! Hash: ${result.hash.slice(0, 16)}...\n`;
         msg += `Sent: ${receivers[0].amount} shares\n`;
-        if (!recipientPubkey) {
+        if (!recipientPubkey && recipientKey) {
           msg += `Receiver pubkey: ${bytesToHex(recipientKey.publicKey)}\n`;
           msg += `Receiver seed: ${bytesToHex(recipientKey.seed)}\n`;
         }
@@ -232,6 +247,12 @@ export function ConsumerView() {
           throw submitErr;
         }
       }
+
+      // Clean up attachment preview URLs and clear
+      for (const blob of attachments) {
+        if (blob.previewUrl) URL.revokeObjectURL(blob.previewUrl);
+      }
+      setAttachments([]);
 
       // Refresh UTXOs after transfer
       setSelectedUtxo(null);
@@ -363,6 +384,7 @@ export function ConsumerView() {
               placeholder="hex pubkey or leave blank..."
             />
           </label>
+          <AttachmentPicker attachments={attachments} onAttach={setAttachments} />
           <button onClick={handleTransfer} disabled={loading}>
             {loading ? 'Processing...' : 'Transfer'}
           </button>

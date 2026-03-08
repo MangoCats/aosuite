@@ -10,7 +10,7 @@ path = "src/main.rs"
 [dependencies]
 ao-types = { path = "../src/ao-types" }
 ao-crypto = { path = "../src/ao-crypto" }
-ao-chain = { path = "../src/ao-chain" }
+ao-chain = { path = "../src/ao-chain", features = ["test-support"] }
 ao-recorder = { path = "../src/ao-recorder" }
 ao-validator = { path = "../src/ao-validator" }
 ao-exchange = { path = "../src/ao-exchange" }

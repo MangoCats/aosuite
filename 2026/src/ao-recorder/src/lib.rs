@@ -23,6 +23,7 @@ use ao_crypto::sign::SigningKey;
 use ao_chain::store::ChainStore;
 use ao_chain::{genesis, validate, block, caa};
 
+pub mod blob;
 pub mod config;
 pub mod mqtt;
 
@@ -160,6 +161,8 @@ pub struct AppState {
     pub known_recorders: std::collections::HashMap<[u8; 32], [u8; 32]>,
     /// Vendor profiles per chain: chain_id → VendorProfile.
     vendor_profiles: RwLock<HashMap<String, VendorProfile>>,
+    /// Optional content-addressed blob storage.
+    pub blob_store: Option<blob::BlobStore>,
 }
 
 /// Cached result from polling a validator's GET /validate/{chain_id}.
@@ -192,6 +195,7 @@ impl AppState {
             validator_cache: RwLock::new(HashMap::new()),
             known_recorders: std::collections::HashMap::new(),
             vendor_profiles: RwLock::new(HashMap::new()),
+            blob_store: None,
         }
     }
 
@@ -206,6 +210,7 @@ impl AppState {
             validator_cache: RwLock::new(HashMap::new()),
             known_recorders: std::collections::HashMap::new(),
             vendor_profiles: RwLock::new(HashMap::new()),
+            blob_store: None,
         }
     }
 
@@ -227,7 +232,7 @@ impl AppState {
     }
 
     /// Get a chain by ID, or RecorderError::ChainNotFound.
-    fn get_chain_or_err(&self, chain_id: &str) -> Result<Arc<ChainState>, RecorderError> {
+    pub fn get_chain_or_err(&self, chain_id: &str) -> Result<Arc<ChainState>, RecorderError> {
         self.chains.read()
             .map_err(|e| RecorderError::LockPoisoned(format!("chains read: {}", e)))?
             .get(chain_id)
@@ -302,12 +307,18 @@ struct CreateChainRequest {
 /// Maximum request body size (256 KB). Assignments are compact wire-format
 /// structures; anything larger is almost certainly malicious.
 const MAX_BODY_SIZE: usize = 256 * 1024;
+const MAX_BLOB_SIZE: usize = 5_242_880;
 
 /// Maximum number of blocks returned by a single GET /blocks request.
 const MAX_BLOCK_RANGE: u64 = 1000;
 
 /// Build the Axum router for a recorder with the given state.
 pub fn build_router(state: Arc<AppState>) -> Router {
+    // Blob routes get a separate, larger body limit (5 MB).
+    let blob_routes = Router::new()
+        .route("/chain/{id}/blob", axum::routing::post(blob::upload_blob))
+        .layer(DefaultBodyLimit::max(MAX_BLOB_SIZE));
+
     Router::new()
         .route("/chains", get(list_chains).post(create_chain))
         .route("/chain/{id}/info", get(chain_info))
@@ -322,6 +333,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/chain/{id}/caa/bind", axum::routing::post(caa_bind))
         .route("/chain/{id}/caa/{caa_hash}", get(caa_status))
         .route("/chain/{id}/profile", get(get_vendor_profile).post(set_vendor_profile))
+        .route("/chain/{id}/blob/{hash}", get(blob::get_blob))
+        .merge(blob_routes)
         .layer(DefaultBodyLimit::max(MAX_BODY_SIZE))
         .with_state(state)
 }

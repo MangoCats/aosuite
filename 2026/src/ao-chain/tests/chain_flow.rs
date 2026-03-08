@@ -581,6 +581,73 @@ fn test_multi_receiver_assignment() {
     assert_eq!(&utxo2.amount + &utxo3.amount, &r1_amount + &r2_amount);
 }
 
+/// B1 regression: verify that the CLI genesis construction path produces
+/// a chain ID that ao-chain's genesis loader accepts.
+#[test]
+fn test_cli_genesis_chain_id_matches_loader() {
+    // Replicate the ao-cli genesis code path: build children, hash child encodings,
+    // embed chain ID, then load via ao-chain's genesis loader.
+    let issuer_key = SigningKey::from_seed(&[0x42; 32]);
+    let genesis_item = build_genesis(&issuer_key);
+
+    // Extract chain ID the same way ao-cli does
+    let children = genesis_item.children();
+    let sha256_item = genesis_item.find_child(SHA256).expect("genesis must have SHA256");
+    let embedded_id = sha256_item.as_bytes().expect("SHA256 must have bytes");
+
+    // Recompute chain ID from children (excluding SHA256), matching ao-chain logic
+    let mut content_bytes = Vec::new();
+    for child in children {
+        if child.type_code != SHA256 {
+            child.encode(&mut content_bytes);
+        }
+    }
+    let recomputed = hash::sha256(&content_bytes);
+    assert_eq!(&recomputed[..], embedded_id, "CLI chain ID must match recomputed hash");
+
+    // Now load through ao-chain's genesis loader — it must accept the chain ID
+    let store = ChainStore::open_memory().unwrap();
+    let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+    assert_eq!(&meta.chain_id[..], embedded_id,
+        "ao-chain loader chain ID must match CLI-embedded chain ID");
+
+    // Also test compute_chain_id standalone
+    let extracted = genesis::compute_chain_id(&genesis_item).unwrap();
+    assert_eq!(extracted, meta.chain_id);
+}
+
+/// B6 regression: validate_assignment returns UtxoNotFound for missing UTXO,
+/// rather than panicking.
+#[test]
+fn test_missing_utxo_returns_error() {
+    let issuer_key = SigningKey::from_seed(&[0x0B; 32]);
+    let receiver_key = SigningKey::generate();
+
+    let genesis_item = build_genesis(&issuer_key);
+    let store = ChainStore::open_memory().unwrap();
+    let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    let sign_ts1 = Timestamp::from_raw(genesis_ts.raw() + 1_000_000);
+    let sign_ts2 = Timestamp::from_raw(genesis_ts.raw() + 2_000_000);
+    let deadline = Timestamp::from_unix_seconds(1_772_611_200 + 3600);
+    let block_ts = Timestamp::from_raw(genesis_ts.raw() + 3_000_000);
+
+    // Build an authorization referencing seq_id 999 which does not exist.
+    // Use a large amount so the fee calculation doesn't make the receiver amount negative.
+    let bogus_amount = BigInt::from(1u64 << 40);
+    let (auth, _) = build_authorization(
+        &issuer_key, 999, &bogus_amount, &receiver_key,
+        &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out,
+        deadline, sign_ts1, sign_ts2,
+    );
+
+    let result = validate::validate_assignment(&store, &meta, &auth, block_ts.raw());
+    assert!(result.is_err(), "Missing UTXO must return an error, not panic");
+    let err_msg = format!("{}", result.unwrap_err());
+    assert!(err_msg.contains("not found"), "Expected 'not found', got: {}", err_msg);
+}
+
 fn build_split_assignment(
     giver_amount: &BigInt,
     r1_amount: &BigInt,

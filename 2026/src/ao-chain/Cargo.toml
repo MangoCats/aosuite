@@ -14,5 +14,8 @@ rusqlite = { version = "0.35", features = ["bundled"] }
 thiserror = "2"
 hex = "0.4"
 
+[features]
+test-support = []
+
 [dev-dependencies]
 tempfile = "3"

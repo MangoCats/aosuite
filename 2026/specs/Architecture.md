@@ -194,6 +194,8 @@ A share holder assigns all shares from their current key to a fresh key they con
 | POST | `/chain/{id}/refute` | `{"agreement_hash": "<hex>"}` | 200 OK (idempotent) |
 | GET | `/chain/{id}/events` | — | SSE stream of new block notifications |
 | GET | `/chain/{id}/ws` | — | WebSocket upgrade for bidirectional block notifications |
+| GET | `/chain/{id}/profile` | — | Vendor profile JSON (name, location, metadata) |
+| POST | `/chain/{id}/profile` | Vendor profile JSON | 200 OK (updated profile) |
 | POST | `/chain/{id}/exchange-agent` | Exchange agent registration JSON | 200 OK |
 
 Phase 6 adds CAA endpoints — see [AtomicExchange.md](AtomicExchange.md) §4.3.

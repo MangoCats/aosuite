@@ -273,7 +273,8 @@ fn verify_signatures(
         let idx = page_index as usize;
         let pubkey = if idx < givers.len() {
             let (seq_id, _) = &givers[idx];
-            let utxo = store.get_utxo(*seq_id)?.unwrap();
+            let utxo = store.get_utxo(*seq_id)?
+                .ok_or(ChainError::UtxoNotFound(*seq_id))?;
             utxo.pubkey
         } else {
             let recv_idx = idx - givers.len();
@@ -286,7 +287,8 @@ fn verify_signatures(
 
         if idx < givers.len() {
             let (seq_id, _) = &givers[idx];
-            let utxo = store.get_utxo(*seq_id)?.unwrap();
+            let utxo = store.get_utxo(*seq_id)?
+                .ok_or(ChainError::UtxoNotFound(*seq_id))?;
             if timestamp.raw() <= utxo.block_timestamp {
                 return Err(ChainError::TimestampOrder(
                     format!("giver seq {} signature timestamp {} <= receipt timestamp {}",

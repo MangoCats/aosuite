@@ -2,6 +2,6 @@
 
 /** Compute SHA-256 hash, returns 32 bytes. Works in browser and Node 18+. */
 export async function sha256(data: Uint8Array): Promise<Uint8Array> {
-  const hash = await crypto.subtle.digest('SHA-256', data.buffer as ArrayBuffer);
+  const hash = await crypto.subtle.digest('SHA-256', data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength));
   return new Uint8Array(hash);
 }

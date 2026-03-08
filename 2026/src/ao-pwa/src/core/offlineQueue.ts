@@ -34,65 +34,81 @@ function openDb(): Promise<IDBDatabase> {
 /** Queue a signed assignment for later submission. */
 export async function enqueue(entry: Omit<QueuedAssignment, 'id'>): Promise<void> {
   const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).add(entry);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      tx.objectStore(STORE_NAME).add(entry);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
 }
 
 /** Get all pending (unsubmitted) assignments. */
 export async function getPending(): Promise<QueuedAssignment[]> {
   const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const req = tx.objectStore(STORE_NAME).getAll();
-    req.onsuccess = () => {
-      const all = req.result as QueuedAssignment[];
-      resolve(all.filter(a => a.status === 'pending'));
-    };
-    req.onerror = () => reject(req.error);
-  });
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readonly');
+      const req = tx.objectStore(STORE_NAME).getAll();
+      req.onsuccess = () => {
+        const all = req.result as QueuedAssignment[];
+        resolve(all.filter(a => a.status === 'pending'));
+      };
+      req.onerror = () => reject(req.error);
+    });
+  } finally {
+    db.close();
+  }
 }
 
 /** Mark a queued assignment as submitted (removes it from pending). */
 export async function markSubmitted(id: number): Promise<void> {
   const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.get(id);
-    req.onsuccess = () => {
-      const entry = req.result as QueuedAssignment;
-      if (entry) {
-        entry.status = 'submitted';
-        store.put(entry);
-      }
-    };
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(id);
+      req.onsuccess = () => {
+        const entry = req.result as QueuedAssignment;
+        if (entry) {
+          entry.status = 'submitted';
+          store.put(entry);
+        }
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
 }
 
 /** Mark a queued assignment as failed. */
 export async function markFailed(id: number, error: string): Promise<void> {
   const db = await openDb();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    const req = store.get(id);
-    req.onsuccess = () => {
-      const entry = req.result as QueuedAssignment;
-      if (entry) {
-        entry.status = 'failed';
-        entry.error = error;
-        store.put(entry);
-      }
-    };
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-  });
+  try {
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.get(id);
+      req.onsuccess = () => {
+        const entry = req.result as QueuedAssignment;
+        if (entry) {
+          entry.status = 'failed';
+          entry.error = error;
+          store.put(entry);
+        }
+      };
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  } finally {
+    db.close();
+  }
 }
 
 /** Try to submit all pending assignments. Returns count of successfully submitted. */

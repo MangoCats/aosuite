@@ -101,7 +101,7 @@ Used for: content-addressing of large separable items, performance-sensitive cha
 
 | Criterion | SHA2-256 | SHA3-256 | BLAKE3 |
 |-----------|----------|----------|--------|
-| Cryptanalytic maturity | 23 years, extensive | 11 years, solid | 5 years, less scrutinized |
+| Cryptanalytic maturity | 23 years, extensive | 11 years, solid | 6 years, less scrutinized |
 | ARM hardware accel | SHA2 extensions (Pi 5) | None | None (uses SIMD) |
 | Web Crypto API | Native | Not available | WASM only |
 | Software throughput | ~2–4 GB/s (x86 SHA-NI) | ~500 MB/s | ~4–8 GB/s |

@@ -22,8 +22,9 @@ export function Settings() {
     if (parsed) {
       setUrl(parsed.recorderUrl);
       setRecorderUrl(parsed.recorderUrl);
-      // Auto-select the chain after a short delay for chain list to load
-      setTimeout(() => selectChain(parsed.chainId), 500);
+      // Select chain immediately — the store handles selecting a chain
+      // that hasn't loaded yet (chainInfo resets to null until fetched).
+      selectChain(parsed.chainId);
     } else if (data.startsWith('http')) {
       // Plain recorder URL without chain path
       setUrl(data);

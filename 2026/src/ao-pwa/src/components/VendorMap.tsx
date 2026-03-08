@@ -48,7 +48,15 @@ export function VendorMap({ vendors, center, zoom = 14, height = 300 }: VendorMa
         fillOpacity: 0.9,
       })
         .addTo(map)
-        .bindPopup(`<b>${v.symbol}</b><br/>${v.name}`);
+        .bindPopup(() => {
+          const el = document.createElement('div');
+          const sym = document.createElement('b');
+          sym.textContent = v.symbol;
+          el.appendChild(sym);
+          el.appendChild(document.createElement('br'));
+          el.appendChild(document.createTextNode(v.name));
+          return el;
+        });
     }
 
     return () => {

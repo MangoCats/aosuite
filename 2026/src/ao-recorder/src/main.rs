@@ -8,7 +8,7 @@ use ao_types::dataitem::DataItem;
 use ao_crypto::sign::SigningKey;
 use ao_chain::store::ChainStore;
 
-use ao_recorder::{AppState, ChainState, build_router, config, mqtt, poll_validators};
+use ao_recorder::{AppState, ChainState, blob, build_router, config, mqtt, poll_validators};
 
 fn load_blockmaker_key(seed_hex: &str) -> Result<SigningKey> {
     let seed_bytes: Vec<u8> = hex::decode(seed_hex.trim())
@@ -61,7 +61,18 @@ async fn main() -> Result<()> {
     if let Some(dir) = &data_dir {
         std::fs::create_dir_all(dir).context("failed to create data directory")?;
     }
-    let state = Arc::new(AppState::new_multi(data_dir, SigningKey::from_seed(default_key.seed())));
+
+    let blob_store = if let Some(ref data_dir) = data_dir {
+        let blob_dir = data_dir.join("blobs");
+        Some(blob::BlobStore::new(blob_dir, 5_242_880)
+            .context("failed to create blob store")?)
+    } else {
+        None
+    };
+
+    let mut state_inner = AppState::new_multi(data_dir, SigningKey::from_seed(default_key.seed()));
+    state_inner.blob_store = blob_store;
+    let state = Arc::new(state_inner);
 
     // Load single-chain config (backward compatible)
     if let (Some(db_path), Some(genesis_path)) = (&cfg.db_path, &cfg.genesis_path) {

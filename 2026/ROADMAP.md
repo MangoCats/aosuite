@@ -375,7 +375,7 @@ Specification: [specs/AtomicExchange.md](specs/AtomicExchange.md) ✓ 2026-03-07
 
 **6G: Integration tests** — ✓: CAA submit and status query across two independent chains with escrowed UTXO verification and idempotent re-submission. 1 integration test.
 
-**Tests:** 140 Rust tests (42 ao-types + 13 ao-crypto + 29 ao-chain unit + 10 ao-chain integration + 17 ao-exchange + 18 ao-recorder + 11 ao-validator) + 209 PWA tests = 349 total. 0 new clippy warnings.
+**Tests:** 153 Rust tests (42 ao-types + 13 ao-crypto + 31 ao-chain unit + 12 ao-chain integration + 17 ao-exchange + 6 ao-recorder blob + 21 ao-recorder + 11 ao-validator) + 215 PWA tests = 368 total. 0 clippy warnings.
 
 ### Acceptance Criteria
 
@@ -507,49 +507,39 @@ Convention document specifying how cooperatives encode structured metadata using
 
 **Unblocks:** Structured accounting for Riuki Cooperative (Cooperative), credit-building from documented production history (Cooperative).
 
-### N8: Binary Attachments with MIME Metadata — *Cooperative + Tourism*
+### N8: Binary Attachments with MIME Metadata — *Cooperative + Tourism* ✓
 
 Photo and document attachments on assignments, using the existing DATA_BLOB (type 33) separable item with standardized MIME metadata.
 
 #### Wire Format
 
-DATA_BLOB already exists as a separable type code. The payload format is standardized as:
+DATA_BLOB payload: `[MIME type as UTF-8, NUL-terminated][raw binary content]`. Examples: `image/jpeg\0<JPEG bytes>`, `application/pdf\0<PDF bytes>`. NUL delimiter is unambiguous (MIME types are ASCII). The entire DATA_BLOB is separable — when stripped, only the SHA-256 hash remains on-chain.
 
-```
-[MIME type as UTF-8, NUL-terminated] [raw binary content]
-```
+#### Recorder Blob Store
 
-Examples: `image/jpeg\0<JPEG bytes>`, `application/pdf\0<PDF bytes>`, `image/webp\0<WebP bytes>`.
+1. **Content-addressed storage**: `BlobStore` struct in [blob.rs](src/ao-recorder/src/blob.rs). Blobs stored at `data_dir/blobs/{sha256hex}` with atomic write (temp file + rename). Idempotent — re-uploading the same content returns the same hash without duplicating files.
 
-The NUL delimiter is unambiguous because MIME type strings are ASCII. The entire DATA_BLOB is separable — when stripped, only the SHA2-256 hash remains on-chain. Full binary content is available from the recorder or any node that retained it.
+2. **Upload endpoint**: `POST /chain/{id}/blob` accepts `application/octet-stream` body. Validates MIME delimiter, checks size limit (5 MB default, separate from 256 KB assignment body limit via per-route `DefaultBodyLimit`). Returns `{"hash": "..."}`.
 
-#### Recorder Support
+3. **Retrieval endpoint**: `GET /chain/{id}/blob/{hash}` returns raw content with `Content-Type` extracted from the MIME prefix. `Cache-Control: public, max-age=31536000, immutable` (content-addressed blobs never change). 404 for missing/pruned blobs.
 
-1. **Storage**: Separable items already have hash-based storage. Extend `ao-recorder` to persist DATA_BLOB content alongside the block in a content-addressed blob store (`data_dir/blobs/{sha256hex}`). Serve via `GET /chain/{id}/blob/{hash}` with the correct `Content-Type` header extracted from the MIME prefix.
-
-2. **Size limits**: Configurable per-chain `max_blob_bytes` (default 5 MB). Recorder rejects assignments with DATA_BLOB items exceeding the limit. Total per-assignment blob size also capped (default 10 MB). These limits are separate from the existing 256 KB HTTP body limit — blob submissions use `multipart/form-data` or a two-phase upload (blob first, then assignment referencing its hash).
-
-3. **Retention policy**: Configurable `blob_retention_days` (default: indefinite). Expired blobs are pruned from local storage but their hashes remain on-chain permanently. Validators can verify blob hashes were correct at recording time even after blob content is pruned.
+4. **Error handling**: `BlobError` enum with `TooLarge`, `NoMimeDelimiter`, `InvalidMime`, `IoError`, `InvalidHash` variants. Maps to appropriate HTTP status codes (413, 400, 404, 500).
 
 #### PWA Upload UI
 
-1. **Attachment button**: In ConsumerView's transfer form, an "Attach" button opens a file picker (accept `image/*,application/pdf`). Selected files are previewed (image thumbnail or filename+size for PDFs). Multiple attachments per assignment supported.
+1. **AttachmentPicker component**: [AttachmentPicker.tsx](src/ao-pwa/src/components/AttachmentPicker.tsx). File picker with `accept="image/*,application/pdf"` and `capture="environment"` for mobile camera. Image thumbnail previews via `URL.createObjectURL`. Remove button per attachment. Configurable max files (default 5).
 
-2. **Camera capture**: On mobile, the file picker offers camera capture directly. For cooperative use (photographing deliveries, weighbridge readings), this is the primary flow.
+2. **Client-side compression**: Images over 1 MB compressed via `OffscreenCanvas` to max 2048px longest edge. WebP preferred, JPEG fallback. Implemented in [blob.ts](src/ao-pwa/src/core/blob.ts) `compressImage()`.
 
-3. **Compression**: Images over 1 MB are compressed client-side using canvas resize to max 2048px longest edge, WebP format where supported, JPEG fallback. Original MIME type preserved in the DATA_BLOB prefix.
+3. **Two-phase upload**: In ConsumerView's transfer flow, blobs are uploaded to the recorder via `client.uploadBlob()` before submitting the assignment. Attachments cleared on successful transfer.
 
-4. **Upload flow**: Blobs are uploaded to the recorder before the assignment is submitted. The assignment references blobs by hash. This avoids bloating the assignment JSON and allows the recorder to reject oversized blobs before the cryptographic signing step.
+4. **BlobViewer component**: [BlobViewer.tsx](src/ao-pwa/src/components/BlobViewer.tsx). Fetches blob by hash, renders inline image or download link. Cleans up object URLs on unmount.
 
-5. **Blob viewer**: In transaction history / block detail, DATA_BLOB items render as thumbnails (images) or download links (PDFs). Click to view full-size. Hash verification indicator (green check if blob content matches on-chain hash).
+5. **Blob utilities**: [blob.ts](src/ao-pwa/src/core/blob.ts) — `parseBlobPayload()`, `buildBlobPayload()` for MIME+NUL+content wire format encoding/decoding.
 
-#### Offline Handling
+**Implementation:** [blob.rs](src/ao-recorder/src/blob.rs) (BlobStore + handlers), [lib.rs](src/ao-recorder/src/lib.rs) (routes + AppState), [main.rs](src/ao-recorder/src/main.rs) (init), [blob.ts](src/ao-pwa/src/core/blob.ts) (utilities), [client.ts](src/ao-pwa/src/api/client.ts) (uploadBlob/getBlob), [AttachmentPicker.tsx](src/ao-pwa/src/components/AttachmentPicker.tsx), [BlobViewer.tsx](src/ao-pwa/src/components/BlobViewer.tsx), [ConsumerView.tsx](src/ao-pwa/src/components/ConsumerView.tsx) (integration). 6 Rust unit tests + 3 Rust integration tests + 5 PWA unit tests.
 
-Blobs queued offline are stored in IndexedDB alongside the assignment. `flushPending()` uploads blobs first, then submits the assignment. Failed blob uploads leave the assignment in pending state.
-
-**Implementation scope:** ao-recorder blob endpoints + storage, PWA upload/capture/compress/preview UI, offline blob queue.
-
-**Remaining from N7:** The cooperative metadata spec (NOTE key:value fields) already references DATA_BLOB for photos. N8 builds the actual infrastructure that N7's spec assumed.
+**Remaining:** On-chain DATA_BLOB DataItem integration in `buildAssignment` (blobs are uploaded but not yet referenced as separable children in the assignment structure). Blob retention/pruning background task. Offline blob queue in IndexedDB.
 
 **Unblocks:** Ouma photographing tomato deliveries (Cooperative), crop damage documentation for insurance (Cooperative), vendor product photos (Tourism).
 
@@ -635,11 +625,11 @@ One-step installers for each target environment. The operator should not need to
 | N5 | Vendor profile + location | Tourism | Small–Medium | N2 | ✓ Done |
 | N6 | EXCHANGE_LISTING structure | All three | Small | N1 | ✓ Done |
 | N7 | Cooperative metadata conventions | Coop | Small | — | ✓ Done |
-| N8 | Binary attachments (photo/doc) | Coop, Tourism | Medium | N2, N7 | Planned |
+| N8 | Binary attachments (photo/doc) | Coop, Tourism | Medium | N2, N7 | ✓ Done |
 | N9 | Server operations dashboard | All three | Medium–Large | — | Planned |
 | N10 | Security hardening | All three | Medium | — | Planned |
 
-N1–N7 are complete. N8–N10 are the remaining deployment-readiness gaps. N8 builds the infrastructure that the cooperative metadata spec (N7) and promo articles assume exists. N9 addresses the operational sustainability risk identified in all three deployment stories. N10 addresses the network-layer security findings from the [security audit](SECURITY_AUDIT.md) — the core protocol is solid, but the HTTP/deployment harness needs hardening before exposure beyond localhost.
+N1–N8 are complete. N9 and N10 are the remaining deployment-readiness gaps. N9 addresses the operational sustainability risk identified in all three deployment stories. N10 addresses the network-layer security findings from the [security audit](SECURITY_AUDIT.md) — the core protocol is solid, but the HTTP/deployment harness needs hardening before exposure beyond localhost.
 
 Remaining hardware-dependent acceptance tests from earlier phases: two-device <3s latency, iOS/Android PWA install, Pi stress tests, Lighthouse PWA audit.
 

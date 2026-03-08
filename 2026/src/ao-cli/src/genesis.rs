@@ -146,11 +146,14 @@ pub fn run(args: GenesisArgs) {
         DataItem::bytes(typecode::TIMESTAMP, signing_ts.to_bytes().to_vec()),
     ]));
 
-    // Compute SHA256 hash of all preceding content (= chain ID)
-    let pre_hash = DataItem::container(typecode::GENESIS, children.clone());
-    let pre_hash_bytes = pre_hash.to_bytes();
-    // Hash the container's content bytes (everything inside GENESIS, not the outer type+size)
-    let chain_id = hash::sha256(&pre_hash_bytes);
+    // Compute SHA256 hash of concatenated child encodings (= chain ID)
+    // Must match ao-chain's genesis verification: hash only child encodings,
+    // not the outer GENESIS type code + VBC size wrapper.
+    let mut content_bytes = Vec::new();
+    for child in &children {
+        child.encode(&mut content_bytes);
+    }
+    let chain_id = hash::sha256(&content_bytes);
 
     children.push(DataItem::bytes(typecode::SHA256, chain_id.to_vec()));
 

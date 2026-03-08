@@ -139,11 +139,37 @@ export class RecorderClient {
 
   /** POST /chain/{id}/profile — set vendor profile. */
   async setProfile(chainId: string, profile: VendorProfile): Promise<void> {
-    await fetch(`${this.baseUrl}/chain/${chainId}/profile`, {
+    await this.fetchJson(`/chain/${chainId}/profile`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(profile),
     });
+  }
+
+  /** POST /chain/{id}/blob — upload blob, returns {hash: string} */
+  async uploadBlob(chainId: string, data: Uint8Array): Promise<{ hash: string }> {
+    const res = await fetch(`${this.baseUrl}/chain/${chainId}/blob`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: data,
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`${res.status}: ${body}`);
+    }
+    return res.json();
+  }
+
+  /** GET /chain/{id}/blob/{hash} — retrieve blob content */
+  async getBlob(chainId: string, hash: string): Promise<{ mime: string; data: Uint8Array }> {
+    const res = await fetch(`${this.baseUrl}/chain/${chainId}/blob/${hash}`);
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`${res.status}: ${body}`);
+    }
+    const contentType = res.headers.get('Content-Type') || 'application/octet-stream';
+    const arrayBuf = await res.arrayBuffer();
+    return { mime: contentType, data: new Uint8Array(arrayBuf) };
   }
 
   /** Subscribe to block events via SSE. Returns an EventSource. */

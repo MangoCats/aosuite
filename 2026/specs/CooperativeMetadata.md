@@ -81,16 +81,18 @@ Attached to assignments for advance payments against future deliveries:
 
 ## DATA_BLOB for Attachments
 
-`DATA_BLOB` (type 33) is used for binary attachments — photos of crop conditions, weighbridge receipts, signed delivery slips. The first 4 bytes are a MIME-type length (big-endian u32), followed by the MIME type string, followed by the binary content.
+`DATA_BLOB` (type 33) is used for binary attachments — photos of crop conditions, weighbridge receipts, signed delivery slips. The payload begins with the MIME type as a NUL-terminated UTF-8 string, followed by the raw binary content.
 
 ```
-[4 bytes: MIME length][MIME string][binary content]
+[MIME type as UTF-8, NUL-terminated][raw binary content]
 ```
 
 Example: A JPEG photo of a delivery weighing.
 ```
-[00 00 00 0A]image/jpeg[...JPEG bytes...]
+image/jpeg\0[...JPEG bytes...]
 ```
+
+The NUL delimiter is unambiguous because MIME type strings are ASCII.
 
 Since `DATA_BLOB` is separable, the actual binary content can be stripped from the on-chain record while preserving the hash for later verification. This keeps chain storage efficient while allowing photo documentation to be verified against the chain.
 

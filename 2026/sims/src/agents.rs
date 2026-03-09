@@ -2856,6 +2856,7 @@ pub async fn run_recorder_operator(
     _mailbox: mpsc::Receiver<AgentMessage>,
     speed: SharedSpeed,
     paused: PauseFlag,
+    initial_owner_seed: [u8; 32],
 ) -> Result<()> {
     let name = config.name.clone();
     let lat = config.lat;
@@ -2863,67 +2864,24 @@ pub async fn run_recorder_operator(
 
     info!("{}: recorder operator for chain of vendor '{}'", name, op_cfg.target_chain);
 
-    // Wait for the target vendor to create its chain
+    // Wait for the target vendor to register its chain in the directory
     let (chain_id, symbol) = loop {
         wait_while_paused(&paused).await;
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-        if let Ok(chains) = client.list_chains().await {
-            // Find the chain by looking up vendor's chain via directory
-            // We look at all chains and match symbol patterns
-            for entry in &chains {
-                // The target_chain is a vendor name; get the chain they created
-                let dir = directory.read().await;
-                if dir.agent_mailbox(&op_cfg.target_chain).is_some() {
-                    // Found the vendor — try matching by listing
-                    drop(dir);
-                    // Use the first chain available (vendor creates exactly one)
-                    if !chains.is_empty() {
-                        // Find the vendor's chain: request a pubkey to see which chain they own
-                        break;
-                    }
-                }
-                drop(dir);
-                break;
-            }
-            // Simple approach: look up chain info by listing
-            if let Some(entry) = chains.first() {
-                info!("{}: found chain {} ({})", name, &entry.chain_id[..12], entry.symbol);
-                break (entry.chain_id.clone(), entry.symbol.clone());
-            }
-        }
-    };
-
-    // We need the owner key (issuer seed) to sign TⒶ³ operations.
-    // In the sim, the vendor shares this via the agent directory.
-    // For now, request a pubkey from the vendor to get their seed.
-    // Actually, in the sim the issuer key is the owner key — we need direct access.
-    // The pre-genesis system gives the vendor its issuer_seed; we request it via message.
-    let owner_seed: [u8; 32] = {
         let dir = directory.read().await;
-        let tx = dir.agent_mailbox(&op_cfg.target_chain);
-        if let Some(tx) = tx {
-            let (reply_tx, reply_rx) = oneshot::channel();
-            let _ = tx.send(AgentMessage::RequestPubkey {
-                chain_id: chain_id.clone(),
-                reply: reply_tx,
-            }).await;
-            drop(dir);
-            match reply_rx.await {
-                Ok(resp) => resp.seed,
-                Err(_) => {
-                    warn!("{}: failed to get owner key from vendor", name);
-                    return Ok(());
-                }
-            }
-        } else {
-            drop(dir);
-            warn!("{}: vendor '{}' not found in directory", name, op_cfg.target_chain);
-            return Ok(());
+        // Find the chain registered by the target vendor
+        let found = dir.chains.values()
+            .find(|reg| reg.vendor_name == op_cfg.target_chain)
+            .map(|reg| (reg.chain_id.clone(), reg.symbol.clone()));
+        drop(dir);
+        if let Some((cid, sym)) = found {
+            info!("{}: found chain {} ({})", name, &cid[..12], sym);
+            break (cid, sym);
         }
     };
 
-    // Current owner seed (may change after rotation)
-    let mut current_owner_seed = owner_seed;
+    // Owner seed comes from pre-genesis data, passed in by main.rs
+    let mut current_owner_seed = initial_owner_seed;
 
     let mut key_rotated = false;
     let mut switch_phase = "idle".to_string();
@@ -2996,9 +2954,9 @@ pub async fn run_recorder_operator(
                     key_rotated = true;
                     ops_completed += 1;
                     last_result = format!("key rotated at block {}", result.height);
-                    let _ = state_tx.send(ViewerEvent::Transaction(Box::new(
+                    let _ = state_tx.send(ViewerEvent::Transaction(
                         tx_event(&chain_id, &symbol, &name, "chain", result.height, "owner key rotation")
-                    ))).await;
+                    )).await;
                 }
                 Err(e) => {
                     warn!("{}: key rotation failed: {}", name, e);
@@ -3012,7 +2970,7 @@ pub async fn run_recorder_operator(
 
         // Recorder switch
         if switch_phase == "idle" && op_cfg.switch_after_secs > 0 && elapsed_sim_secs >= op_cfg.switch_after_secs {
-            if let (Some(ref sec_url), Some(ref sec_pk)) = (&secondary_recorder_url, &secondary_recorder_pubkey) {
+            if let (Some(sec_url), Some(sec_pk)) = (&secondary_recorder_url, &secondary_recorder_pubkey) {
                 info!("{}: initiating recorder switch on chain {}", name, &chain_id[..12]);
                 let pending = transfer::build_recorder_change_pending(
                     &current_owner_seed, sec_pk, sec_url,
@@ -3025,9 +2983,9 @@ pub async fn run_recorder_operator(
                         switch_phase = "pending".to_string();
                         ops_completed += 1;
                         last_result = format!("recorder change pending at block {}", result.height);
-                        let _ = state_tx.send(ViewerEvent::Transaction(Box::new(
+                        let _ = state_tx.send(ViewerEvent::Transaction(
                             tx_event(&chain_id, &symbol, &name, "chain", result.height, "recorder change pending")
-                        ))).await;
+                        )).await;
                     }
                     Err(e) => {
                         warn!("{}: recorder change pending failed: {}", name, e);
@@ -3094,10 +3052,22 @@ pub async fn run_recorder_operator(
 
             let new_issuer = ao_crypto::sign::SigningKey::generate();
             let new_issuer_seed = *new_issuer.seed();
-            let coins = parse_bigint("1000000000");
-            let shares = parse_bigint("2^40");
-            let fee_num = parse_bigint("1");
-            let fee_den = crate::config::auto_fee_den("1000000000");
+
+            // Use original chain's parameters for the new chain
+            let (coins, shares, fee_num, fee_den) = match client.chain_info(&chain_id).await {
+                Ok(info) => (
+                    info.coin_count.parse().unwrap_or_else(|_| parse_bigint("1000000000")),
+                    info.shares_out.parse().unwrap_or_else(|_| parse_bigint("2^40")),
+                    info.fee_rate_num.parse().unwrap_or_else(|_| parse_bigint("1")),
+                    info.fee_rate_den.parse().unwrap_or_else(|_| crate::config::auto_fee_den("1000000000")),
+                ),
+                Err(_) => (
+                    parse_bigint("1000000000"),
+                    parse_bigint("2^40"),
+                    parse_bigint("1"),
+                    crate::config::auto_fee_den("1000000000"),
+                ),
+            };
             let fee_rate = transfer::FeeRate { num: fee_num, den: fee_den };
 
             let (new_genesis_item, new_genesis_json) = transfer::build_genesis(
@@ -3143,10 +3113,10 @@ pub async fn run_recorder_operator(
                     chain_migrated = true;
                     ops_completed += 1;
                     last_result = format!("chain migrated at block {} → {}", result.height, &hex::encode(new_chain_id)[..12]);
-                    let _ = state_tx.send(ViewerEvent::Transaction(Box::new(
+                    let _ = state_tx.send(ViewerEvent::Transaction(
                         tx_event(&chain_id, &symbol, &name, "chain", result.height,
                             &format!("chain migration → {}", new_symbol))
-                    ))).await;
+                    )).await;
                 }
                 Err(e) => {
                     warn!("{}: chain migration failed: {}", name, e);

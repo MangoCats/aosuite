@@ -115,7 +115,7 @@ async fn main() -> Result<()> {
     let (recorder_url, recorder_state) = start_recorder(
         scenario.simulation.recorder_port,
         blockmaker_key,
-        known_recorders,
+        known_recorders.clone(),
         scenario.simulation.recorder_security.as_ref(),
     ).await;
     info!("Recorder running at {}", recorder_url);
@@ -302,13 +302,20 @@ async fn main() -> Result<()> {
                 let Some(op_cfg) = agent_cfg.recorder_operator.clone() else {
                     bail!("recorder_operator {} missing [agent.recorder_operator] config", name);
                 };
+                // Look up the target vendor's issuer seed from pre-genesis data
+                let owner_seed = pre_genesis_map.get(&op_cfg.target_chain)
+                    .map(|(_, seed)| *seed)
+                    .unwrap_or_else(|| {
+                        tracing::warn!("{}: target vendor '{}' not found in pre-genesis, using random seed", name, op_cfg.target_chain);
+                        [0u8; 32]
+                    });
                 let sec_client = secondary_recorder_url.as_ref().map(|url| Arc::new(RecorderClient::new(url)));
                 let sec_pk = secondary_recorder_pubkey;
                 let sec_url = secondary_recorder_url.clone();
                 tokio::spawn(async move {
                     if let Err(e) = agents::run_recorder_operator(
                         agent_cfg, op_cfg, client, sec_client, sec_pk, sec_url,
-                        directory, state_tx, mailbox, speed, agent_paused,
+                        directory, state_tx, mailbox, speed, agent_paused, owner_seed,
                     ).await {
                         tracing::error!("{}: recorder_operator error: {}", name, e);
                     }

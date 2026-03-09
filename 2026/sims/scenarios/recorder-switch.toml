@@ -1,0 +1,117 @@
+# Sim-G: Recorder Competition & Chain Migration
+#
+# Exercises TⒶ³ features: owner key rotation, recorder switch, and
+# chain migration. Two embedded recorders demonstrate the full
+# lifecycle of moving a chain from one recorder to another.
+#
+# Timeline (sim time):
+#   0-30s    Normal trading on Recorder A
+#   30s      Owner key rotation
+#   60s      Recorder switch initiated (PENDING → drain → CHANGE)
+#   90-120s  Trading continues
+#   120s     Chain migration — old chain frozen, new chain created
+
+[simulation]
+name = "recorder-switch"
+title = "Recorder Competition & Chain Migration"
+description = "A vendor chain moves from one recorder to another, demonstrating TⒶ³ owner key rotation, recorder switching, and chain migration."
+what_to_watch = [
+    "Owner key rotation at ~30s — Helen rotates Bob's chain owner key",
+    "Recorder switch at ~60s — RECORDER_CHANGE_PENDING submitted, auto-CHANGE fires after CAA drain",
+    "Chain migration at ~120s — old chain frozen, new chain BCG2 created",
+    "Normal trading continues uninterrupted through the recorder switch",
+    "Victor validates chain integrity throughout all operations",
+]
+recorder_port = 4100
+secondary_recorder_port = 4101
+speed = 10.0
+duration_secs = 180
+
+# ── Recorders ────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Gene"
+role = "recorder"
+blurb = "Primary recorder (Recorder A) hosting Bob's chain"
+lat = 18.22
+lon = -63.06
+
+[[agent]]
+name = "Faythe"
+role = "recorder"
+blurb = "Secondary recorder (Recorder B) — migration target"
+lat = 18.21
+lon = -63.05
+
+# ── Vendor ───────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Bob"
+role = "vendor"
+blurb = "Bob's Curry Goat — chain owner, sells plates for BCG coins"
+lat = 18.2206
+lon = -63.0686
+
+[agent.vendor]
+symbol = "BCG"
+description = "Bob's Curry Goat grill on Sandy Ground"
+coins = "1000000000"
+shares = "2^40"
+plate_price = 25
+initial_float = 50
+
+# ── Exchange Agent ───────────────────────────────────────────────────
+
+[[agent]]
+name = "Charlie"
+role = "exchange"
+blurb = "Charlie's Currency Counter — exchanges CCC for BCG"
+lat = 18.2185
+lon = -63.0580
+
+[agent.exchange]
+buy_from = "Bob"
+initial_buy = 50
+
+# ── Consumer ─────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Alice"
+role = "consumer"
+blurb = "Tourist buying curry goat plates through Charlie"
+lat = 18.2250
+lon = -63.0550
+
+[agent.consumer]
+buy_from = "Charlie"
+redeem_at = "Bob"
+interval_secs = 15
+
+# ── Validator ────────────────────────────────────────────────────────
+
+[[agent]]
+name = "Victor"
+role = "validator"
+blurb = "Independent validator — monitors chain integrity through all TⒶ³ operations"
+lat = 18.2150
+lon = -63.0700
+
+[agent.validator]
+poll_interval_secs = 5
+batch_size = 100
+
+# ── Recorder Operator ────────────────────────────────────────────────
+
+[[agent]]
+name = "Helen"
+role = "recorder_operator"
+blurb = "Infrastructure operator — manages owner keys, recorder switch, and chain migration"
+lat = 18.2180
+lon = -63.0650
+
+[agent.recorder_operator]
+target_chain = "Bob"
+rotate_after_secs = 30
+switch_after_secs = 60
+migrate_after_secs = 120
+migration_symbol = "BCG2"

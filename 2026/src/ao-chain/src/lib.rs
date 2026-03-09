@@ -5,3 +5,7 @@ pub mod validate;
 pub mod block;
 pub mod expiry;
 pub mod caa;
+pub mod owner_keys;
+pub mod reward_rate;
+pub mod recorder_switch;
+pub mod migration;

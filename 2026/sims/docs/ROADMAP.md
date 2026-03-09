@@ -25,6 +25,7 @@ No sims work creates requirements on base phases. If a base phase is delayed, th
 | Sim-D: Auditor View & Adversarial Agents | Phase 5 | ✓ | Vendor credentials (needs separable items); late-recording attacker (complex window semantics); integrity timeline visualization |
 | Sim-E: Atomic Exchange & Full Scenario | Phase 6 | ✓ | Chaos testing with recorder restarts; CAA state machine visualization in Individual User View |
 | Sim-F: Onboarding Layer | — | — | All deliverables |
+| Sim-G: Recorder Competition & Chain Migration | N34–N35 | — | All deliverables |
 
 ---
 
@@ -276,6 +277,45 @@ Attackers log all attempts and outcomes. ✓ The viewer shows attacker agents wi
 
 ---
 
+## Sim-G: Recorder Competition & Chain Migration
+
+**Depends on:** N34–N35 complete (TⒶ³ recorder competition + PWA integration), Sim-E complete
+
+**What exists at this point:** Owner key rotation/revocation/override (ao-chain), recorder switch flow (RECORDER_CHANGE_PENDING → CAA drain → RECORDER_CHANGE), chain migration with three tiers (Full/Surrogate/Social), reward rate changes, recorder URL changes, all acceptance tests A–P passing. PWA components for RecorderSwitch, OwnerKeyManager, ChainMigrationBanner, RecorderIdentity.
+
+### Deliverables
+
+**Dual-recorder infrastructure**
+- Sim coordinator starts two embedded ao-recorder instances (Recorder A and Recorder B) when `secondary_recorder_port` is configured.
+- Pre-genesis chains are created on Recorder A. After a recorder switch, agents redirect traffic to Recorder B.
+- Both recorders share the same `known_recorders` map for CAA proof verification.
+
+**Recorder operator agent** (`recorder_operator` role)
+- New agent type that manages TⒶ³ chain infrastructure operations on a timed schedule.
+- **Owner key rotation**: At `rotate_after_secs`, builds and submits `OWNER_KEY_ROTATION` (type 128) for the target chain. New key generated, signed by current owner key.
+- **Recorder switch**: At `switch_after_secs`, builds and submits `RECORDER_CHANGE_PENDING` (type 130) pointing to Recorder B's pubkey and URL. Monitors chain info until the recorder auto-constructs `RECORDER_CHANGE` (type 131) after CAA drain. Reports phase transitions (pending → draining → complete) to the observer.
+- **Chain migration**: At `migrate_after_secs`, builds a new genesis on Recorder B, then submits `CHAIN_MIGRATION` (type 133) with `CHAIN_REF` to the new chain. Old chain is frozen. Reports frozen status.
+- All operations report state to the viewer via `ViewerEvent::State` with a new `recorder_op_status` field showing completed operations and current phase.
+
+**Transfer builders**
+- `build_owner_key_rotation()`: Constructs signed `OWNER_KEY_ROTATION` DataItem.
+- `build_recorder_change_pending()`: Constructs signed `RECORDER_CHANGE_PENDING` with new recorder pubkey + URL.
+- `build_chain_migration()`: Constructs signed `CHAIN_MIGRATION` with `CHAIN_REF` child.
+
+**Scenario**
+- `recorder-switch.toml` — 1 vendor (Bob, BCG), 1 consumer (Alice), 1 exchange (Charlie), 1 validator (Victor), 1 recorder operator (Helen). Two recorders (Gene on port 4100, secondary on 4101). Timeline: normal trading for 30s → owner key rotation at 30s → recorder switch initiated at 60s → CAA drain + auto-change → trading resumes on new recorder → chain migration at 120s → chain frozen. 180s at 10x speed.
+
+### Acceptance Criteria
+
+- Owner key rotation completes and subsequent assignments are validated against the new key set.
+- Recorder switch completes: PENDING recorded, CAA drain observed (or skipped if none active), CHANGE auto-constructed, chain accessible on new recorder.
+- Chain migration freezes the old chain — further assignment submissions are rejected.
+- Normal trading (consumer purchases, exchange trades) continues uninterrupted through the recorder switch.
+- Validator agent detects no integrity issues throughout the scenario.
+- All agent state transitions are visible in the viewer observer output.
+
+---
+
 ## Summary
 
 | Sims Phase | Base Dependency | Key Deliverables | Status |
@@ -286,5 +326,6 @@ Attackers log all attempts and outcomes. ✓ The viewer shows attacker agents wi
 | Sim-D | Phase 5 | Validator agent, validator view + audit map overlay, adversarial agents (double-spend, key-reuse, expired-UTXO), audit-adversarial scenario | ✓ |
 | Sim-E | Phase 6 | CAA-capable agents, CAA visualization, atomic-exchange + island-life-full scenarios, pre-genesis architecture | ✓ |
 | Sim-F | — | Onboarding layer: welcome overlay, map labels, legend, narrative toasts, scenario metadata API | — |
+| Sim-G | N34–N35 | Recorder operator agent, dual-recorder infrastructure, owner key rotation + recorder switch + chain migration in simulation, recorder-switch scenario | — |
 
 Each sims phase adds capability only after the base software it depends on is delivered and tested. Sims development never creates deadlines, blockers, or requirements for base 2026 work.

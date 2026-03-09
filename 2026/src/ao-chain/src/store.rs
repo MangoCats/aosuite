@@ -59,6 +59,30 @@ pub struct CaaEscrow {
     pub bond_amount: BigInt,
 }
 
+/// Owner key row for API display.
+#[derive(Debug, Clone)]
+pub struct OwnerKeyRow {
+    pub pubkey: [u8; 32],
+    pub added_height: u64,
+    pub added_timestamp: i64,
+    pub expires_at: Option<i64>,
+    pub status: String,
+}
+
+/// Pending recorder change state (§5.1).
+#[derive(Debug, Clone)]
+pub struct PendingRecorderChange {
+    /// New recorder's Ed25519 public key.
+    pub new_recorder_pubkey: [u8; 32],
+    /// New recorder's URL hint.
+    pub new_recorder_url: String,
+    /// Block height at which RECORDER_CHANGE_PENDING was recorded.
+    pub pending_height: u64,
+    /// Owner's AUTH_SIG from RECORDER_CHANGE_PENDING, serialized.
+    /// Embedded in auto-constructed RECORDER_CHANGE for validator verification.
+    pub owner_auth_sig_bytes: Vec<u8>,
+}
+
 /// Chain metadata stored in the database.
 #[derive(Debug, Clone)]
 pub struct ChainMeta {
@@ -72,6 +96,20 @@ pub struct ChainMeta {
     pub expiry_mode: u64,
     pub tax_start_age: Option<i64>,
     pub tax_doubling_period: Option<i64>,
+    /// Share reward rate numerator (default 0 = no reward).
+    pub reward_rate_num: BigInt,
+    /// Share reward rate denominator (default 1).
+    pub reward_rate_den: BigInt,
+    /// Minimum interval between key rotations (timestamp delta, default 24h).
+    pub key_rotation_rate: i64,
+    /// Base revocation interval (timestamp delta, default 24h).
+    pub revocation_rate_base: i64,
+    /// Current recorder's Ed25519 public key (32 bytes). None before first block.
+    pub recorder_pubkey: Option<[u8; 32]>,
+    /// Pending recorder change: new recorder pubkey + URL. None when no switch in progress.
+    pub pending_recorder_change: Option<PendingRecorderChange>,
+    /// True when a CHAIN_MIGRATION block has been recorded (chain is frozen).
+    pub frozen: bool,
     pub block_height: u64,
     pub next_seq_id: u64,
     pub last_block_timestamp: i64,
@@ -167,7 +205,16 @@ impl ChainStore {
                 lat REAL,
                 lon REAL,
                 updated_at INTEGER NOT NULL
-            );"
+            );
+            CREATE TABLE IF NOT EXISTS owner_keys (
+                pubkey BLOB PRIMARY KEY,
+                added_height INTEGER NOT NULL,
+                added_timestamp INTEGER NOT NULL,
+                expires_at INTEGER,
+                revoked_at_height INTEGER,
+                status TEXT NOT NULL DEFAULT 'valid'
+            );
+            CREATE INDEX IF NOT EXISTS idx_owner_keys_status ON owner_keys(status);"
         )?;
         Ok(())
     }
@@ -245,6 +292,19 @@ impl ChainStore {
         if let Some(v) = meta.tax_doubling_period {
             self.set_meta_i64("tax_doubling_period", v)?;
         }
+        self.set_meta_bigint("reward_rate_num", &meta.reward_rate_num)?;
+        self.set_meta_bigint("reward_rate_den", &meta.reward_rate_den)?;
+        self.set_meta_i64("key_rotation_rate", meta.key_rotation_rate)?;
+        self.set_meta_i64("revocation_rate_base", meta.revocation_rate_base)?;
+        if let Some(pk) = &meta.recorder_pubkey {
+            self.set_meta("recorder_pubkey", pk)?;
+        }
+        if let Some(prc) = &meta.pending_recorder_change {
+            self.set_pending_recorder_change(prc)?;
+        }
+        if meta.frozen {
+            self.set_meta_u64("frozen", 1)?;
+        }
         self.set_meta_u64("block_height", meta.block_height)?;
         self.set_meta_u64("next_seq_id", meta.next_seq_id)?;
         self.set_meta_i64("last_block_timestamp", meta.last_block_timestamp)?;
@@ -275,6 +335,21 @@ impl ChainStore {
         let expiry_mode = self.get_meta_u64("expiry_mode")?.unwrap_or(1);
         let tax_start_age = self.get_meta_i64("tax_start_age")?;
         let tax_doubling_period = self.get_meta_i64("tax_doubling_period")?;
+        let reward_rate_num = self.get_meta_bigint("reward_rate_num")?.unwrap_or_else(BigInt::zero);
+        let reward_rate_den = self.get_meta_bigint("reward_rate_den")?
+            .unwrap_or_else(|| BigInt::from(1));
+        // Default 24h in timestamp units: 24 * 3600 * 189_000_000
+        let default_24h: i64 = 24 * 3600 * 189_000_000;
+        let key_rotation_rate = self.get_meta_i64("key_rotation_rate")?.unwrap_or(default_24h);
+        let revocation_rate_base = self.get_meta_i64("revocation_rate_base")?.unwrap_or(default_24h);
+        let recorder_pubkey = match self.get_meta("recorder_pubkey")? {
+            Some(v) if v.len() == 32 => {
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&v);
+                Some(arr)
+            }
+            _ => None,
+        };
         let block_height = self.get_meta_u64("block_height")?.unwrap_or(0);
         let next_seq_id = self.get_meta_u64("next_seq_id")?.unwrap_or(1);
         let last_block_timestamp = self.get_meta_i64("last_block_timestamp")?.unwrap_or(0);
@@ -287,10 +362,17 @@ impl ChainStore {
             _ => [0u8; 32],
         };
 
+        let frozen = self.get_meta_u64("frozen")?.unwrap_or(0) != 0;
+
         Ok(Some(ChainMeta {
             chain_id, symbol, coin_count, shares_out,
             fee_rate_num, fee_rate_den, expiry_period, expiry_mode,
             tax_start_age, tax_doubling_period,
+            reward_rate_num, reward_rate_den,
+            key_rotation_rate, revocation_rate_base,
+            recorder_pubkey,
+            pending_recorder_change: self.load_pending_recorder_change()?,
+            frozen,
             block_height, next_seq_id, last_block_timestamp, prev_hash,
         }))
     }
@@ -298,6 +380,100 @@ impl ChainStore {
     /// Update shares_out after fee deduction or expiration.
     pub fn update_shares_out(&self, new_shares_out: &BigInt) -> Result<()> {
         self.set_meta_bigint("shares_out", new_shares_out)
+    }
+
+    /// Update the reward rate (after a REWARD_RATE_CHANGE block).
+    pub fn update_reward_rate(&self, num: &BigInt, den: &BigInt) -> Result<()> {
+        self.set_meta_bigint("reward_rate_num", num)?;
+        self.set_meta_bigint("reward_rate_den", den)
+    }
+
+    /// Set or update the recorder's public key.
+    pub fn set_recorder_pubkey(&self, pubkey: &[u8; 32]) -> Result<()> {
+        self.set_meta("recorder_pubkey", pubkey)
+    }
+
+    /// Set the pending recorder change state.
+    pub fn set_pending_recorder_change(&self, prc: &PendingRecorderChange) -> Result<()> {
+        self.set_meta("pending_recorder_pubkey", &prc.new_recorder_pubkey)?;
+        self.set_meta("pending_recorder_url", prc.new_recorder_url.as_bytes())?;
+        self.set_meta_u64("pending_recorder_height", prc.pending_height)?;
+        self.set_meta("pending_owner_auth_sig", &prc.owner_auth_sig_bytes)
+    }
+
+    /// Clear the pending recorder change state (after RECORDER_CHANGE completes).
+    pub fn clear_pending_recorder_change(&self) -> Result<()> {
+        self.conn.execute("DELETE FROM chain_meta WHERE key IN ('pending_recorder_pubkey', 'pending_recorder_url', 'pending_recorder_height', 'pending_owner_auth_sig')", [])?;
+        Ok(())
+    }
+
+    /// Load the pending recorder change state from meta, if any.
+    fn load_pending_recorder_change(&self) -> Result<Option<PendingRecorderChange>> {
+        let pk = match self.get_meta("pending_recorder_pubkey")? {
+            Some(v) if v.len() == 32 => {
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&v);
+                arr
+            }
+            _ => return Ok(None),
+        };
+        let url = match self.get_meta("pending_recorder_url")? {
+            Some(v) => String::from_utf8(v)
+                .map_err(|_| ChainError::Encoding("pending_recorder_url is not valid UTF-8".into()))?,
+            None => return Ok(None),
+        };
+        let height = self.get_meta_u64("pending_recorder_height")?.unwrap_or(0);
+        let owner_auth_sig_bytes = self.get_meta("pending_owner_auth_sig")?.unwrap_or_default();
+        Ok(Some(PendingRecorderChange {
+            new_recorder_pubkey: pk,
+            new_recorder_url: url,
+            pending_height: height,
+            owner_auth_sig_bytes,
+        }))
+    }
+
+    /// Mark the chain as frozen (after CHAIN_MIGRATION).
+    pub fn set_chain_frozen(&self) -> Result<()> {
+        self.set_meta_u64("frozen", 1)
+    }
+
+    /// Get all unspent UTXOs (for migration carry-forward).
+    pub fn get_all_unspent_utxos(&self) -> Result<Vec<Utxo>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT seq_id, pubkey, amount, block_height, block_timestamp, status
+             FROM utxos WHERE status = 'unspent' ORDER BY seq_id"
+        )?;
+        let mut utxos = Vec::new();
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let seq_id = row.get::<_, i64>(0)? as u64;
+            let pubkey_blob: Vec<u8> = row.get(1)?;
+            if pubkey_blob.len() != 32 {
+                return Err(ChainError::Encoding(
+                    format!("UTXO {} has invalid pubkey length {}", seq_id, pubkey_blob.len())));
+            }
+            let mut pubkey = [0u8; 32];
+            pubkey.copy_from_slice(&pubkey_blob);
+            let amount_bytes: Vec<u8> = row.get(2)?;
+            let amount = BigInt::from_signed_bytes_be(&amount_bytes);
+            let block_height = row.get::<_, i64>(3)? as u64;
+            let block_timestamp: i64 = row.get(4)?;
+            utxos.push(Utxo {
+                seq_id, pubkey, amount, block_height, block_timestamp,
+                status: UtxoStatus::Unspent,
+            });
+        }
+        Ok(utxos)
+    }
+
+    /// Count all active (status='escrowed') CAA escrows on this chain.
+    pub fn count_active_escrows(&self) -> Result<u64> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM caa_escrows WHERE status = 'escrowed'",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count as u64)
     }
 
     /// Advance block height, prev_hash, and last_block_timestamp.
@@ -481,6 +657,168 @@ impl ChainStore {
             params![&pubkey[..]],
         )?;
         Ok(())
+    }
+
+    // --- Owner key management (TⒶ³) ---
+
+    /// Status of an owner key.
+    pub const OWNER_KEY_VALID: &'static str = "valid";
+    pub const OWNER_KEY_HELD: &'static str = "held";
+    pub const OWNER_KEY_REVOKED: &'static str = "revoked";
+
+    /// Insert an owner key (e.g. genesis issuer key or rotation target).
+    pub fn insert_owner_key(
+        &self,
+        pubkey: &[u8; 32],
+        added_height: u64,
+        added_timestamp: i64,
+        expires_at: Option<i64>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR IGNORE INTO owner_keys (pubkey, added_height, added_timestamp, expires_at, status)
+             VALUES (?1, ?2, ?3, ?4, 'valid')",
+            params![
+                &pubkey[..],
+                added_height as i64,
+                added_timestamp,
+                expires_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Get all currently valid owner keys (status = 'valid', not expired).
+    pub fn get_valid_owner_keys(&self, current_timestamp: i64) -> Result<Vec<[u8; 32]>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT pubkey FROM owner_keys
+             WHERE status = 'valid'
+               AND (expires_at IS NULL OR expires_at > ?1)"
+        )?;
+        let mut rows = stmt.query(params![current_timestamp])?;
+        let mut keys = Vec::new();
+        while let Some(row) = rows.next()? {
+            let pk: Vec<u8> = row.get(0)?;
+            if pk.len() == 32 {
+                let mut arr = [0u8; 32];
+                arr.copy_from_slice(&pk);
+                keys.push(arr);
+            }
+        }
+        Ok(keys)
+    }
+
+    /// Check if a specific key is a valid owner key at the given timestamp.
+    pub fn is_valid_owner_key(&self, pubkey: &[u8; 32], current_timestamp: i64) -> Result<bool> {
+        let mut stmt = self.conn.prepare(
+            "SELECT 1 FROM owner_keys
+             WHERE pubkey = ?1 AND status = 'valid'
+               AND (expires_at IS NULL OR expires_at > ?2)"
+        )?;
+        let mut rows = stmt.query(params![&pubkey[..], current_timestamp])?;
+        Ok(rows.next()?.is_some())
+    }
+
+    /// Update an owner key's status (e.g. to 'revoked' or 'held').
+    pub fn set_owner_key_status(
+        &self,
+        pubkey: &[u8; 32],
+        status: &str,
+        revoked_at_height: Option<u64>,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE owner_keys SET status = ?1, revoked_at_height = ?2 WHERE pubkey = ?3",
+            params![status, revoked_at_height.map(|h| h as i64), &pubkey[..]],
+        )?;
+        Ok(())
+    }
+
+    /// Set an owner key's expiration timestamp.
+    /// A key with `expires_at = T` is invalid at timestamp T and later (exclusive boundary).
+    pub fn set_owner_key_expiration(
+        &self,
+        pubkey: &[u8; 32],
+        expires_at: i64,
+    ) -> Result<()> {
+        let rows = self.conn.execute(
+            "UPDATE owner_keys SET expires_at = ?1 WHERE pubkey = ?2",
+            params![expires_at, &pubkey[..]],
+        )?;
+        if rows == 0 {
+            return Err(rusqlite::Error::QueryReturnedNoRows.into());
+        }
+        Ok(())
+    }
+
+    /// Get the status of an owner key by pubkey. Returns None if key not found.
+    pub fn get_owner_key_status(&self, pubkey: &[u8; 32]) -> Result<Option<String>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT status FROM owner_keys WHERE pubkey = ?1"
+        )?;
+        let mut rows = stmt.query(params![&pubkey[..]])?;
+        match rows.next()? {
+            Some(row) => Ok(Some(row.get(0)?)),
+            None => Ok(None),
+        }
+    }
+
+    /// Count the number of currently valid owner keys (not expired, not revoked/held).
+    pub fn count_valid_owner_keys(&self, current_timestamp: i64) -> Result<u64> {
+        let mut stmt = self.conn.prepare(
+            "SELECT COUNT(*) FROM owner_keys
+             WHERE status = 'valid'
+               AND (expires_at IS NULL OR expires_at > ?1)"
+        )?;
+        let count: i64 = stmt.query_row(params![current_timestamp], |row| row.get(0))?;
+        Ok(count as u64)
+    }
+
+    /// Get the most recent owner key rotation timestamp (for rate limiting).
+    /// Get all owner keys with full details (for API display).
+    pub fn get_all_owner_keys(&self) -> Result<Vec<OwnerKeyRow>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT pubkey, added_height, added_timestamp, expires_at, status
+             FROM owner_keys ORDER BY added_height ASC"
+        )?;
+        let mut rows = stmt.query([])?;
+        let mut keys = Vec::new();
+        while let Some(row) = rows.next()? {
+            let pk: Vec<u8> = row.get(0)?;
+            if pk.len() != 32 { continue; }
+            let mut pubkey = [0u8; 32];
+            pubkey.copy_from_slice(&pk);
+            keys.push(OwnerKeyRow {
+                pubkey,
+                added_height: row.get::<_, i64>(1)? as u64,
+                added_timestamp: row.get(2)?,
+                expires_at: row.get(3)?,
+                status: row.get(4)?,
+            });
+        }
+        Ok(keys)
+    }
+
+    pub fn last_owner_key_added_timestamp(&self) -> Result<Option<i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT MAX(added_timestamp) FROM owner_keys"
+        )?;
+        let ts: Option<i64> = stmt.query_row([], |row| row.get(0))?;
+        Ok(ts)
+    }
+
+    /// Get the block timestamp of the most recent key revocation.
+    /// Uses the block at revoked_at_height to find the timestamp.
+    pub fn last_revocation_block_timestamp(&self) -> Result<Option<i64>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT b.timestamp FROM owner_keys k
+             INNER JOIN blocks b ON b.height = k.revoked_at_height
+             WHERE k.status = 'revoked' AND k.revoked_at_height IS NOT NULL
+             ORDER BY k.revoked_at_height DESC LIMIT 1"
+        )?;
+        let mut rows = stmt.query([])?;
+        match rows.next()? {
+            Some(row) => Ok(Some(row.get(0)?)),
+            None => Ok(None),
+        }
     }
 
     // --- Refutation tracking ---
@@ -990,6 +1328,13 @@ mod tests {
             expiry_mode: 1,
             tax_start_age: None,
             tax_doubling_period: None,
+            reward_rate_num: BigInt::from(0),
+            reward_rate_den: BigInt::from(1),
+            key_rotation_rate: 0,
+            revocation_rate_base: 0,
+            recorder_pubkey: None,
+            pending_recorder_change: None,
+            frozen: false,
             block_height: 0,
             next_seq_id: 1,
             last_block_timestamp: 0,
@@ -1212,5 +1557,110 @@ mod tests {
         let store = ChainStore::open_memory().unwrap();
         store.init_schema().unwrap();
         store.integrity_check().unwrap();
+    }
+
+    #[test]
+    fn test_meta_reward_rate_roundtrip() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        let meta = ChainMeta {
+            chain_id: [0xAA; 32],
+            symbol: "TST".to_string(),
+            coin_count: BigInt::from(1_000_000u64),
+            shares_out: BigInt::from(1_000_000u64),
+            fee_rate_num: BigInt::from(1),
+            fee_rate_den: BigInt::from(1000),
+            expiry_period: 0,
+            expiry_mode: 1,
+            tax_start_age: None,
+            tax_doubling_period: None,
+            reward_rate_num: BigInt::from(3),
+            reward_rate_den: BigInt::from(10000),
+            key_rotation_rate: 16_329_600_000_000_000, // 24h in timestamp units
+            revocation_rate_base: 16_329_600_000_000_000,
+            recorder_pubkey: None,
+            pending_recorder_change: None,
+            frozen: false,
+            block_height: 0,
+            next_seq_id: 1,
+            last_block_timestamp: 0,
+            prev_hash: [0; 32],
+        };
+        store.store_chain_meta(&meta).unwrap();
+
+        let loaded = store.load_chain_meta().unwrap().unwrap();
+        assert_eq!(loaded.reward_rate_num, BigInt::from(3));
+        assert_eq!(loaded.reward_rate_den, BigInt::from(10000));
+        assert_eq!(loaded.key_rotation_rate, 16_329_600_000_000_000);
+        assert_eq!(loaded.revocation_rate_base, 16_329_600_000_000_000);
+    }
+
+    #[test]
+    fn test_owner_key_lifecycle() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        let k1 = [0x11; 32];
+        let k2 = [0x22; 32];
+        let k3 = [0x33; 32];
+        let now = 1000;
+
+        // Insert root key and a second key
+        store.insert_owner_key(&k1, 0, 100, None).unwrap();
+        store.insert_owner_key(&k2, 1, 200, Some(5000)).unwrap();
+
+        // Both should be valid now
+        assert!(store.is_valid_owner_key(&k1, now).unwrap());
+        assert!(store.is_valid_owner_key(&k2, now).unwrap());
+        assert!(!store.is_valid_owner_key(&k3, now).unwrap());
+        assert_eq!(store.count_valid_owner_keys(now).unwrap(), 2);
+
+        // k2 expires at 5000
+        assert!(store.is_valid_owner_key(&k2, 4999).unwrap());
+        assert!(!store.is_valid_owner_key(&k2, 5000).unwrap());
+        assert_eq!(store.count_valid_owner_keys(5000).unwrap(), 1);
+
+        // Revoke k1
+        store.set_owner_key_status(&k1, ChainStore::OWNER_KEY_REVOKED, Some(2)).unwrap();
+        assert!(!store.is_valid_owner_key(&k1, now).unwrap());
+        assert_eq!(store.count_valid_owner_keys(now).unwrap(), 1); // only k2
+
+        // Hold a key
+        store.insert_owner_key(&k3, 2, 300, None).unwrap();
+        store.set_owner_key_status(&k3, ChainStore::OWNER_KEY_HELD, None).unwrap();
+        assert!(!store.is_valid_owner_key(&k3, now).unwrap());
+    }
+
+    #[test]
+    fn test_owner_key_get_valid() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        let k1 = [0x11; 32];
+        let k2 = [0x22; 32];
+        store.insert_owner_key(&k1, 0, 100, None).unwrap();
+        store.insert_owner_key(&k2, 1, 200, Some(500)).unwrap();
+
+        let valid = store.get_valid_owner_keys(300).unwrap();
+        assert_eq!(valid.len(), 2);
+
+        let valid = store.get_valid_owner_keys(500).unwrap();
+        assert_eq!(valid.len(), 1);
+        assert_eq!(valid[0], k1);
+    }
+
+    #[test]
+    fn test_owner_key_last_added_timestamp() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+
+        assert_eq!(store.last_owner_key_added_timestamp().unwrap(), None);
+
+        store.insert_owner_key(&[0x11; 32], 0, 100, None).unwrap();
+        assert_eq!(store.last_owner_key_added_timestamp().unwrap(), Some(100));
+
+        store.insert_owner_key(&[0x22; 32], 1, 500, None).unwrap();
+        assert_eq!(store.last_owner_key_added_timestamp().unwrap(), Some(500));
     }
 }

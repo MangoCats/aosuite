@@ -53,6 +53,20 @@ export interface ValidatorEndorsement {
   last_checked: number;
 }
 
+export interface PendingRecorderChangeInfo {
+  new_recorder_pubkey: string;
+  new_recorder_url: string;
+  pending_height: number;
+}
+
+export interface OwnerKeyInfo {
+  pubkey: string;
+  added_height: number;
+  added_timestamp: number;
+  expires_at?: number;
+  status: string;
+}
+
 export interface ChainInfo {
   chain_id: string;
   symbol: string;
@@ -65,6 +79,15 @@ export interface ChainInfo {
   expiry_mode: number;
   next_seq_id: number;
   validators?: ValidatorEndorsement[];
+  // TⒶ³ fields
+  recorder_pubkey?: string;
+  reward_rate_num: string;
+  reward_rate_den: string;
+  frozen: boolean;
+  pending_recorder_change?: PendingRecorderChangeInfo;
+  key_rotation_rate: string;
+  revocation_rate_base: string;
+  owner_key_count: number;
 }
 
 export interface UtxoInfo {
@@ -149,6 +172,11 @@ export class RecorderClient {
   /** GET /chain/{id}/info */
   async chainInfo(chainId: string): Promise<ChainInfo> {
     return this.fetchJson(`/chain/${chainId}/info`);
+  }
+
+  /** GET /chain/{id}/owner-keys — list all owner keys with status. */
+  async getOwnerKeys(chainId: string): Promise<OwnerKeyInfo[]> {
+    return this.fetchJson(`/chain/${chainId}/owner-keys`);
   }
 
   /** GET /chain/{id}/utxo/{seq_id} */

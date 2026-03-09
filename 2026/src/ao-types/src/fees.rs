@@ -1,6 +1,6 @@
 use num_bigint::BigInt;
 use num_integer::Integer;
-use num_traits::One;
+use num_traits::{One, Zero};
 
 /// Compute recording fee in shares.
 ///
@@ -18,8 +18,27 @@ pub fn recording_fee(
     ceil_div(&numerator, fee_rate_den)
 }
 
+/// Compute share reward for the recorder.
+///
+/// `reward_shares = ceil(giver_total * reward_rate_num / reward_rate_den)`
+///
+/// Returns zero when the reward rate numerator is zero.
+pub fn share_reward(
+    giver_total: &BigInt,
+    reward_rate_num: &BigInt,
+    reward_rate_den: &BigInt,
+) -> BigInt {
+    if reward_rate_num.is_zero() {
+        return BigInt::ZERO;
+    }
+    let numerator = giver_total * reward_rate_num;
+    ceil_div(&numerator, reward_rate_den)
+}
+
 /// Ceiling division for positive integers: ceil(a / b) = (a + b - 1) / b.
 fn ceil_div(a: &BigInt, b: &BigInt) -> BigInt {
+    debug_assert!(*a >= BigInt::ZERO, "ceil_div requires non-negative numerator");
+    debug_assert!(*b > BigInt::ZERO, "ceil_div requires positive denominator");
     let (q, r) = a.div_rem(b);
     if r > BigInt::ZERO {
         q + BigInt::one()
@@ -108,5 +127,30 @@ mod tests {
     fn test_ceil_div_rounds_up() {
         // 11 / 5 = 2.2 → ceil = 3
         assert_eq!(recording_fee(11, &bi("1"), &bi("5"), &bi("1")), bi("3"));
+    }
+
+    #[test]
+    fn test_share_reward_zero_rate() {
+        assert_eq!(share_reward(&bi("1000"), &bi("0"), &bi("1")), bi("0"));
+    }
+
+    #[test]
+    fn test_share_reward_exact() {
+        // 1000 * 1/100 = 10
+        assert_eq!(share_reward(&bi("1000"), &bi("1"), &bi("100")), bi("10"));
+    }
+
+    #[test]
+    fn test_share_reward_rounds_up() {
+        // 1001 * 1/100 = 10.01 → ceil = 11
+        assert_eq!(share_reward(&bi("1001"), &bi("1"), &bi("100")), bi("11"));
+    }
+
+    #[test]
+    fn test_share_reward_large_amounts() {
+        // Large giver total: 77371252455336267181195264 * 1/1000000
+        let giver = bi("77371252455336267181195264");
+        let reward = share_reward(&giver, &bi("1"), &bi("1000000"));
+        assert_eq!(reward, bi("77371252455336267182"));
     }
 }

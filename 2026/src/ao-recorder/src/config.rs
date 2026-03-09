@@ -79,12 +79,42 @@ pub struct Config {
     /// Per-chain blob storage quota in bytes. Default: 100 MB (104857600).
     #[serde(default = "default_blob_quota_per_chain")]
     pub blob_quota_per_chain: u64,
+    /// Blob pruning interval in seconds. Default: 3600 (1 hour). Set to 0 to disable.
+    #[serde(default)]
+    pub blob_prune_interval_secs: Option<u64>,
     /// Human-readable recorder name/description for RECORDER_IDENTITY.
     #[serde(default)]
     pub recorder_name: Option<String>,
     /// Public URL where this recorder is reachable (e.g. "https://recorder.example.com").
     #[serde(default)]
     pub recorder_url: Option<String>,
+    /// Hot standby configuration. When present, this recorder runs in read-only
+    /// standby mode, syncing blocks and blobs from the primary recorder.
+    #[serde(default)]
+    pub standby: Option<StandbyConfig>,
+    /// Chain redirects: chain_id hex → target recorder URL.
+    /// Requests for these chains return 307 with Location header.
+    #[serde(default)]
+    pub chain_redirects: std::collections::HashMap<String, String>,
+    /// Require authentication for the /chain/{id}/sync streaming endpoint.
+    /// When true (default), only recorders in `trusted_sync_recorders` may connect.
+    #[serde(default = "default_require_sync_auth")]
+    pub require_sync_auth: bool,
+    /// Trusted recorder public keys (hex) allowed to use /chain/{id}/sync.
+    #[serde(default)]
+    pub trusted_sync_recorders: Vec<String>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct StandbyConfig {
+    /// Primary recorder base URL (e.g. "http://primary:3000").
+    pub primary_url: String,
+    /// Delay in seconds before reconnecting after SSE disconnect. Default: 5.
+    #[serde(default = "default_reconnect_delay")]
+    pub reconnect_delay_seconds: u64,
+    /// Number of blocks to fetch per batch during initial sync. Default: 1000.
+    #[serde(default = "default_sync_batch_size")]
+    pub sync_batch_size: u64,
 }
 
 #[derive(Deserialize, Clone)]
@@ -108,6 +138,10 @@ pub struct AlertsConfig {
     #[serde(default)]
     pub webhook_url: Option<String>,
 }
+
+fn default_reconnect_delay() -> u64 { 5 }
+fn default_sync_batch_size() -> u64 { 1000 }
+fn default_require_sync_auth() -> bool { true }
 
 fn default_max_blob_bytes() -> usize { 5_242_880 }
 fn default_blob_quota_per_chain() -> u64 { 100 * 1024 * 1024 }
@@ -156,8 +190,13 @@ impl Default for Config {
             allow_insecure_validators: false,
             max_blob_bytes: default_max_blob_bytes(),
             blob_quota_per_chain: default_blob_quota_per_chain(),
+            blob_prune_interval_secs: None,
             recorder_name: None,
             recorder_url: None,
+            standby: None,
+            chain_redirects: std::collections::HashMap::new(),
+            require_sync_auth: true,
+            trusted_sync_recorders: Vec::new(),
         }
     }
 }
@@ -191,6 +230,42 @@ pub fn load_config(path: &str) -> anyhow::Result<Config> {
                     i, v.url
                 );
             }
+        }
+    }
+    // Validate standby config
+    if let Some(ref standby) = config.standby {
+        let url = standby.primary_url.trim_end_matches('/');
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            anyhow::bail!(
+                "standby.primary_url must start with http:// or https://, got: {}",
+                standby.primary_url
+            );
+        }
+        if standby.sync_batch_size == 0 {
+            anyhow::bail!("standby.sync_batch_size must be > 0");
+        }
+        if standby.reconnect_delay_seconds == 0 {
+            anyhow::bail!("standby.reconnect_delay_seconds must be > 0");
+        }
+    }
+    // Validate chain redirect URLs
+    for (chain_id, url) in &config.chain_redirects {
+        let url = url.trim_end_matches('/');
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            anyhow::bail!(
+                "chain_redirects[{}] must start with http:// or https://, got: {}",
+                chain_id, url
+            );
+        }
+    }
+    // Validate trusted sync recorder pubkeys are valid hex (32 bytes = 64 hex chars)
+    for (i, key_hex) in config.trusted_sync_recorders.iter().enumerate() {
+        match hex::decode(key_hex) {
+            Ok(bytes) if bytes.len() == 32 => {}
+            _ => anyhow::bail!(
+                "trusted_sync_recorders[{}] must be 64-char hex (32-byte pubkey), got: {}",
+                i, key_hex
+            ),
         }
     }
     Ok(config)

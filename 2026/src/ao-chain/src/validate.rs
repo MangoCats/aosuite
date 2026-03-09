@@ -27,8 +27,10 @@ pub struct ValidatedAssignment {
     pub givers: GiverList,
     /// Receiver entries: (pubkey_32_bytes, amount).
     pub receivers: ReceiverList,
-    /// Computed recording fee in shares.
+    /// Computed recording fee in shares (burned — reduces shares_out).
     pub fee_shares: BigInt,
+    /// Computed share reward for the recorder (transferred — does not reduce shares_out).
+    pub reward_shares: BigInt,
     /// Page size in bytes (for fee calculation).
     pub page_bytes: u64,
 }
@@ -62,7 +64,11 @@ pub fn validate_assignment(
 
     let (fee_shares, page_bytes) = calculate_fee(authorization, meta, blob_sizes)?;
 
-    validate_balance(assignment, meta, &givers, &receivers, &fee_shares)?;
+    let giver_total: BigInt = givers.iter().map(|(_, a)| a).sum();
+    let reward_shares = fees::share_reward(
+        &giver_total, &meta.reward_rate_num, &meta.reward_rate_den);
+
+    validate_balance(assignment, meta, &givers, &receivers, &fee_shares, &reward_shares)?;
 
     verify_signatures(store, authorization, assignment, &givers, &receivers)?;
 
@@ -71,6 +77,7 @@ pub fn validate_assignment(
         givers,
         receivers,
         fee_shares,
+        reward_shares,
         page_bytes,
     })
 }
@@ -255,13 +262,14 @@ fn compute_blob_size_delta(assignment: &DataItem, blob_sizes: &HashMap<String, u
     delta
 }
 
-/// Validate recording bid and balance equation (givers = receivers + fee).
+/// Validate recording bid and balance equation (givers = receivers + fee + reward).
 fn validate_balance(
     assignment: &DataItem,
     meta: &ChainMeta,
     givers: &[(u64, BigInt)],
     receivers: &[([u8; 32], BigInt)],
     fee_shares: &BigInt,
+    reward_shares: &BigInt,
 ) -> Result<()> {
     if let Some(bid_item) = assignment.find_child(RECORDING_BID) {
         let bid_bytes = bid_item.as_bytes()
@@ -279,11 +287,12 @@ fn validate_balance(
     let giver_total: BigInt = givers.iter().map(|(_, a)| a).sum();
     let receiver_total: BigInt = receivers.iter().map(|(_, a)| a).sum();
 
-    if giver_total != &receiver_total + fee_shares {
+    let expected = &receiver_total + fee_shares + reward_shares;
+    if giver_total != expected {
         return Err(ChainError::BalanceMismatch {
             givers: giver_total.to_string(),
             receivers: receiver_total.to_string(),
-            fee: fee_shares.to_string(),
+            fee: format!("fee={}, reward={}", fee_shares, reward_shares),
         });
     }
 

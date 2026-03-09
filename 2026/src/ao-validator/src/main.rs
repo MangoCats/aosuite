@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
@@ -8,6 +9,7 @@ use tracing::info;
 
 use ao_validator::alert::{Alert, AlertDispatcher, AlertType};
 use ao_validator::anchor::{AnchorBackend, FileAnchor, ReplicatedAnchor};
+use ao_validator::chain_audit::ChainAuditor;
 use ao_validator::client::RecorderClient;
 use ao_validator::config;
 use ao_validator::metrics;
@@ -121,9 +123,30 @@ async fn run_daemon(config_path: &str) -> Result<()> {
     });
 
     // Pre-build HTTP clients per recorder URL (avoid re-allocation each poll cycle)
-    let clients: std::collections::HashMap<String, RecorderClient> = cfg.chains.iter()
+    let clients: HashMap<String, RecorderClient> = cfg.chains.iter()
         .map(|c| (c.recorder_url.clone(), RecorderClient::new(&c.recorder_url)))
         .collect();
+
+    // Per-chain semantic auditors (TⒶ³ N34).
+    // Auditor databases are stored alongside the validator DB.
+    let audit_dir = {
+        let db = std::path::Path::new(&cfg.db_path);
+        let parent = db.parent().unwrap_or(std::path::Path::new("."));
+        parent.join("audit")
+    };
+    if !audit_dir.exists() {
+        std::fs::create_dir_all(&audit_dir)
+            .context("failed to create audit directory")?;
+    }
+    let mut auditors: HashMap<String, ChainAuditor> = HashMap::new();
+    for chain_cfg in &cfg.chains {
+        let audit_db = audit_dir.join(format!("{}.db", chain_cfg.chain_id));
+        let audit_db_str = audit_db.to_str()
+            .ok_or_else(|| anyhow::anyhow!("non-UTF-8 audit path"))?;
+        let auditor = ChainAuditor::open(audit_db_str)
+            .context(format!("failed to open auditor for {}", chain_cfg.chain_id))?;
+        auditors.insert(chain_cfg.chain_id.clone(), auditor);
+    }
 
     // Main polling loop
     let poll_interval = std::time::Duration::from_secs(cfg.poll_interval_secs);
@@ -208,10 +231,41 @@ async fn run_daemon(config_path: &str) -> Result<()> {
                 continue;
             }
 
+            // Initialize chain auditor from genesis if needed (TⒶ³ N34)
+            let needs_genesis = auditors.get(&chain_cfg.chain_id)
+                .is_some_and(|a| !a.is_initialized());
+            if needs_genesis {
+                match client.get_blocks(&chain_cfg.chain_id, 0, 0).await {
+                    Ok(genesis_blocks) if !genesis_blocks.is_empty() => {
+                        let auditor = auditors.get_mut(&chain_cfg.chain_id).unwrap();
+                        if let Err(e) = auditor.process_genesis(&genesis_blocks[0]) {
+                            tracing::warn!(
+                                chain = %label,
+                                "chain audit genesis init failed: {}",
+                                e,
+                            );
+                        } else {
+                            info!(chain = %label, "Chain auditor initialized from genesis");
+                        }
+                    }
+                    Ok(_) => {
+                        tracing::warn!(chain = %label, "empty genesis response — audit skipped");
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            chain = %label,
+                            "failed to fetch genesis for audit: {}",
+                            e,
+                        );
+                    }
+                }
+            }
+
             // Fetch and verify new blocks in batches of 1000
             let mut current_height = validated + 1;
             let mut rolled = chain_state.rolled_hash;
             let mut verification_ok = true;
+            let mut audit_failed = false;
             let verify_start = std::time::Instant::now();
 
             while current_height <= recorder_height {
@@ -238,6 +292,49 @@ async fn run_daemon(config_path: &str) -> Result<()> {
 
                 match verifier::verify_block_batch(&blocks, current_height, &rolled) {
                     Ok(result) => {
+                        // Semantic audit (TⒶ³ N34): check each block for
+                        // authority chain violations and fee ceiling breaches.
+                        if let Some(auditor) = auditors.get_mut(&chain_cfg.chain_id) {
+                            if auditor.is_initialized() {
+                                for (i, block_json) in blocks.iter().enumerate() {
+                                    let h = current_height + i as u64;
+                                    match auditor.audit_block(block_json, h) {
+                                        Ok(findings) => {
+                                            for finding in &findings {
+                                                let alert = Alert {
+                                                    chain_id: chain_cfg.chain_id.clone(),
+                                                    alert_type: AlertType::Alteration,
+                                                    height: finding.height,
+                                                    message: finding.message.clone(),
+                                                    timestamp: unix_now(),
+                                                };
+                                                state.alerts.dispatch(&alert).await;
+                                                metrics::record_alert("alteration");
+                                            }
+                                            if !findings.is_empty() {
+                                                audit_failed = true;
+                                            }
+                                        }
+                                        Err(e) => {
+                                            // Treat audit errors as verification failures so
+                                            // the auditor doesn't fall permanently behind.
+                                            let alert = Alert {
+                                                chain_id: chain_cfg.chain_id.clone(),
+                                                alert_type: AlertType::Alteration,
+                                                height: h,
+                                                message: format!("chain audit error: {}", e),
+                                                timestamp: unix_now(),
+                                            };
+                                            state.alerts.dispatch(&alert).await;
+                                            metrics::record_alert("alteration");
+                                            audit_failed = true;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         rolled = result.rolled_hash;
                         current_height = result.last_height + 1;
                         metrics::record_blocks_verified(label, result.count);
@@ -275,14 +372,15 @@ async fn run_daemon(config_path: &str) -> Result<()> {
 
             if verification_ok {
                 let final_height = current_height.saturating_sub(1);
-                metrics::record_run(label, "ok");
+                let final_status = if audit_failed { "audit_alert" } else { "ok" };
+                metrics::record_run(label, final_status);
                 metrics::record_verify_duration(label, verify_start.elapsed().as_secs_f64());
                 metrics::set_validated_height(label, final_height);
                 let store = state.store.lock().map_err(|e| anyhow::anyhow!("store lock poisoned: {}", e))?;
                 store.update_chain_state(
                     &chain_cfg.chain_id,
                     final_height,
-                    &rolled, "ok", None,
+                    &rolled, final_status, None,
                 )?;
 
                 // Auto-anchor if configured and enough blocks since last anchor (N29)

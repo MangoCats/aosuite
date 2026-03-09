@@ -186,6 +186,91 @@ fn build_assignment(givers: &[Giver], receivers: &[Receiver], fee_rate: &FeeRate
     DataItem::container(ASSIGNMENT, children)
 }
 
+// ── TⒶ³ operation builders (Sim-G) ──────────────────────────────────
+
+/// Build a signed OWNER_KEY_ROTATION DataItem.
+/// The signer must be a current valid owner key.
+pub fn build_owner_key_rotation(
+    signer_seed: &[u8; 32],
+    new_pubkey: &[u8; 32],
+) -> DataItem {
+    let signer = SigningKey::from_seed(signer_seed);
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let sign_ts = Timestamp::from_unix_seconds(now_secs);
+
+    let signable_children = vec![
+        DataItem::bytes(ED25519_PUB, new_pubkey.to_vec()),
+    ];
+    let signable = DataItem::container(OWNER_KEY_ROTATION, signable_children.clone());
+    let sig = sign::sign_dataitem(&signer, &signable, sign_ts);
+    let mut children = signable_children;
+    children.push(DataItem::container(AUTH_SIG, vec![
+        DataItem::bytes(ED25519_SIG, sig.to_vec()),
+        DataItem::bytes(TIMESTAMP, sign_ts.to_bytes().to_vec()),
+        DataItem::bytes(ED25519_PUB, signer.public_key_bytes().to_vec()),
+    ]));
+    DataItem::container(OWNER_KEY_ROTATION, children)
+}
+
+/// Build a signed RECORDER_CHANGE_PENDING DataItem.
+/// The owner signs, specifying the new recorder's pubkey and URL.
+pub fn build_recorder_change_pending(
+    owner_seed: &[u8; 32],
+    new_recorder_pubkey: &[u8; 32],
+    new_recorder_url: &str,
+) -> DataItem {
+    let owner = SigningKey::from_seed(owner_seed);
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let sign_ts = Timestamp::from_unix_seconds(now_secs);
+
+    let signable_children = vec![
+        DataItem::bytes(ED25519_PUB, new_recorder_pubkey.to_vec()),
+        DataItem::bytes(RECORDER_URL, new_recorder_url.as_bytes().to_vec()),
+    ];
+    let signable = DataItem::container(RECORDER_CHANGE_PENDING, signable_children.clone());
+    let sig = sign::sign_dataitem(&owner, &signable, sign_ts);
+    let mut children = signable_children;
+    children.push(DataItem::container(AUTH_SIG, vec![
+        DataItem::bytes(ED25519_SIG, sig.to_vec()),
+        DataItem::bytes(TIMESTAMP, sign_ts.to_bytes().to_vec()),
+        DataItem::bytes(ED25519_PUB, owner.public_key_bytes().to_vec()),
+    ]));
+    DataItem::container(RECORDER_CHANGE_PENDING, children)
+}
+
+/// Build a signed CHAIN_MIGRATION DataItem.
+/// The owner signs, specifying the new chain's ID via CHAIN_REF.
+pub fn build_chain_migration(
+    owner_seed: &[u8; 32],
+    new_chain_id: &[u8; 32],
+) -> DataItem {
+    let owner = SigningKey::from_seed(owner_seed);
+    let now_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64;
+    let sign_ts = Timestamp::from_unix_seconds(now_secs);
+
+    let signable_children = vec![
+        DataItem::bytes(CHAIN_REF, new_chain_id.to_vec()),
+    ];
+    let signable = DataItem::container(CHAIN_MIGRATION, signable_children.clone());
+    let sig = sign::sign_dataitem(&owner, &signable, sign_ts);
+    let mut children = signable_children;
+    children.push(DataItem::container(AUTH_SIG, vec![
+        DataItem::bytes(ED25519_SIG, sig.to_vec()),
+        DataItem::bytes(TIMESTAMP, sign_ts.to_bytes().to_vec()),
+        DataItem::bytes(ED25519_PUB, owner.public_key_bytes().to_vec()),
+    ]));
+    DataItem::container(CHAIN_MIGRATION, children)
+}
+
 /// Build a genesis block DataItem for creating a new chain.
 pub fn build_genesis(
     issuer_seed: &[u8; 32],

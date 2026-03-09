@@ -162,6 +162,44 @@ pub fn load_genesis(store: &ChainStore, genesis: &DataItem) -> Result<ChainMeta>
         validate_blob_policy(policy)?;
     }
 
+    // Parse optional TⒶ³ genesis parameters
+    let default_24h = Timestamp::from_unix_seconds(24 * 3600).raw();
+
+    let (reward_rate_num, reward_rate_den) = if let Some(rr) = genesis.find_child(REWARD_RATE) {
+        let bytes = rr.as_bytes()
+            .ok_or_else(|| ChainError::InvalidGenesis("REWARD_RATE has no bytes".into()))?;
+        let (rational, _) = bigint::decode_rational(&bytes, 0)
+            .map_err(|e| ChainError::InvalidGenesis(format!("REWARD_RATE: {}", e)))?;
+        if *rational.numer() < BigInt::from(0) {
+            return Err(ChainError::InvalidGenesis("REWARD_RATE must be non-negative".into()));
+        }
+        (rational.numer().clone(), rational.denom().clone())
+    } else {
+        (BigInt::from(0), BigInt::from(1))
+    };
+
+    let key_rotation_rate = if let Some(krr) = genesis.find_child(KEY_ROTATION_RATE) {
+        let bytes = krr.as_bytes()
+            .ok_or_else(|| ChainError::InvalidGenesis("KEY_ROTATION_RATE has no bytes".into()))?;
+        if bytes.len() != 8 {
+            return Err(ChainError::InvalidGenesis("KEY_ROTATION_RATE must be 8 bytes".into()));
+        }
+        i64::from_be_bytes(bytes.try_into().expect("length validated above"))
+    } else {
+        default_24h
+    };
+
+    let revocation_rate_base = if let Some(rrb) = genesis.find_child(REVOCATION_RATE_BASE) {
+        let bytes = rrb.as_bytes()
+            .ok_or_else(|| ChainError::InvalidGenesis("REVOCATION_RATE_BASE has no bytes".into()))?;
+        if bytes.len() != 8 {
+            return Err(ChainError::InvalidGenesis("REVOCATION_RATE_BASE must be 8 bytes".into()));
+        }
+        i64::from_be_bytes(bytes.try_into().expect("length validated above"))
+    } else {
+        default_24h
+    };
+
     // Build chain metadata
     let meta = ChainMeta {
         chain_id,
@@ -174,6 +212,13 @@ pub fn load_genesis(store: &ChainStore, genesis: &DataItem) -> Result<ChainMeta>
         expiry_mode,
         tax_start_age,
         tax_doubling_period,
+        reward_rate_num,
+        reward_rate_den,
+        key_rotation_rate,
+        revocation_rate_base,
+        recorder_pubkey: None,
+        pending_recorder_change: None,
+        frozen: false,
         block_height: 0,
         next_seq_id: 2, // seq 1 is assigned to the issuer
         last_block_timestamp: genesis_timestamp,
@@ -202,6 +247,9 @@ pub fn load_genesis(store: &ChainStore, genesis: &DataItem) -> Result<ChainMeta>
 
     // Mark issuer key as used
     store.mark_key_used(&pubkey_arr)?;
+
+    // Insert genesis issuer as root owner key (TⒶ³)
+    store.insert_owner_key(&pubkey_arr, 0, genesis_timestamp, None)?;
 
     Ok(meta)
 }

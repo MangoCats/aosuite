@@ -5,3 +5,4 @@ pub mod verifier;
 pub mod alert;
 pub mod anchor;
 pub mod metrics;
+pub mod chain_audit;

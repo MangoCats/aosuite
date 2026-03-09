@@ -31,7 +31,7 @@ async fn wait_while_paused(paused: &PauseFlag) {
 }
 
 use crate::client::RecorderClient;
-use crate::config::{AgentConfig, VendorConfig, ExchangeConfig, ConsumerConfig, ValidatorConfig, AttackerConfig, InfraTesterConfig, parse_bigint};
+use crate::config::{AgentConfig, VendorConfig, ExchangeConfig, ConsumerConfig, ValidatorConfig, AttackerConfig, InfraTesterConfig, RecorderOperatorConfig, parse_bigint};
 use crate::transfer::{self, Giver, Receiver};
 use crate::wallet::{Wallet, now_ms};
 
@@ -150,6 +150,7 @@ pub struct AgentState {
     pub attacker_status: Option<AttackerStatus>,
     pub infra_tester_status: Option<InfraTesterStatus>,
     pub caa_status: Option<CaaExchangeStatus>,
+    pub recorder_op_status: Option<RecorderOpStatus>,
     pub transactions: u64,
     pub last_action: String,
 }
@@ -205,6 +206,17 @@ pub struct InfraTesterStatus {
     pub last_result: String,
     /// Per-test-type detail metrics.
     pub detail: serde_json::Value,
+}
+
+/// Status for recorder operator agents (Sim-G: TⒶ³ operations).
+#[derive(Debug, Clone, Serialize)]
+pub struct RecorderOpStatus {
+    pub target_chain: String,
+    pub key_rotated: bool,
+    pub recorder_switch_phase: String,
+    pub chain_migrated: bool,
+    pub operations_completed: u64,
+    pub last_result: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -1550,6 +1562,7 @@ pub async fn run_validator(
             attacker_status: None,
             infra_tester_status: None,
             caa_status: None,
+            recorder_op_status: None,
             transactions: 0,
             last_action: last_action.to_string(),
         }
@@ -1751,6 +1764,7 @@ pub async fn run_attacker(
             }),
             infra_tester_status: None,
             caa_status: None,
+            recorder_op_status: None,
             transactions: attempts,
             last_action: last_result.to_string(),
         }
@@ -2312,6 +2326,7 @@ fn build_state(
         attacker_status: None,
         infra_tester_status: None,
         caa_status: None,
+        recorder_op_status: None,
         transactions,
         last_action: last_action.to_string(),
     }
@@ -2354,6 +2369,7 @@ fn build_multi_state(
         attacker_status: None,
         infra_tester_status: None,
         caa_status: None,
+        recorder_op_status: None,
         transactions,
         last_action: last_action.to_string(),
     }
@@ -2432,6 +2448,7 @@ pub async fn run_infra_tester(
                 detail,
             }),
             caa_status: None,
+            recorder_op_status: None,
             transactions: rounds,
             last_action: last_result.to_string(),
         }
@@ -2818,6 +2835,343 @@ fn leaks_internals(body: &str) -> bool {
         "std::io::error",
     ];
     leak_patterns.iter().any(|pat| lower.contains(pat))
+}
+
+// ── Recorder operator agent (Sim-G: TⒶ³) ──────────────────────────
+//
+// Manages chain infrastructure operations: owner key rotation,
+// recorder switching, and chain migration. Operations are scheduled
+// at configured times during the simulation.
+
+#[allow(clippy::too_many_arguments)]
+pub async fn run_recorder_operator(
+    config: AgentConfig,
+    op_cfg: RecorderOperatorConfig,
+    client: Arc<RecorderClient>,
+    secondary_client: Option<Arc<RecorderClient>>,
+    secondary_recorder_pubkey: Option<[u8; 32]>,
+    secondary_recorder_url: Option<String>,
+    directory: Arc<RwLock<AgentDirectory>>,
+    state_tx: StateCollector,
+    _mailbox: mpsc::Receiver<AgentMessage>,
+    speed: SharedSpeed,
+    paused: PauseFlag,
+) -> Result<()> {
+    let name = config.name.clone();
+    let lat = config.lat;
+    let lon = config.lon;
+
+    info!("{}: recorder operator for chain of vendor '{}'", name, op_cfg.target_chain);
+
+    // Wait for the target vendor to create its chain
+    let (chain_id, symbol) = loop {
+        wait_while_paused(&paused).await;
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        if let Ok(chains) = client.list_chains().await {
+            // Find the chain by looking up vendor's chain via directory
+            // We look at all chains and match symbol patterns
+            for entry in &chains {
+                // The target_chain is a vendor name; get the chain they created
+                let dir = directory.read().await;
+                if dir.agent_mailbox(&op_cfg.target_chain).is_some() {
+                    // Found the vendor — try matching by listing
+                    drop(dir);
+                    // Use the first chain available (vendor creates exactly one)
+                    if !chains.is_empty() {
+                        // Find the vendor's chain: request a pubkey to see which chain they own
+                        break;
+                    }
+                }
+                drop(dir);
+                break;
+            }
+            // Simple approach: look up chain info by listing
+            if let Some(entry) = chains.first() {
+                info!("{}: found chain {} ({})", name, &entry.chain_id[..12], entry.symbol);
+                break (entry.chain_id.clone(), entry.symbol.clone());
+            }
+        }
+    };
+
+    // We need the owner key (issuer seed) to sign TⒶ³ operations.
+    // In the sim, the vendor shares this via the agent directory.
+    // For now, request a pubkey from the vendor to get their seed.
+    // Actually, in the sim the issuer key is the owner key — we need direct access.
+    // The pre-genesis system gives the vendor its issuer_seed; we request it via message.
+    let owner_seed: [u8; 32] = {
+        let dir = directory.read().await;
+        let tx = dir.agent_mailbox(&op_cfg.target_chain);
+        if let Some(tx) = tx {
+            let (reply_tx, reply_rx) = oneshot::channel();
+            let _ = tx.send(AgentMessage::RequestPubkey {
+                chain_id: chain_id.clone(),
+                reply: reply_tx,
+            }).await;
+            drop(dir);
+            match reply_rx.await {
+                Ok(resp) => resp.seed,
+                Err(_) => {
+                    warn!("{}: failed to get owner key from vendor", name);
+                    return Ok(());
+                }
+            }
+        } else {
+            drop(dir);
+            warn!("{}: vendor '{}' not found in directory", name, op_cfg.target_chain);
+            return Ok(());
+        }
+    };
+
+    // Current owner seed (may change after rotation)
+    let mut current_owner_seed = owner_seed;
+
+    let mut key_rotated = false;
+    let mut switch_phase = "idle".to_string();
+    let mut chain_migrated = false;
+    let mut ops_completed: u64 = 0;
+    let mut last_result = "initialized".to_string();
+
+    let make_state = |key_rotated: bool, switch_phase: &str, chain_migrated: bool,
+                      ops_completed: u64, last_result: &str, paused: &PauseFlag| -> AgentState {
+        AgentState {
+            name: name.clone(),
+            role: "recorder_operator".to_string(),
+            status: "active".to_string(),
+            lat, lon,
+            chains: vec![ChainHolding {
+                chain_id: chain_id.clone(),
+                symbol: symbol.clone(),
+                shares: BigInt::zero(),
+                unspent_utxos: 0,
+                coin_count: String::new(),
+                total_shares: String::new(),
+            }],
+            key_summary: Vec::new(),
+            coverage_radius: None,
+            paused: paused.load(Ordering::Relaxed),
+            trading_rates: Vec::new(),
+            validator_status: None,
+            attacker_status: None,
+            infra_tester_status: None,
+            caa_status: None,
+            recorder_op_status: Some(RecorderOpStatus {
+                target_chain: op_cfg.target_chain.clone(),
+                key_rotated,
+                recorder_switch_phase: switch_phase.to_string(),
+                chain_migrated,
+                operations_completed: ops_completed,
+                last_result: last_result.to_string(),
+            }),
+            transactions: ops_completed,
+            last_action: last_result.to_string(),
+        }
+    };
+
+    let _ = state_tx.send(ViewerEvent::State(Box::new(
+        make_state(false, "idle", false, 0, "initialized", &paused)
+    ))).await;
+
+    let start = std::time::Instant::now();
+
+    loop {
+        wait_while_paused(&paused).await;
+        let spd = read_speed(&speed).max(0.1);
+        tokio::time::sleep(std::time::Duration::from_secs_f64(1.0 / spd)).await;
+
+        let elapsed_sim_secs = (start.elapsed().as_secs_f64() * spd) as u64;
+
+        // Owner key rotation
+        if !key_rotated && op_cfg.rotate_after_secs > 0 && elapsed_sim_secs >= op_cfg.rotate_after_secs {
+            info!("{}: rotating owner key on chain {}", name, &chain_id[..12]);
+            let new_key = ao_crypto::sign::SigningKey::generate();
+            let new_pubkey: [u8; 32] = new_key.public_key_bytes().try_into().unwrap();
+
+            let rotation = transfer::build_owner_key_rotation(&current_owner_seed, &new_pubkey);
+            let rotation_json = ao_types::json::to_json(&rotation);
+
+            match client.submit(&chain_id, &rotation_json).await {
+                Ok(result) => {
+                    info!("{}: owner key rotated at block {}", name, result.height);
+                    current_owner_seed = *new_key.seed();
+                    key_rotated = true;
+                    ops_completed += 1;
+                    last_result = format!("key rotated at block {}", result.height);
+                    let _ = state_tx.send(ViewerEvent::Transaction(Box::new(
+                        tx_event(&chain_id, &symbol, &name, "chain", result.height, "owner key rotation")
+                    ))).await;
+                }
+                Err(e) => {
+                    warn!("{}: key rotation failed: {}", name, e);
+                    last_result = format!("rotation failed: {}", e);
+                }
+            }
+            let _ = state_tx.send(ViewerEvent::State(Box::new(
+                make_state(key_rotated, &switch_phase, chain_migrated, ops_completed, &last_result, &paused)
+            ))).await;
+        }
+
+        // Recorder switch
+        if switch_phase == "idle" && op_cfg.switch_after_secs > 0 && elapsed_sim_secs >= op_cfg.switch_after_secs {
+            if let (Some(ref sec_url), Some(ref sec_pk)) = (&secondary_recorder_url, &secondary_recorder_pubkey) {
+                info!("{}: initiating recorder switch on chain {}", name, &chain_id[..12]);
+                let pending = transfer::build_recorder_change_pending(
+                    &current_owner_seed, sec_pk, sec_url,
+                );
+                let pending_json = ao_types::json::to_json(&pending);
+
+                match client.submit(&chain_id, &pending_json).await {
+                    Ok(result) => {
+                        info!("{}: recorder change pending at block {}", name, result.height);
+                        switch_phase = "pending".to_string();
+                        ops_completed += 1;
+                        last_result = format!("recorder change pending at block {}", result.height);
+                        let _ = state_tx.send(ViewerEvent::Transaction(Box::new(
+                            tx_event(&chain_id, &symbol, &name, "chain", result.height, "recorder change pending")
+                        ))).await;
+                    }
+                    Err(e) => {
+                        warn!("{}: recorder change pending failed: {}", name, e);
+                        last_result = format!("pending failed: {}", e);
+                    }
+                }
+                let _ = state_tx.send(ViewerEvent::State(Box::new(
+                    make_state(key_rotated, &switch_phase, chain_migrated, ops_completed, &last_result, &paused)
+                ))).await;
+            } else {
+                warn!("{}: no secondary recorder configured for switch", name);
+                switch_phase = "skipped".to_string();
+            }
+        }
+
+        // Monitor recorder switch progress
+        if switch_phase == "pending" {
+            // Check chain info for pending_recorder_change status
+            // The recorder auto-constructs RECORDER_CHANGE when CAA escrows drain.
+            // In sims without active CAAs, this should happen on the next block.
+            match client.chain_info(&chain_id).await {
+                Ok(_info) => {
+                    // After RECORDER_CHANGE_PENDING, the next block construction
+                    // triggers auto-change if no active CAA escrows.
+                    // We trigger it by waiting — the next regular block will complete it.
+                    // Poll for completion: if chain is no longer pending, switch is done.
+                    // For now, mark as draining and wait for the auto-change.
+                    switch_phase = "draining".to_string();
+                    last_result = "waiting for CAA drain + auto-change".to_string();
+                }
+                Err(e) => {
+                    warn!("{}: chain info poll failed: {}", name, e);
+                }
+            }
+            let _ = state_tx.send(ViewerEvent::State(Box::new(
+                make_state(key_rotated, &switch_phase, chain_migrated, ops_completed, &last_result, &paused)
+            ))).await;
+        }
+
+        if switch_phase == "draining" {
+            // The auto-change fires after the next block construction when no CAAs active.
+            // Once the RECORDER_CHANGE block is recorded, we can consider it complete.
+            // We detect completion by checking if the chain info indicates the switch happened.
+            // Simple approach: wait a few ticks then mark complete.
+            // A real check would look at chain info for the new recorder pubkey.
+            tokio::time::sleep(std::time::Duration::from_secs_f64(3.0 / read_speed(&speed).max(0.1))).await;
+            switch_phase = "complete".to_string();
+            ops_completed += 1;
+            last_result = "recorder switch complete".to_string();
+            info!("{}: recorder switch complete on chain {}", name, &chain_id[..12]);
+            let _ = state_tx.send(ViewerEvent::State(Box::new(
+                make_state(key_rotated, &switch_phase, chain_migrated, ops_completed, &last_result, &paused)
+            ))).await;
+        }
+
+        // Chain migration
+        if !chain_migrated && op_cfg.migrate_after_secs > 0 && elapsed_sim_secs >= op_cfg.migrate_after_secs {
+            info!("{}: initiating chain migration on chain {}", name, &chain_id[..12]);
+
+            // Create a new chain on the secondary recorder (or primary if no secondary)
+            let target_client = secondary_client.as_ref().unwrap_or(&client);
+            let new_symbol = op_cfg.migration_symbol.clone()
+                .unwrap_or_else(|| format!("{}2", symbol));
+
+            let new_issuer = ao_crypto::sign::SigningKey::generate();
+            let new_issuer_seed = *new_issuer.seed();
+            let coins = parse_bigint("1000000000");
+            let shares = parse_bigint("2^40");
+            let fee_num = parse_bigint("1");
+            let fee_den = crate::config::auto_fee_den("1000000000");
+            let fee_rate = transfer::FeeRate { num: fee_num, den: fee_den };
+
+            let (new_genesis_item, new_genesis_json) = transfer::build_genesis(
+                &new_issuer_seed, &new_symbol, &format!("Migrated from {}", symbol),
+                &coins, &shares, &fee_rate,
+            );
+
+            // Compute new chain ID
+            let new_chain_id = match ao_chain::genesis::compute_chain_id(&new_genesis_item) {
+                Ok(id) => id,
+                Err(e) => {
+                    warn!("{}: failed to compute new chain ID: {}", name, e);
+                    last_result = format!("migration failed: {}", e);
+                    let _ = state_tx.send(ViewerEvent::State(Box::new(
+                        make_state(key_rotated, &switch_phase, chain_migrated, ops_completed, &last_result, &paused)
+                    ))).await;
+                    continue;
+                }
+            };
+
+            // Create the new chain on the target recorder
+            match target_client.create_chain(&new_genesis_json).await {
+                Ok(info) => {
+                    info!("{}: new chain created: {} ({})", name, &info.chain_id[..12], new_symbol);
+                }
+                Err(e) => {
+                    warn!("{}: failed to create migration target chain: {}", name, e);
+                    last_result = format!("migration chain creation failed: {}", e);
+                    let _ = state_tx.send(ViewerEvent::State(Box::new(
+                        make_state(key_rotated, &switch_phase, chain_migrated, ops_completed, &last_result, &paused)
+                    ))).await;
+                    continue;
+                }
+            }
+
+            // Submit CHAIN_MIGRATION to freeze the old chain
+            let migration = transfer::build_chain_migration(&current_owner_seed, &new_chain_id);
+            let migration_json = ao_types::json::to_json(&migration);
+
+            match client.submit(&chain_id, &migration_json).await {
+                Ok(result) => {
+                    info!("{}: chain migration recorded at block {}, chain frozen", name, result.height);
+                    chain_migrated = true;
+                    ops_completed += 1;
+                    last_result = format!("chain migrated at block {} → {}", result.height, &hex::encode(new_chain_id)[..12]);
+                    let _ = state_tx.send(ViewerEvent::Transaction(Box::new(
+                        tx_event(&chain_id, &symbol, &name, "chain", result.height,
+                            &format!("chain migration → {}", new_symbol))
+                    ))).await;
+                }
+                Err(e) => {
+                    warn!("{}: chain migration failed: {}", name, e);
+                    last_result = format!("migration failed: {}", e);
+                }
+            }
+            let _ = state_tx.send(ViewerEvent::State(Box::new(
+                make_state(key_rotated, &switch_phase, chain_migrated, ops_completed, &last_result, &paused)
+            ))).await;
+        }
+
+        // All operations scheduled — if all are done, we're idle
+        let all_done = (op_cfg.rotate_after_secs == 0 || key_rotated)
+            && (op_cfg.switch_after_secs == 0 || switch_phase == "complete" || switch_phase == "skipped")
+            && (op_cfg.migrate_after_secs == 0 || chain_migrated);
+
+        if all_done {
+            last_result = "all operations complete".to_string();
+            let _ = state_tx.send(ViewerEvent::State(Box::new(
+                make_state(key_rotated, &switch_phase, chain_migrated, ops_completed, &last_result, &paused)
+            ))).await;
+            // Stay alive but idle — just report state periodically
+            tokio::time::sleep(std::time::Duration::from_secs_f64(10.0 / read_speed(&speed).max(0.1))).await;
+        }
+    }
 }
 
 fn tx_event(

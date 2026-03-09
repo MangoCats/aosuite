@@ -27,7 +27,8 @@ rumqttc = "0.24"
 num-bigint = "0.4"
 rusqlite = { version = "0.35", features = ["bundled"] }
 num-traits = "0.2"
-reqwest = { version = "0.12", features = ["json"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+futures-util = "0.3"
 anyhow = "1"
 thiserror = "2"
 tracing = "0.1"

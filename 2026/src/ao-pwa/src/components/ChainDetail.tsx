@@ -7,6 +7,10 @@ import {
   parseCredentialRefs, deduplicateCredentials,
   type CredentialRefInfo,
 } from '../core/credentialIssue.ts';
+import { RecorderIdentity } from './RecorderIdentity.tsx';
+import { OwnerKeyManager } from './OwnerKeyManager.tsx';
+import { RecorderSwitch } from './RecorderSwitch.tsx';
+import { ChainMigrationBanner } from './ChainMigrationBanner.tsx';
 
 export function ChainDetail() {
   const { recorderUrl, selectedChainId, chainInfo, setChainInfo } = useStore();
@@ -82,6 +86,7 @@ export function ChainDetail() {
 
   return (
     <div style={{ padding: 16 }}>
+      <ChainMigrationBanner />
       <h2 style={{ fontSize: 16 }}>{chainInfo.symbol}</h2>
       <table style={{ borderCollapse: 'collapse', fontSize: 14 }}>
         <tbody>
@@ -110,6 +115,9 @@ export function ChainDetail() {
         </div>
       )}
       <BlobPolicyDisplay policy={blobPolicy} />
+      <RecorderIdentity />
+      <OwnerKeyManager />
+      <RecorderSwitch />
       {(hasValidators || hasCredentials) && (
         <TrustIndicator
           validators={chainInfo.validators ?? []}

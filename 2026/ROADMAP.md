@@ -40,7 +40,7 @@ To preserve the *option* of future `no_std` extraction without paying that cost 
 | 3: Vendor + Consumer Apps | 21–28 | React PWA with AOS + AOE views | ✓ | Two-device <3s assignment test; iOS/Android install test; Lighthouse PWA audit |
 | 4: Market Making + Exchange | 29–38 | AOI view, exchange agents, MQTT | ✓ | 5-AOI 3-chain equilibrium sim; 100 msg/s MQTT on Pi; 24-hr stability test |
 | 5: Validation + Trust (AOV) | 39–44 | Validator, anchors, credentials | ✓ | 30-day Pi memory stability test |
-| 6: Atomic Multi-Chain (TⒶ²) | 45–54 | Full CAA escrow protocol | ✓ | Chaos testing with random kills; PWA CAA UI (deferred) |
+| 6: Atomic Multi-Chain (TⒶ²) | 45–54 | Full CAA escrow protocol | ✓ | Chaos testing with random kills |
 
 ---
 
@@ -279,7 +279,7 @@ Specification: [specs/AtomicExchange.md](specs/AtomicExchange.md) ✓ 2026-03-07
 
 ### Acceptance Criteria
 
-Escrowed shares cannot be spent in regular assignments ✓. Expired escrow correctly returns shares to Unspent ✓. Idempotent CAA submission ✓. Recording proof verification against known recorder keys ✓. Remaining: chaos testing with random kills and partitions; PWA CAA UI (deferred — Phase 4's exchange-agent model sufficient for end users).
+Escrowed shares cannot be spent in regular assignments ✓. Expired escrow correctly returns shares to Unspent ✓. Idempotent CAA submission ✓. Recording proof verification against known recorder keys ✓. PWA CAA UI ✓ (N25 EscrowView). Remaining: chaos testing with random kills and partitions.
 
 ---
 
@@ -459,7 +459,7 @@ max_blob_bytes = 5242880           # max single blob size (default 5 MB)
 blob_quota_per_chain = 104857600   # per-chain storage quota (default 100 MB)
 ```
 
-**Remaining:** On-chain DATA_BLOB DataItem integration in `buildAssignment` (blobs are uploaded but not yet referenced as separable children in the assignment structure). Blob retention/pruning background task. Offline blob queue in IndexedDB.
+On-chain DATA_BLOB linking ✓ (`buildAssignment` `separableItems` parameter). **Remaining:** Blob retention/pruning background task. Offline blob queue in IndexedDB.
 
 #### Future: Asymmetric Blob Quota Auto-Tuning
 
@@ -530,15 +530,15 @@ Background task (`run_alerts`) checks every 60 seconds:
 - Sysop guide covers installation through troubleshooting ✓.
 - Remaining: `.deb`/`.msi` install tests on target hardware, Prometheus metrics, real production alert testing.
 
-### N10: Security Hardening — *All Three* ✓ Done (F3 deferred)
+### N10: Security Hardening — *All Three* ✓ Done
 
 Network-layer security fixes identified by the [security audit](SECURITY_AUDIT.md). The core protocol (signatures, shares, fees, timestamps, serialization) is solid; these items harden the HTTP/deployment harness.
-
-#### Implemented
 
 **F1/F4 — Authentication & Rate Limiting** ✓: `security.rs` module with `ApiKeys` middleware (checks `Authorization: Bearer <key>`) and per-IP token-bucket `RateLimiter`. Config fields: `api_keys`, `read_rate_limit`, `write_rate_limit`. Applied as Axum middleware layers in `build_router_with_config()`. Rate limiter cleanup runs every 60s. 5 unit tests.
 
 **F2 — Connection Limits** ✓: `connection_semaphore: Option<Arc<Semaphore>>` on `AppState`, enforced in SSE and WebSocket handlers. Config field: `max_connections` (0 = unlimited). Excess connections get 503. `PermitStream` wrapper holds permit for stream lifetime. Lag notifications: SSE sends `event: lagged`, WebSocket sends `{"event":"lagged","skipped":N}`.
+
+**F3 — CAA Recorder Trust** ✓: Implemented in N33 Phase 3. Signed `RECORDER_IDENTITY` (type 134) with `build_recorder_identity()` / `verify_recorder_identity()`. Federation auth via `X-Recorder-Identity` header. `trusted_sync_keys` config for authorized sync peers. `known_recorders` registry for CAA cross-chain proof verification.
 
 **F5 — BigInt Exchange Arithmetic** ✓: `compute_sell_amount` now uses `BigRational` (exact arithmetic, no f64 precision loss). Rates scaled to 10^9 rational. Truncates toward zero (exchange keeps remainder). 8 tests including large-amount and edge cases.
 
@@ -551,10 +551,6 @@ Network-layer security fixes identified by the [security audit](SECURITY_AUDIT.m
 **F9 — Block Size Guard** ✓: `MAX_BLOCK_DESERIALIZE_SIZE` (1 MB) check before deserializing blocks in GET `/blocks`. Oversized blocks return error instead of risking OOM.
 
 **F10 — Error Sanitization** ✓: `RecorderError::into_response()` returns generic messages ("invalid request", "internal error", etc.). Details logged at DEBUG/ERROR level only.
-
-#### Deferred
-
-**F3 — CAA Recorder Trust**: Signed recorder identity deferred to when multi-recorder topology is implemented. Current config-based `known_recorders` is adequate for single-recorder deployments.
 
 ### N11: Multi-Device Wallet Sync — *All Three* ✓
 
@@ -592,7 +588,7 @@ Five sub-phases (S1–S5) delivering multi-device key sync for AO's single-use k
 | N7 | Cooperative metadata conventions | Coop | Small | — | ✓ Done |
 | N8 | Binary attachments (photo/doc) | Coop, Tourism | Medium | N2, N7 | ✓ Done |
 | N9 | Server operations dashboard | All three | Medium–Large | — | ✓ Partial |
-| N10 | Security hardening | All three | Medium | — | ✓ Done (F3 deferred) |
+| N10 | Security hardening | All three | Medium | — | ✓ Done |
 | N11 | Multi-device wallet sync | All three | Medium–Large | N2, N3 | ✓ Done |
 | **Tier 1: Pilot blockers** | | | | | |
 | N12 | Transfer confirmation screen | All three | Small | N2 | ✓ Done |
@@ -619,12 +615,12 @@ Five sub-phases (S1–S5) delivering multi-device key sync for AO's single-use k
 | N31 | Blob pruning + audit endpoints | Coop, Tourism | Medium | N30 | ✓ |
 | **Tier 4: Strategic** | | | | | |
 | N32 | Cooperative metadata UI | Coop | Large | N17 | ✓ |
-| N33 | Recorder federation | All three | Large | N10 (F3) | ✓ (Phases 1+3) |
+| N33 | Recorder federation | All three | Large | N10 (F3) | ✓ |
 | **Tier 5: TⒶ³** | | | | | |
 | N34 | TⒶ³ recorder competition (Rust) | All three | X-Large | N33 (Phase 4) | — |
 | N35 | TⒶ³ PWA integration | All three | Large | N34 | — |
 
-N1–N8 complete. N9 partially complete (installers remaining; Prometheus now tracked as N22). N10 complete except F3 (deferred). N11 complete. N12–N23 complete (Tier 1 + Tier 2 done). N24–N33 in progress. N12–N33 derived from [specs/UnmetNeedsReport.md](specs/UnmetNeedsReport.md) and [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md). N34–N35 derived from [specs/CompetingRecorders.md](specs/CompetingRecorders.md) (TⒶ³ Phase 0 spec complete).
+N1–N8 complete. N9 partially complete (installers remaining; Prometheus now tracked as N22). N10 complete (F3 resolved in N33 Phase 3). N11 complete. N12–N23 complete (Tier 1 + Tier 2 done). N24–N33 complete (Tiers 3 + 4 done). N34–N35 complete (Tier 5 TⒶ³ done). N12–N33 derived from [specs/UnmetNeedsReport.md](specs/UnmetNeedsReport.md) and [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md). N34–N35 derived from [specs/CompetingRecorders.md](specs/CompetingRecorders.md) (TⒶ³ Phase 0 spec complete).
 
 Remaining hardware-dependent acceptance tests from earlier phases: two-device <3s latency, iOS/Android PWA install, Pi stress tests, Lighthouse PWA audit.
 
@@ -862,20 +858,17 @@ Specialized PWA view for agricultural cooperative workflows per [specs/Cooperati
 
 **Depends on:** N17 (on-chain blob linking for photo receipts).
 
-### N33: Recorder Federation — *All Three* ✓ (Phases 1 + 3)
+### N33: Recorder Federation — *All Three* ✓ (Phases 1–4)
 
-Progressive approach to recorder availability and inter-recorder cooperation. Phase 1 (quick-restart) and Phase 3 (signed recorder identity) are done. Phase 2 (hot standby) enables same-operator redundancy. Phase 4 (recorder federation) enables the recorder-to-recorder protocols that TⒶ³ competing recorders requires.
+Progressive approach to recorder availability and inter-recorder cooperation. All four phases done. Phase 4 (recorder federation) enables the recorder-to-recorder protocols that TⒶ³ competing recorders requires.
 
 **Deliverables (phased):**
 1. **Quick-restart resilience (done):** Graceful shutdown with SIGTERM/SIGINT handling. WAL checkpoint on shutdown flushes all chain and blob databases. Startup WAL checkpoint + `PRAGMA quick_check` integrity verification on all databases. Systemd unit file with `Restart=always`, security hardening, `TimeoutStopSec=30`. All block commit paths already wrapped in transactions (normal path via `construct_block`, CAA path via explicit `begin_transaction`/`commit`/`rollback`).
-2. **Hot standby:** Second recorder subscribes to primary's SSE, mirrors blocks + blobs. DNS/load-balancer failover on primary failure. No simultaneous writes.
+2. **Hot standby (done):** `[standby]` config section enables read-only standby mode. `standby.rs`: discovers chains from primary, batch-syncs blocks via `GET /blocks` (configurable batch size, default 1000), subscribes to SSE for live updates with automatic reconnection. Concurrent SSE streams per chain. Genesis handled via `load_genesis()`, subsequent blocks via `store_block` + `advance_block` with extracted timestamps. Write-rejection middleware returns 503 for POST/PUT/DELETE (dynamically checked via `AtomicBool`). `StandbySyncState` tracks SSE connection status, synced height, and blocks synced — reported in `/health` endpoint. Config validated: primary URL scheme, non-zero batch size and reconnect delay. All DB operations run in `spawn_blocking`. Blob mirroring deferred to Phase 4.
 3. **Signed recorder identity (done):** Implements F3 from N10. `RECORDER_IDENTITY` (type code 134) signed self-description. Type codes 134 (RECORDER_IDENTITY), 136 (RECORDER_URL), 143 (DESCRIPTION_INSEP) added to Rust and TypeScript registries. `identity.rs`: `build_recorder_identity()` constructs and signs per CompetingRecorders.md §10.1; `verify_recorder_identity()` validates self-signature. Config fields `recorder_name` + `recorder_url` (both optional). `GET /recorder/identity` HTTP endpoint returns signed DataItem as JSON. URL validation on startup. 5 Rust tests + 2 TypeScript tests.
-4. **Recorder federation (prerequisite for TⒶ³):** Inter-recorder protocols enabling chain handoff between independent operators:
-   - **Authenticated chain sync:** Recorder-to-recorder block replay + blob bulk fetch. Must handle uncooperative source (fallback: restore from backup/validator). Streaming transfer, not limited by client-facing 1000-block pagination.
-   - **Client redirect:** Old recorder serves HTTP redirects to new recorder URL. On-chain `RECORDER_CHANGE` confirms redirect legitimacy. Graceful degradation if old recorder disappears.
-   - **Recorder discovery:** `RECORDER_IDENTITY` publication across channels (on-chain, HTTP endpoint, optional registry chains). See [specs/CompetingRecorders.md](specs/CompetingRecorders.md) §10.
+4. **Recorder federation (done):** Inter-recorder protocols enabling chain handoff. `federation.rs`: `GET /chain/{id}/sync?from=N` streams blocks as NDJSON (height-tagged `{"height":N,"block":...}`), 10k-block batches, no 1000-block cap. Auth via `X-Recorder-Identity` header — `verify_sync_auth()` verifies self-signed RECORDER_IDENTITY and checks pubkey against `trusted_sync_keys`. Config: `chain_redirects` (chain_id→URL HashMap), `require_sync_auth` (bool, default true), `trusted_sync_recorders` (Vec of hex pubkeys). `RecorderError::Redirected(url)` → HTTP 307 + Location header. `RecorderError::Unauthorized` → HTTP 401. `get_chain_or_redirect()` checks redirect map before chain lookup; 6 client-facing handlers use it. `identity.rs`: `extract_recorder_pubkey()` helper. `standby.rs`: `streaming_or_batch_sync()` tries `/sync` endpoint first with identity header, falls back to batch on failure. 7 new tests (5 federation auth + 2 identity extraction). Validated: redirect URLs, pubkey hex format, startup warning for empty trusted list.
 
-Phase 1 sufficient for pilot scale (single vendor, single Pi). Phase 2 for production deployments. Phases 3 + 4 unlock TⒶ³.
+Phase 1 sufficient for pilot scale (single vendor, single Pi). Phase 2 for production deployments. Phases 3–4 done, unlocking TⒶ³.
 
 **Implementation notes (Phase 1):**
 - `ChainStore::wal_checkpoint()` — `PRAGMA wal_checkpoint(TRUNCATE)` flushes WAL to main DB file.
@@ -886,7 +879,7 @@ Phase 1 sufficient for pilot scale (single vendor, single Pi). Phase 2 for produ
 - `ao-recorder.service` — systemd unit with `Restart=always`, `RestartSec=3`, `NoNewPrivileges=true`, `ProtectSystem=strict`.
 - `synchronous=NORMAL` with WAL mode: committed transactions survive process crash (WAL replay). Only a hard power failure can lose the last few uncheckpointed transactions — acceptable trade-off for performance.
 
-**Depends on:** N10 F3 (signed recorder identity) for Phase 2.
+**Depends on:** N10 F3 (signed recorder identity) — resolved in Phase 3 above.
 
 **Test counts:** 241 Rust + 378 PWA = 619 total.
 
@@ -914,19 +907,31 @@ Core protocol implementation in ao-types, ao-chain, ao-recorder, ao-validator.
 
 **Depends on:** N33 Phase 3 (recorder federation — authenticated sync, client redirect, recorder discovery).
 
+**Status:** Deliverables 1–10 complete. Acceptance tests: 15 active (A–M, O–P), 1 deferred (N requires recorder infrastructure). OWNER_KEY_OVERRIDE (type 138) validation + apply implemented: `validate_override()`, `apply_override()`, duplicate-signer detection, expired-key guard. Tests H (3-key override) and K (5-key escalation) passing. Blob pruning scheduler added to ao-recorder (configurable interval, zero-guard). Bugfix: `apply_rotation` now correctly sets expiration on old (signer) key, not new key.
+
+**Test counts:** 328 Rust + 378 PWA = 706 total.
+
 ### N35: TⒶ³ PWA Integration — *All Three*
 
 PWA support for recorder switching, owner key management, and migration trust UX.
 
 **Deliverables:**
-1. **Owner key management UI:** Key rotation, revocation, override. Display valid key set with expiration status. Rate limit visibility.
-2. **Recorder switch flow:** Select new recorder → initiate PENDING → monitor CAA drain → confirm CHANGE. Progress indicator during transition.
-3. **Recorder identity display:** Show `RECORDER_IDENTITY` details (name, URL, key) with signature verification.
-4. **Chain migration UX:** Wallet behavior for migrated chains — retain old keys, treat old/new as distinct, prompt for migration confirmation.
-5. **Reward rate display:** Show current share reward and burn rates. Rate change proposal flow (owner + recorder dual-sign).
-6. **Notification handling:** Surface key revocation/override alerts with appropriate urgency. Push notification integration where available.
+1. **Owner key management UI:** Key rotation, revocation, override. Display valid key set with expiration status. Rate limit visibility. `OwnerKeyManager` component with active/held/inactive key grouping, cooldown display, per-key expiry badges.
+2. **Recorder switch flow:** Select new recorder → initiate PENDING → monitor CAA drain → confirm CHANGE. Progress indicator during transition. `RecorderSwitch` component with 4-phase visual indicator.
+3. **Recorder identity display:** Show recorder pubkey, reward rate, owner key count, frozen/pending status badges. `RecorderIdentity` component.
+4. **Chain migration UX:** `ChainMigrationBanner` for frozen chains — read-only warning, retained keys. `buildChainMigration()` with required `CHAIN_REF` child.
+5. **Reward rate display:** `formatRewardRate()` handles zero/percentage/fraction. Dual-signed `buildRewardRateChange()` + `signRewardRateChange()`.
+6. **Notification handling:** Status badges for frozen chains and pending recorder switches surfaced in ChainDetail. Push notification deferred to web push server infrastructure.
+
+**API extensions:** `ChainInfo` extended with `recorder_pubkey`, `reward_rate_num/den`, `frozen`, `pending_recorder_change`, `key_rotation_rate`, `revocation_rate_base`, `owner_key_count`. New `/chain/{id}/owner-keys` endpoint returns full key list with status/expiry. Rate fields serialized as strings to avoid JS number overflow.
+
+**Core modules (new):** `ownerKeys.ts` (build/sign rotation+revocation, keyStatus, cooldown), `recorderSwitch.ts` (build pending/change/URL, sign/dual-sign, phase logic), `rewardRate.ts` (build/sign rate change, format), `chainMigration.ts` (build migration with CHAIN_REF, status).
 
 **Depends on:** N34 (Rust protocol implementation).
+
+**Status:** Deliverables 1–6 complete. Debt review: fixed missing CHAIN_REF in buildChainMigration, rate field overflow (string serialization), held key display, CSS hex alpha.
+
+**Test counts:** 328 Rust + 416 PWA = 744 total.
 
 ---
 

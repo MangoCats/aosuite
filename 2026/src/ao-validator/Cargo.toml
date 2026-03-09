@@ -14,6 +14,9 @@ path = "src/main.rs"
 [dependencies]
 ao-types = { path = "../ao-types" }
 ao-crypto = { path = "../ao-crypto" }
+ao-chain = { path = "../ao-chain" }
+num-bigint = "0.4"
+num-rational = "0.4"
 reqwest = { version = "0.12", features = ["json"] }
 rusqlite = { version = "0.35", features = ["bundled"] }
 axum = "0.8"

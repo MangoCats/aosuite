@@ -22,15 +22,18 @@ use ao_types::timestamp::Timestamp;
 use ao_crypto::sign::SigningKey;
 use ao_chain::store::ChainStore;
 use ao_chain::{genesis, validate, block, caa};
+use num_traits::Zero as _;
 
 pub mod blob;
 pub mod config;
 pub mod dashboard;
+pub mod federation;
 pub mod health;
 pub mod identity;
 pub mod metrics;
 pub mod mqtt;
 pub mod security;
+pub mod standby;
 
 // ── Error type ──────────────────────────────────────────────────────
 
@@ -57,6 +60,10 @@ pub enum RecorderError {
     Internal(String),
     #[error("service unavailable")]
     Unavailable,
+    #[error("unauthorized: {0}")]
+    Unauthorized(String),
+    #[error("chain moved to {0}")]
+    Redirected(String),
 }
 
 impl IntoResponse for RecorderError {
@@ -80,6 +87,14 @@ impl IntoResponse for RecorderError {
                 (StatusCode::BAD_REQUEST, "invalid request")
             }
             RecorderError::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "service unavailable"),
+            RecorderError::Unauthorized(_) => (StatusCode::UNAUTHORIZED, "unauthorized"),
+            RecorderError::Redirected(url) => {
+                return (
+                    StatusCode::TEMPORARY_REDIRECT,
+                    [(axum::http::header::LOCATION, url.as_str())],
+                    Json(ErrorResponse { error: format!("chain moved to {}", url) }),
+                ).into_response();
+            }
         };
         (status, Json(ErrorResponse { error: public_msg.to_string() })).into_response()
     }
@@ -189,6 +204,17 @@ pub struct AppState {
     pub connection_semaphore: Option<Arc<tokio::sync::Semaphore>>,
     /// Cached signed RECORDER_IDENTITY DataItem as JSON. Built at startup if configured.
     pub recorder_identity: Option<serde_json::Value>,
+    /// True when running in hot standby mode (read-only, syncing from primary).
+    pub standby_mode: std::sync::atomic::AtomicBool,
+    /// Standby sync state for health reporting. None when not in standby mode.
+    pub standby_sync: Option<standby::StandbySyncState>,
+    /// Chain redirects: chain_id hex → target recorder base URL.
+    pub chain_redirects: RwLock<HashMap<String, String>>,
+    /// Trusted sync recorder public keys (32-byte arrays).
+    /// Empty + require_sync_auth=false means open access.
+    pub trusted_sync_keys: RwLock<Vec<[u8; 32]>>,
+    /// Whether /chain/{id}/sync requires authentication.
+    pub require_sync_auth: bool,
 }
 
 /// Cached result from polling a validator's GET /validate/{chain_id}.
@@ -224,6 +250,11 @@ impl AppState {
             blob_store: None,
             connection_semaphore: None,
             recorder_identity: None,
+            standby_mode: std::sync::atomic::AtomicBool::new(false),
+            standby_sync: None,
+            chain_redirects: RwLock::new(HashMap::new()),
+            trusted_sync_keys: RwLock::new(Vec::new()),
+            require_sync_auth: true,
         }
     }
 
@@ -241,6 +272,11 @@ impl AppState {
             blob_store: None,
             connection_semaphore: None,
             recorder_identity: None,
+            standby_mode: std::sync::atomic::AtomicBool::new(false),
+            standby_sync: None,
+            chain_redirects: RwLock::new(HashMap::new()),
+            trusted_sync_keys: RwLock::new(Vec::new()),
+            require_sync_auth: true,
         }
     }
 
@@ -278,6 +314,18 @@ impl AppState {
             .get(chain_id)
             .cloned()
             .ok_or(RecorderError::ChainNotFound)
+    }
+
+    /// Get a chain by ID, returning Redirected if the chain has been migrated.
+    pub fn get_chain_or_redirect(&self, chain_id: &str) -> Result<Arc<ChainState>, RecorderError> {
+        // Check redirect map first
+        let redirects = self.chain_redirects.read()
+            .map_err(|e| RecorderError::LockPoisoned(format!("chain_redirects read: {}", e)))?;
+        if let Some(target_url) = redirects.get(chain_id) {
+            return Err(RecorderError::Redirected(target_url.clone()));
+        }
+        drop(redirects);
+        self.get_chain_or_err(chain_id)
     }
 
     /// Checkpoint all WAL databases (chains + blob store).
@@ -369,7 +417,7 @@ fn current_wall_timestamp() -> Result<i64, RecorderError> {
 
 // ── Data types ──────────────────────────────────────────────────────
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct BlockInfo {
     pub height: u64,
     pub hash: String,
@@ -393,6 +441,34 @@ struct ChainInfo {
     next_seq_id: u64,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     validators: Vec<ValidatorEndorsement>,
+    // TⒶ³ fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    recorder_pubkey: Option<String>,
+    reward_rate_num: String,
+    reward_rate_den: String,
+    frozen: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pending_recorder_change: Option<PendingRecorderChangeInfo>,
+    key_rotation_rate: String,
+    revocation_rate_base: String,
+    owner_key_count: u64,
+}
+
+#[derive(Serialize)]
+struct PendingRecorderChangeInfo {
+    new_recorder_pubkey: String,
+    new_recorder_url: String,
+    pending_height: u64,
+}
+
+#[derive(Serialize)]
+struct OwnerKeyInfo {
+    pubkey: String,
+    added_height: u64,
+    added_timestamp: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    expires_at: Option<i64>,
+    status: String,
 }
 
 #[derive(Serialize)]
@@ -460,10 +536,12 @@ pub fn build_router_with_config(state: Arc<AppState>, cfg: &config::Config) -> R
         .route("/chain/{id}/caa/submit", axum::routing::post(caa_submit))
         .route("/chain/{id}/caa/bind", axum::routing::post(caa_bind))
         .route("/chain/{id}/caa/{caa_hash}", get(caa_status))
+        .route("/chain/{id}/owner-keys", get(get_owner_keys))
         .route("/chain/{id}/profile", get(get_vendor_profile).post(set_vendor_profile))
         .route("/chain/{id}/blob/{hash}", get(blob::get_blob).head(blob::head_blob))
         .route("/chain/{id}/blobs/manifest", get(blob::blob_manifest))
         .route("/chain/{id}/blob-policy", get(get_blob_policy))
+        .route("/chain/{id}/sync", get(federation::sync_blocks))
         .route("/admin/recorder-keys", get(list_recorder_keys).post(update_recorder_key))
         .route("/recorder/identity", get(get_recorder_identity))
         .layer(DefaultBodyLimit::max(MAX_BODY_SIZE));
@@ -481,7 +559,16 @@ pub fn build_router_with_config(state: Arc<AppState>, cfg: &config::Config) -> R
     let mut app: Router = standard_routes
         .merge(blob_routes)
         .merge(metrics_route)
-        .with_state(state);
+        .with_state(state.clone());
+
+    // Reject writes in standby mode (503 for POST/PUT/DELETE)
+    if state.standby_mode.load(std::sync::atomic::Ordering::Relaxed) {
+        let standby_state = state.clone();
+        app = app.layer(axum::middleware::from_fn(move |req, next| {
+            let s = standby_state.clone();
+            standby_reject_writes(s, req, next)
+        }));
+    }
 
     // Apply rate limiting if configured
     if cfg.write_rate_limit > 0.0 {
@@ -515,6 +602,27 @@ pub fn build_router_with_config(state: Arc<AppState>, cfg: &config::Config) -> R
 
 async fn method_not_allowed() -> StatusCode {
     StatusCode::METHOD_NOT_ALLOWED
+}
+
+/// Middleware: reject POST/PUT/DELETE when in standby mode.
+/// Checks the AtomicBool dynamically so promotion could work without restart.
+async fn standby_reject_writes(
+    state: Arc<AppState>,
+    req: axum::http::Request<axum::body::Body>,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::http::Method;
+    if state.standby_mode.load(std::sync::atomic::Ordering::Relaxed) {
+        match *req.method() {
+            Method::POST | Method::PUT | Method::DELETE => {
+                return (StatusCode::SERVICE_UNAVAILABLE, Json(ErrorResponse {
+                    error: "recorder is in standby mode".to_string(),
+                })).into_response();
+            }
+            _ => {}
+        }
+    }
+    next.run(req).await
 }
 
 // ── Handlers ────────────────────────────────────────────────────────
@@ -603,6 +711,10 @@ async fn create_chain(
     };
 
     let data_dir = state.data_dir.clone();
+    // Extract recorder pubkey + seed before moving blockmaker_key into closure
+    let mut recorder_pk = [0u8; 32];
+    recorder_pk.copy_from_slice(blockmaker_key.public_key_bytes());
+    let blockmaker_seed = *blockmaker_key.seed();
 
     // SQLite work on the blocking pool
     let (store, info, chain_id_hex) = blocking(move || {
@@ -621,6 +733,9 @@ async fn create_chain(
                 .map_err(|e| RecorderError::Internal(e.to_string()))?;
             genesis::load_genesis(&file_store, &genesis_item)
                 .map_err(|e| RecorderError::BadRequest(format!("genesis error: {}", e)))?;
+            // Set recorder pubkey from blockmaker key
+            file_store.set_recorder_pubkey(&recorder_pk)
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
             file_store
         } else {
             let store = ChainStore::open_memory()
@@ -629,6 +744,9 @@ async fn create_chain(
                 .map_err(|e| RecorderError::Internal(e.to_string()))?;
             genesis::load_genesis(&store, &genesis_item)
                 .map_err(|e| RecorderError::BadRequest(format!("genesis error: {}", e)))?;
+            // Set recorder pubkey from blockmaker key
+            store.set_recorder_pubkey(&recorder_pk)
+                .map_err(|e| RecorderError::Internal(e.to_string()))?;
             store
         };
 
@@ -637,6 +755,8 @@ async fn create_chain(
             .ok_or(RecorderError::ChainNotLoaded)?;
         let chain_id_hex = hex::encode(meta.chain_id);
 
+        let owner_key_count = store.count_valid_owner_keys(0)
+            .map_err(|e| RecorderError::Internal(e.to_string()))?;
         let info = ChainInfo {
             chain_id: chain_id_hex.clone(),
             symbol: meta.symbol,
@@ -649,12 +769,27 @@ async fn create_chain(
             expiry_mode: meta.expiry_mode,
             next_seq_id: meta.next_seq_id,
             validators: Vec::new(),
+            recorder_pubkey: meta.recorder_pubkey.map(|k| hex::encode(k)),
+            reward_rate_num: meta.reward_rate_num.to_string(),
+            reward_rate_den: meta.reward_rate_den.to_string(),
+            frozen: meta.frozen,
+            pending_recorder_change: meta.pending_recorder_change.map(|prc| {
+                PendingRecorderChangeInfo {
+                    new_recorder_pubkey: hex::encode(prc.new_recorder_pubkey),
+                    new_recorder_url: prc.new_recorder_url,
+                    pending_height: prc.pending_height,
+                }
+            }),
+            key_rotation_rate: meta.key_rotation_rate.to_string(),
+            revocation_rate_base: meta.revocation_rate_base.to_string(),
+            owner_key_count,
         };
 
         Ok((store, info, chain_id_hex))
     }).await?;
 
     // Atomic check-and-insert under a single write lock
+    let blockmaker_key = SigningKey::from_seed(&blockmaker_seed);
     let chain_state = Arc::new(ChainState::new(store, blockmaker_key));
     let mut chains = state.chains.write()
         .map_err(|e| RecorderError::LockPoisoned(format!("chains write: {}", e)))?;
@@ -672,7 +807,7 @@ async fn chain_info(
     State(state): State<Arc<AppState>>,
     Path(chain_id_hex): Path<String>,
 ) -> Result<Json<ChainInfo>, RecorderError> {
-    let chain = state.get_chain_or_err(&chain_id_hex)?;
+    let chain = state.get_chain_or_redirect(&chain_id_hex)?;
 
     // Snapshot validator cache for this chain
     let validators = state.validator_cache.read()
@@ -686,6 +821,11 @@ async fn chain_info(
         let meta = store.load_chain_meta()
             .map_err(|e| RecorderError::Internal(e.to_string()))?
             .ok_or(RecorderError::ChainNotLoaded)?;
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as i64;
+        let now_ts = ao_types::timestamp::Timestamp::from_unix_seconds(now_secs).raw();
+        let owner_key_count = store.count_valid_owner_keys(now_ts)
+            .map_err(|e| RecorderError::Internal(e.to_string()))?;
         Ok(ChainInfo {
             chain_id: hex::encode(meta.chain_id),
             symbol: meta.symbol,
@@ -698,9 +838,44 @@ async fn chain_info(
             expiry_mode: meta.expiry_mode,
             next_seq_id: meta.next_seq_id,
             validators,
+            recorder_pubkey: meta.recorder_pubkey.map(|k| hex::encode(k)),
+            reward_rate_num: meta.reward_rate_num.to_string(),
+            reward_rate_den: meta.reward_rate_den.to_string(),
+            frozen: meta.frozen,
+            pending_recorder_change: meta.pending_recorder_change.map(|prc| {
+                PendingRecorderChangeInfo {
+                    new_recorder_pubkey: hex::encode(prc.new_recorder_pubkey),
+                    new_recorder_url: prc.new_recorder_url,
+                    pending_height: prc.pending_height,
+                }
+            }),
+            key_rotation_rate: meta.key_rotation_rate.to_string(),
+            revocation_rate_base: meta.revocation_rate_base.to_string(),
+            owner_key_count,
         })
     }).await?;
     Ok(Json(info))
+}
+
+/// GET /chain/{id}/owner-keys — list all owner keys with status.
+async fn get_owner_keys(
+    State(state): State<Arc<AppState>>,
+    Path(chain_id_hex): Path<String>,
+) -> Result<Json<Vec<OwnerKeyInfo>>, RecorderError> {
+    let chain = state.get_chain_or_redirect(&chain_id_hex)?;
+    let keys = blocking(move || {
+        let store = lock_store(&chain)?;
+        let rows = store.get_all_owner_keys()
+            .map_err(|e| RecorderError::Internal(e.to_string()))?;
+        Ok(rows.into_iter().map(|r| OwnerKeyInfo {
+            pubkey: hex::encode(r.pubkey),
+            added_height: r.added_height,
+            added_timestamp: r.added_timestamp,
+            expires_at: r.expires_at,
+            status: r.status,
+        }).collect::<Vec<_>>())
+    }).await?;
+    Ok(Json(keys))
 }
 
 /// GET /chain/{id}/utxo/{seq_id}
@@ -708,7 +883,7 @@ async fn get_utxo(
     State(state): State<Arc<AppState>>,
     Path((chain_id_hex, seq_id)): Path<(String, u64)>,
 ) -> Result<Json<UtxoInfo>, RecorderError> {
-    let chain = state.get_chain_or_err(&chain_id_hex)?;
+    let chain = state.get_chain_or_redirect(&chain_id_hex)?;
     let info = blocking(move || {
         let store = lock_store(&chain)?;
         let utxo = store.get_utxo(seq_id)
@@ -732,7 +907,7 @@ async fn get_blocks(
     Path(chain_id_hex): Path<String>,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> Result<Json<Vec<serde_json::Value>>, RecorderError> {
-    let chain = state.get_chain_or_err(&chain_id_hex)?;
+    let chain = state.get_chain_or_redirect(&chain_id_hex)?;
     let from: u64 = params.get("from").and_then(|s| s.parse().ok()).unwrap_or(0);
     let requested_to: Option<u64> = params.get("to").and_then(|s| s.parse().ok());
 
@@ -779,19 +954,25 @@ async fn submit_assignment(
     // Parse JSON on the async side (CPU-only, no blocking I/O)
     let json_value: serde_json::Value = serde_json::from_str(&body)
         .map_err(|e| RecorderError::BadRequest(format!("invalid JSON: {}", e)))?;
-    let authorization = ao_json::from_json(&json_value)
+    let submitted_item = ao_json::from_json(&json_value)
         .map_err(|e| RecorderError::BadRequest(format!("invalid DataItem: {}", e)))?;
 
     let wall_ts = current_wall_timestamp()?;
 
-    let chain = state.get_chain_or_err(&chain_id_hex)?;
-
-    // Collect blob sizes for pre-substitution fee validation.
-    // Walk the assignment's SHA256 children and look up matching blobs.
-    let blob_sizes = collect_blob_sizes(&state, &chain_id_hex, &authorization);
+    let chain = state.get_chain_or_redirect(&chain_id_hex)?;
 
     let submit_start = std::time::Instant::now();
     let chain_id_for_metrics = chain_id_hex.clone();
+
+    // Route based on submitted DataItem type code
+    let item_type = submitted_item.type_code;
+
+    // Collect blob sizes only for regular assignments
+    let blob_sizes = if item_type == ao_types::typecode::AUTHORIZATION {
+        collect_blob_sizes(&state, &chain_id_hex, &submitted_item)
+    } else {
+        std::collections::HashMap::new()
+    };
 
     // All SQLite work runs on the blocking pool
     let info = blocking(move || {
@@ -800,19 +981,126 @@ async fn submit_assignment(
             .map_err(|e| RecorderError::Internal(e.to_string()))?
             .ok_or(RecorderError::ChainNotLoaded)?;
 
+        // Frozen chains reject all submissions
+        if meta.frozen {
+            return Err(RecorderError::BadRequest(
+                "chain is frozen (migrated) — no further blocks accepted".into()));
+        }
+
         // Ensure block timestamp is strictly greater than previous block.
-        // Wall clock has second resolution; multiple submissions within the
-        // same second need monotonically increasing timestamps.
         let current_ts = wall_ts.max(meta.last_block_timestamp + 1);
 
-        let validated = validate::validate_assignment(&store, &meta, &authorization, current_ts, &blob_sizes)
-            .map_err(|e| RecorderError::BadRequest(e.to_string()))?;
+        let constructed = match item_type {
+            ao_types::typecode::AUTHORIZATION => {
+                let validated = validate::validate_assignment(
+                    &store, &meta, &submitted_item, current_ts, &blob_sizes,
+                ).map_err(|e| RecorderError::BadRequest(e.to_string()))?;
 
-        let constructed = block::construct_block(
-            &store, &meta, &chain.blockmaker_key,
-            vec![validated],
-            current_ts,
-        ).map_err(|e| RecorderError::Internal(e.to_string()))?;
+                // Generate a fresh one-time key for recorder reward if needed
+                let reward_pubkey = if !validated.reward_shares.is_zero() {
+                    let reward_key = ao_crypto::sign::SigningKey::generate();
+                    let pk_bytes = reward_key.public_key_bytes();
+                    let mut pk = [0u8; 32];
+                    pk.copy_from_slice(pk_bytes);
+                    Some(pk)
+                } else {
+                    None
+                };
+
+                block::construct_block(
+                    &store, &meta, &chain.blockmaker_key,
+                    vec![validated],
+                    current_ts,
+                    reward_pubkey,
+                ).map_err(|e| RecorderError::Internal(e.to_string()))?
+            }
+            ao_types::typecode::OWNER_KEY_ROTATION => {
+                let validated = ao_chain::owner_keys::validate_rotation(
+                    &store, &meta, &submitted_item, current_ts,
+                ).map_err(|e| RecorderError::BadRequest(e.to_string()))?;
+
+                block::construct_owner_key_block(
+                    &store, &meta, &chain.blockmaker_key,
+                    block::OwnerKeyOp::Rotation(validated),
+                    current_ts,
+                ).map_err(|e| RecorderError::Internal(e.to_string()))?
+            }
+            ao_types::typecode::OWNER_KEY_REVOCATION => {
+                let validated = ao_chain::owner_keys::validate_revocation(
+                    &store, &meta, &submitted_item, current_ts,
+                ).map_err(|e| RecorderError::BadRequest(e.to_string()))?;
+
+                block::construct_owner_key_block(
+                    &store, &meta, &chain.blockmaker_key,
+                    block::OwnerKeyOp::Revocation(validated),
+                    current_ts,
+                ).map_err(|e| RecorderError::Internal(e.to_string()))?
+            }
+            ao_types::typecode::REWARD_RATE_CHANGE => {
+                let validated = ao_chain::reward_rate::validate_reward_rate_change(
+                    &store, &meta, &submitted_item, current_ts,
+                ).map_err(|e| RecorderError::BadRequest(e.to_string()))?;
+
+                block::construct_reward_rate_change_block(
+                    &store, &meta, &chain.blockmaker_key,
+                    validated,
+                    current_ts,
+                ).map_err(|e| RecorderError::Internal(e.to_string()))?
+            }
+            ao_types::typecode::RECORDER_CHANGE_PENDING => {
+                let validated = ao_chain::recorder_switch::validate_pending(
+                    &store, &meta, &submitted_item, current_ts,
+                ).map_err(|e| RecorderError::BadRequest(e.to_string()))?;
+
+                block::construct_recorder_switch_block(
+                    &store, &meta, &chain.blockmaker_key,
+                    block::RecorderSwitchOp::Pending(validated),
+                    current_ts,
+                ).map_err(|e| RecorderError::Internal(e.to_string()))?
+            }
+            ao_types::typecode::RECORDER_CHANGE => {
+                let validated = ao_chain::recorder_switch::validate_change(
+                    &store, &meta, &submitted_item, current_ts,
+                ).map_err(|e| RecorderError::BadRequest(e.to_string()))?;
+
+                block::construct_recorder_switch_block(
+                    &store, &meta, &chain.blockmaker_key,
+                    block::RecorderSwitchOp::Change(validated),
+                    current_ts,
+                ).map_err(|e| RecorderError::Internal(e.to_string()))?
+            }
+            ao_types::typecode::RECORDER_URL_CHANGE => {
+                let validated = ao_chain::recorder_switch::validate_url_change(
+                    &store, &meta, &submitted_item, current_ts,
+                ).map_err(|e| RecorderError::BadRequest(e.to_string()))?;
+
+                block::construct_recorder_switch_block(
+                    &store, &meta, &chain.blockmaker_key,
+                    block::RecorderSwitchOp::UrlChange(validated),
+                    current_ts,
+                ).map_err(|e| RecorderError::Internal(e.to_string()))?
+            }
+            ao_types::typecode::CHAIN_MIGRATION => {
+                let validated = ao_chain::migration::validate_chain_migration(
+                    &store, &meta, &submitted_item, current_ts,
+                ).map_err(|e| RecorderError::BadRequest(e.to_string()))?;
+
+                block::construct_migration_block(
+                    &store, &meta, &chain.blockmaker_key,
+                    validated,
+                    current_ts,
+                ).map_err(|e| RecorderError::Internal(e.to_string()))?
+            }
+            _ => {
+                return Err(RecorderError::BadRequest(
+                    format!("unsupported block type code: {}", item_type)));
+            }
+        };
+
+        // After block construction, check if a pending recorder change can auto-complete.
+        // This fires when the escrow sweep in construct_block resolves the last escrow.
+        let constructed = maybe_auto_recorder_change(
+            &store, &chain, constructed, current_ts)?;
 
         let info = BlockInfo {
             height: constructed.height,
@@ -842,6 +1130,98 @@ async fn submit_assignment(
     }
 
     Ok(Json(info))
+}
+
+/// After a block construction, check if a pending recorder change can auto-complete.
+///
+/// If the chain has RECORDER_CHANGE_PENDING and all CAA escrows have resolved,
+/// auto-construct the RECORDER_CHANGE block (§5.1 step 4).
+/// Returns the final ConstructedBlock (the auto-constructed one if it fires, else the original).
+fn maybe_auto_recorder_change(
+    store: &ChainStore,
+    chain: &std::sync::Arc<ChainState>,
+    prev_block: block::ConstructedBlock,
+    base_timestamp: i64,
+) -> std::result::Result<block::ConstructedBlock, RecorderError> {
+    match auto_recorder_change_inner(store, chain, base_timestamp)? {
+        Some(constructed) => Ok(constructed),
+        None => Ok(prev_block),
+    }
+}
+
+/// Core auto-RECORDER_CHANGE logic shared by submit and caa_bind paths.
+///
+/// Returns Some(constructed) if a RECORDER_CHANGE was auto-constructed, None otherwise.
+/// The auto-constructed RECORDER_CHANGE includes the owner's AUTH_SIG from the
+/// original RECORDER_CHANGE_PENDING for validator verification (spec §5.2).
+fn auto_recorder_change_inner(
+    store: &ChainStore,
+    chain: &std::sync::Arc<ChainState>,
+    base_timestamp: i64,
+) -> std::result::Result<Option<block::ConstructedBlock>, RecorderError> {
+    let meta = store.load_chain_meta()
+        .map_err(|e| RecorderError::Internal(e.to_string()))?
+        .ok_or(RecorderError::ChainNotLoaded)?;
+
+    let pending = match &meta.pending_recorder_change {
+        Some(p) => p,
+        None => return Ok(None),
+    };
+
+    let active = store.count_active_escrows()
+        .map_err(|e| RecorderError::Internal(e.to_string()))?;
+    if active > 0 {
+        return Ok(None);
+    }
+
+    // All escrows resolved — auto-construct RECORDER_CHANGE
+    let new_pk = pending.new_recorder_pubkey;
+    let new_url = pending.new_recorder_url.clone();
+
+    // Reconstruct the owner's AUTH_SIG from the stored PENDING bytes
+    let owner_auth_sig = ao_types::dataitem::DataItem::from_bytes(&pending.owner_auth_sig_bytes)
+        .map_err(|e| RecorderError::Internal(
+            format!("failed to decode stored owner AUTH_SIG: {}", e)))?;
+
+    // Build RECORDER_CHANGE with the owner's AUTH_SIG from the original PENDING.
+    // This allows validators to verify the RECORDER_CHANGE was authorized by the owner.
+    let change_item = ao_types::dataitem::DataItem::container(
+        ao_types::typecode::RECORDER_CHANGE, vec![
+            ao_types::dataitem::DataItem::bytes(ao_types::typecode::ED25519_PUB, new_pk.to_vec()),
+            ao_types::dataitem::DataItem::bytes(ao_types::typecode::RECORDER_URL, new_url.clone().into_bytes()),
+            owner_auth_sig,
+        ]);
+
+    // Bypass validate_change since:
+    // 1. The pending state was already validated by validate_pending (owner signed)
+    // 2. There are no active escrows (we just checked)
+    // 3. The recorder itself is constructing this block
+    let validated = ao_chain::recorder_switch::ValidatedChange {
+        item: change_item,
+        new_recorder_pubkey: new_pk,
+        new_recorder_url: new_url,
+    };
+
+    let change_ts = base_timestamp.max(meta.last_block_timestamp + 1);
+    let constructed = block::construct_recorder_switch_block(
+        store, &meta, &chain.blockmaker_key,
+        block::RecorderSwitchOp::Change(validated),
+        change_ts,
+    ).map_err(|e| RecorderError::Internal(
+        format!("auto RECORDER_CHANGE failed: {}", e)))?;
+
+    // Broadcast the auto-constructed block
+    let auto_info = BlockInfo {
+        height: constructed.height,
+        hash: hex::encode(constructed.block_hash),
+        timestamp: constructed.timestamp,
+        shares_out: constructed.new_shares_out.to_string(),
+        first_seq: constructed.first_seq,
+        seq_count: constructed.seq_count,
+    };
+    let _ = chain.block_tx.send(auto_info);
+
+    Ok(Some(constructed))
 }
 
 /// Collect blob sizes for pre-substitution fee validation.
@@ -893,7 +1273,7 @@ async fn sse_events(
     State(state): State<Arc<AppState>>,
     Path(chain_id_hex): Path<String>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<sse::Event, Infallible>>>, RecorderError> {
-    let chain = state.get_chain_or_err(&chain_id_hex)?;
+    let chain = state.get_chain_or_redirect(&chain_id_hex)?;
 
     // Enforce connection limit
     let permit = acquire_connection_permit(&state)?;
@@ -922,7 +1302,7 @@ async fn ws_handler(
     Path(chain_id_hex): Path<String>,
     ws: WebSocketUpgrade,
 ) -> Result<axum::response::Response, RecorderError> {
-    let chain = state.get_chain_or_err(&chain_id_hex)?;
+    let chain = state.get_chain_or_redirect(&chain_id_hex)?;
     let permit = acquire_connection_permit(&state)?;
     Ok(ws.on_upgrade(move |socket| ws_connection(socket, chain, permit)))
 }
@@ -1115,6 +1495,18 @@ async fn caa_submit(
             .ok_or(RecorderError::ChainNotLoaded)?;
 
         let current_ts = wall_ts.max(meta.last_block_timestamp + 1);
+
+        // Block all operations on frozen chains
+        if meta.frozen {
+            return Err(RecorderError::BadRequest(
+                "chain is frozen (migrated) — no further operations accepted".into()));
+        }
+
+        // Block new CAA submissions during pending recorder change (§5.1)
+        if meta.pending_recorder_change.is_some() {
+            return Err(RecorderError::BadRequest(
+                "new CAA escrows are blocked while a recorder change is pending".into()));
+        }
 
         // Check for idempotent re-submission
         let caa_hash = caa::compute_caa_hash(&caa_item);
@@ -1392,6 +1784,12 @@ async fn caa_bind(
                 if let Err(rb_err) = store.rollback() {
                     tracing::error!("transaction rollback failed: {}", rb_err);
                 }
+            }
+        }
+        // After bind, check if pending recorder change can auto-complete
+        if result.is_ok() {
+            if let Err(e) = auto_recorder_change_inner(&store, &chain, current_ts) {
+                tracing::warn!("auto RECORDER_CHANGE after CAA bind failed: {}", e);
             }
         }
         result

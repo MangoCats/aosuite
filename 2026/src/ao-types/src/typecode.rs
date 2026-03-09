@@ -79,9 +79,22 @@ pub const THROTTLE_THRESHOLD: i64 = 84;
 pub const MAX_BLOB_SIZE: i64 = 85;
 pub const PRIORITY: i64 = 86;
 
-/// Recorder identity types — N33 Phase 3, inseparable band 4 (|code| 128–159)
+/// TⒶ³ types — inseparable band 4 (|code| 128–159)
+pub const OWNER_KEY_ROTATION: i64 = 128;
+pub const OWNER_KEY_REVOCATION: i64 = 129;
+pub const RECORDER_CHANGE_PENDING: i64 = 130;
+pub const RECORDER_CHANGE: i64 = 131;
+pub const RECORDER_URL_CHANGE: i64 = 132;
+pub const CHAIN_MIGRATION: i64 = 133;
 pub const RECORDER_IDENTITY: i64 = 134;
+pub const SURROGATE_PROOF: i64 = 135;
 pub const RECORDER_URL: i64 = 136;
+pub const RECORDING_FEE_ACTUAL: i64 = 137;
+pub const OWNER_KEY_OVERRIDE: i64 = 138;
+pub const KEY_ROTATION_RATE: i64 = 139;
+pub const REVOCATION_RATE_BASE: i64 = 140;
+pub const REWARD_RATE: i64 = 141;
+pub const REWARD_RATE_CHANGE: i64 = 142;
 pub const DESCRIPTION_INSEP: i64 = 143;
 
 /// How the data portion of a DataItem is sized.
@@ -117,6 +130,8 @@ pub fn size_category(code: i64) -> Option<SizeCategory> {
         CAA_HASH => Some(SizeCategory::Fixed(32)),
 
         RETENTION_SECS => Some(SizeCategory::Fixed(8)),
+        KEY_ROTATION_RATE => Some(SizeCategory::Fixed(8)),
+        REVOCATION_RATE_BASE => Some(SizeCategory::Fixed(8)),
 
         AMOUNT | RECORDING_BID | COIN_COUNT | FEE_RATE |
         CHAIN_SYMBOL | SHARES_OUT | REFERRAL_FEE |
@@ -125,7 +140,8 @@ pub fn size_category(code: i64) -> Option<SizeCategory> {
         COORDINATOR_BOND |
         MIME_PATTERN | CAPACITY_LIMIT | THROTTLE_THRESHOLD |
         MAX_BLOB_SIZE |
-        RECORDER_URL | DESCRIPTION_INSEP => Some(SizeCategory::Variable),
+        RECORDER_URL | DESCRIPTION_INSEP |
+        RECORDING_FEE_ACTUAL | REWARD_RATE => Some(SizeCategory::Variable),
 
         SEQ_ID | PROTOCOL_VER | FIRST_SEQ | SEQ_COUNT |
         LIST_SIZE | PAGE_INDEX | EXPIRY_MODE |
@@ -140,7 +156,11 @@ pub fn size_category(code: i64) -> Option<SizeCategory> {
         CREDENTIAL_REF | VALIDATOR_ATTESTATION |
         CAA | CAA_COMPONENT | RECORDING_PROOF | BLOCK_REF |
         BLOB_POLICY | BLOB_RULE |
-        RECORDER_IDENTITY => Some(SizeCategory::Container),
+        OWNER_KEY_ROTATION | OWNER_KEY_REVOCATION |
+        RECORDER_CHANGE_PENDING | RECORDER_CHANGE |
+        RECORDER_URL_CHANGE | CHAIN_MIGRATION |
+        RECORDER_IDENTITY | SURROGATE_PROOF |
+        OWNER_KEY_OVERRIDE | REWARD_RATE_CHANGE => Some(SizeCategory::Container),
 
         _ => None,
     }
@@ -218,8 +238,21 @@ pub fn type_name(code: i64) -> Option<&'static str> {
         THROTTLE_THRESHOLD => Some("THROTTLE_THRESHOLD"),
         MAX_BLOB_SIZE => Some("MAX_BLOB_SIZE"),
         PRIORITY => Some("PRIORITY"),
+        OWNER_KEY_ROTATION => Some("OWNER_KEY_ROTATION"),
+        OWNER_KEY_REVOCATION => Some("OWNER_KEY_REVOCATION"),
+        RECORDER_CHANGE_PENDING => Some("RECORDER_CHANGE_PENDING"),
+        RECORDER_CHANGE => Some("RECORDER_CHANGE"),
+        RECORDER_URL_CHANGE => Some("RECORDER_URL_CHANGE"),
+        CHAIN_MIGRATION => Some("CHAIN_MIGRATION"),
         RECORDER_IDENTITY => Some("RECORDER_IDENTITY"),
+        SURROGATE_PROOF => Some("SURROGATE_PROOF"),
         RECORDER_URL => Some("RECORDER_URL"),
+        RECORDING_FEE_ACTUAL => Some("RECORDING_FEE_ACTUAL"),
+        OWNER_KEY_OVERRIDE => Some("OWNER_KEY_OVERRIDE"),
+        KEY_ROTATION_RATE => Some("KEY_ROTATION_RATE"),
+        REVOCATION_RATE_BASE => Some("REVOCATION_RATE_BASE"),
+        REWARD_RATE => Some("REWARD_RATE"),
+        REWARD_RATE_CHANGE => Some("REWARD_RATE_CHANGE"),
         DESCRIPTION_INSEP => Some("DESCRIPTION_INSEP"),
         _ => None,
     }
@@ -279,10 +312,23 @@ mod tests {
         assert!(is_separable(96));
         assert!(is_separable(127));
 
-        // Inseparable band 4: 128-159 (recorder identity + TⒶ³ types)
-        assert!(!is_separable(RECORDER_IDENTITY)); // 134
-        assert!(!is_separable(RECORDER_URL));       // 136
-        assert!(!is_separable(DESCRIPTION_INSEP));  // 143
+        // Inseparable band 4: 128-159 (TⒶ³ types)
+        assert!(!is_separable(OWNER_KEY_ROTATION));     // 128
+        assert!(!is_separable(OWNER_KEY_REVOCATION));   // 129
+        assert!(!is_separable(RECORDER_CHANGE_PENDING)); // 130
+        assert!(!is_separable(RECORDER_CHANGE));         // 131
+        assert!(!is_separable(RECORDER_URL_CHANGE));     // 132
+        assert!(!is_separable(CHAIN_MIGRATION));         // 133
+        assert!(!is_separable(RECORDER_IDENTITY));       // 134
+        assert!(!is_separable(SURROGATE_PROOF));         // 135
+        assert!(!is_separable(RECORDER_URL));            // 136
+        assert!(!is_separable(RECORDING_FEE_ACTUAL));    // 137
+        assert!(!is_separable(OWNER_KEY_OVERRIDE));      // 138
+        assert!(!is_separable(KEY_ROTATION_RATE));       // 139
+        assert!(!is_separable(REVOCATION_RATE_BASE));    // 140
+        assert!(!is_separable(REWARD_RATE));             // 141
+        assert!(!is_separable(REWARD_RATE_CHANGE));      // 142
+        assert!(!is_separable(DESCRIPTION_INSEP));       // 143
         assert!(!is_separable(128));
         assert!(!is_separable(159));
     }
@@ -306,7 +352,14 @@ mod tests {
             COORDINATOR_BOND,
             BLOB_POLICY, BLOB_RULE, MIME_PATTERN, RETENTION_SECS,
             CAPACITY_LIMIT, THROTTLE_THRESHOLD, MAX_BLOB_SIZE, PRIORITY,
-            RECORDER_IDENTITY, RECORDER_URL, DESCRIPTION_INSEP,
+            OWNER_KEY_ROTATION, OWNER_KEY_REVOCATION,
+            RECORDER_CHANGE_PENDING, RECORDER_CHANGE,
+            RECORDER_URL_CHANGE, CHAIN_MIGRATION,
+            RECORDER_IDENTITY, SURROGATE_PROOF,
+            RECORDER_URL, RECORDING_FEE_ACTUAL,
+            OWNER_KEY_OVERRIDE, KEY_ROTATION_RATE,
+            REVOCATION_RATE_BASE, REWARD_RATE,
+            REWARD_RATE_CHANGE, DESCRIPTION_INSEP,
         ];
         for code in all_codes {
             assert!(

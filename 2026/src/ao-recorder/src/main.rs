@@ -8,7 +8,7 @@ use ao_types::dataitem::DataItem;
 use ao_crypto::sign::SigningKey;
 use ao_chain::store::ChainStore;
 
-use ao_recorder::{AppState, ChainState, blob, build_router_with_config, config, health, identity, mqtt, poll_validators};
+use ao_recorder::{AppState, ChainState, blob, build_router_with_config, config, health, identity, mqtt, poll_validators, standby};
 
 fn load_blockmaker_key(seed_hex: &str) -> Result<SigningKey> {
     let seed_bytes: Vec<u8> = hex::decode(seed_hex.trim())
@@ -134,6 +134,35 @@ async fn main() -> Result<()> {
         state_inner.connection_semaphore = Some(Arc::new(tokio::sync::Semaphore::new(cfg.max_connections)));
     }
 
+    // Configure standby mode if present
+    if let Some(ref standby_cfg) = cfg.standby {
+        state_inner.standby_mode = std::sync::atomic::AtomicBool::new(true);
+        state_inner.standby_sync = Some(standby::StandbySyncState::new(
+            standby_cfg.primary_url.trim_end_matches('/').to_string(),
+        ));
+        info!(primary = %standby_cfg.primary_url, "Running in HOT STANDBY mode — writes disabled");
+    }
+
+    // Load federation config
+    state_inner.require_sync_auth = cfg.require_sync_auth;
+    if !cfg.chain_redirects.is_empty() {
+        *state_inner.chain_redirects.write().expect("redirects lock") = cfg.chain_redirects.clone();
+        info!(count = cfg.chain_redirects.len(), "Chain redirects configured");
+    }
+    if !cfg.trusted_sync_recorders.is_empty() {
+        let keys: Vec<[u8; 32]> = cfg.trusted_sync_recorders.iter().map(|hex_str| {
+            let bytes = hex::decode(hex_str).expect("validated in load_config");
+            let mut key = [0u8; 32];
+            key.copy_from_slice(&bytes);
+            key
+        }).collect();
+        info!(count = keys.len(), "Trusted sync recorder keys loaded");
+        *state_inner.trusted_sync_keys.write().expect("sync keys lock") = keys;
+    }
+    if cfg.require_sync_auth && cfg.trusted_sync_recorders.is_empty() {
+        tracing::warn!("require_sync_auth is true but trusted_sync_recorders is empty — /chain/{{id}}/sync will reject all requests");
+    }
+
     // Build signed RECORDER_IDENTITY if configured
     if let (Some(name), Some(url)) = (&cfg.recorder_name, &cfg.recorder_url) {
         if !url.starts_with("http://") && !url.starts_with("https://") {
@@ -241,6 +270,27 @@ async fn main() -> Result<()> {
         });
     }
 
+    // Start blob pruning scheduler if blob storage is enabled
+    if state.blob_store.is_some() {
+        let prune_interval = cfg.blob_prune_interval_secs.unwrap_or(3600); // default: 1 hour
+        if prune_interval > 0 {
+            let prune_state = Arc::clone(&state);
+            tokio::spawn(async move {
+                run_blob_pruning(prune_state, prune_interval).await;
+            });
+            info!(interval_secs = prune_interval, "Blob pruning scheduler started");
+        }
+    }
+
+    // Start standby sync background task if in standby mode
+    if let Some(standby_cfg) = cfg.standby.clone() {
+        let standby_state = Arc::clone(&state);
+        tokio::spawn(async move {
+            standby::run_standby_sync(standby_state, standby_cfg).await;
+        });
+        info!("Standby sync task started");
+    }
+
     let chain_count = state.chains.read()
         .map_err(|e| anyhow::anyhow!("chains lock poisoned: {}", e))?
         .len();
@@ -256,6 +306,48 @@ async fn main() -> Result<()> {
         .context("server error")?;
 
     Ok(())
+}
+
+// ── Blob pruning scheduler ───────────────────────────────────────────
+
+/// Periodically prune expired blobs based on per-chain BLOB_POLICY.
+async fn run_blob_pruning(state: Arc<ao_recorder::AppState>, interval_secs: u64) {
+    use std::collections::HashMap;
+    let interval = tokio::time::Duration::from_secs(interval_secs);
+
+    loop {
+        tokio::time::sleep(interval).await;
+
+        let blob_store = match &state.blob_store {
+            Some(s) => s,
+            None => continue,
+        };
+
+        // Load policies from each chain's genesis block.
+        let mut policies: HashMap<String, blob::BlobPolicy> = HashMap::new();
+        {
+            let chains = state.chains.read().expect("chains lock");
+            for (chain_id, chain_state) in chains.iter() {
+                let store = chain_state.store.lock().expect("store lock");
+                if let Ok(Some(genesis_bytes)) = store.get_block(0) {
+                    if let Ok(genesis) = DataItem::from_bytes(&genesis_bytes) {
+                        if let Some(policy) = blob::BlobPolicy::from_genesis(&genesis) {
+                            policies.insert(chain_id.clone(), policy);
+                        }
+                    }
+                }
+            }
+        }
+
+        if policies.is_empty() {
+            continue;
+        }
+
+        let events = blob_store.prune(&policies, false);
+        if !events.is_empty() {
+            info!(count = events.len(), "Blob pruning: removed expired blobs");
+        }
+    }
 }
 
 // ── Graceful shutdown ───────────────────────────────────────────────
@@ -513,11 +605,23 @@ data_dir = "data"
 # recorder_name = "My Recorder"
 # recorder_url = "https://recorder.example.com"
 
+# Hot standby mode (optional — makes this recorder read-only, syncing from primary):
+# [standby]
+# primary_url = "http://primary-recorder:3000"
+# reconnect_delay_seconds = 5
+# sync_batch_size = 1000
+
 # Security (optional):
 # api_keys = ["secret-key-1", "secret-key-2"]
 # read_rate_limit = 100.0   # requests/sec per IP
 # write_rate_limit = 10.0   # requests/sec per IP
 # max_connections = 64       # max concurrent SSE/WebSocket
+
+# Federation (optional):
+# require_sync_auth = true
+# trusted_sync_recorders = ["pubkey-hex-64-chars"]
+# [chain_redirects]
+# "chain-id-hex" = "https://other-recorder.example.com"
 "#, pubkey_hex, seed_hex);
 
     std::fs::write(output_path, config_content)
@@ -575,6 +679,13 @@ async fn run_bench(config_path: &str) -> Result<()> {
         expiry_mode: 0,
         tax_start_age: None,
         tax_doubling_period: None,
+        reward_rate_num: num_bigint::BigInt::from(0),
+        reward_rate_den: num_bigint::BigInt::from(1),
+        key_rotation_rate: 0,
+        revocation_rate_base: 0,
+        recorder_pubkey: None,
+        pending_recorder_change: None,
+        frozen: false,
         block_height: 0,
         next_seq_id: 1,
         last_block_timestamp: 0,

@@ -76,9 +76,22 @@ export const THROTTLE_THRESHOLD = 84n;
 export const MAX_BLOB_SIZE = 85n;
 export const PRIORITY = 86n;
 
-// Recorder identity types — N33 Phase 3, inseparable band 4 (|code| 128-159)
+// TⒶ³ types — inseparable band 4 (|code| 128-159)
+export const OWNER_KEY_ROTATION = 128n;
+export const OWNER_KEY_REVOCATION = 129n;
+export const RECORDER_CHANGE_PENDING = 130n;
+export const RECORDER_CHANGE = 131n;
+export const RECORDER_URL_CHANGE = 132n;
+export const CHAIN_MIGRATION = 133n;
 export const RECORDER_IDENTITY = 134n;
+export const SURROGATE_PROOF = 135n;
 export const RECORDER_URL = 136n;
+export const RECORDING_FEE_ACTUAL = 137n;
+export const OWNER_KEY_OVERRIDE = 138n;
+export const KEY_ROTATION_RATE = 139n;
+export const REVOCATION_RATE_BASE = 140n;
+export const REWARD_RATE = 141n;
+export const REWARD_RATE_CHANGE = 142n;
 export const DESCRIPTION_INSEP = 143n;
 
 export type SizeCategory =
@@ -116,8 +129,10 @@ const SIZE_CATEGORIES = new Map<bigint, SizeCategory>([
   [MIME_PATTERN, variable], [CAPACITY_LIMIT, variable],
   [THROTTLE_THRESHOLD, variable], [MAX_BLOB_SIZE, variable],
   [RECORDER_URL, variable], [DESCRIPTION_INSEP, variable],
+  [RECORDING_FEE_ACTUAL, variable], [REWARD_RATE, variable],
 
   [RETENTION_SECS, fixed(8)],
+  [KEY_ROTATION_RATE, fixed(8)], [REVOCATION_RATE_BASE, fixed(8)],
 
   [SEQ_ID, vbcValue], [PROTOCOL_VER, vbcValue], [FIRST_SEQ, vbcValue],
   [SEQ_COUNT, vbcValue], [LIST_SIZE, vbcValue], [PAGE_INDEX, vbcValue],
@@ -134,7 +149,11 @@ const SIZE_CATEGORIES = new Map<bigint, SizeCategory>([
   [CAA, container], [CAA_COMPONENT, container],
   [RECORDING_PROOF, container], [BLOCK_REF, container],
   [BLOB_POLICY, container], [BLOB_RULE, container],
-  [RECORDER_IDENTITY, container],
+  [OWNER_KEY_ROTATION, container], [OWNER_KEY_REVOCATION, container],
+  [RECORDER_CHANGE_PENDING, container], [RECORDER_CHANGE, container],
+  [RECORDER_URL_CHANGE, container], [CHAIN_MIGRATION, container],
+  [RECORDER_IDENTITY, container], [SURROGATE_PROOF, container],
+  [OWNER_KEY_OVERRIDE, container], [REWARD_RATE_CHANGE, container],
 ]);
 
 export function sizeCategory(code: bigint): SizeCategory | undefined {
@@ -179,7 +198,21 @@ const TYPE_NAMES = new Map<bigint, string>([
   [MIME_PATTERN, 'MIME_PATTERN'], [RETENTION_SECS, 'RETENTION_SECS'],
   [CAPACITY_LIMIT, 'CAPACITY_LIMIT'], [THROTTLE_THRESHOLD, 'THROTTLE_THRESHOLD'],
   [MAX_BLOB_SIZE, 'MAX_BLOB_SIZE'], [PRIORITY, 'PRIORITY'],
-  [RECORDER_IDENTITY, 'RECORDER_IDENTITY'], [RECORDER_URL, 'RECORDER_URL'],
+  [OWNER_KEY_ROTATION, 'OWNER_KEY_ROTATION'],
+  [OWNER_KEY_REVOCATION, 'OWNER_KEY_REVOCATION'],
+  [RECORDER_CHANGE_PENDING, 'RECORDER_CHANGE_PENDING'],
+  [RECORDER_CHANGE, 'RECORDER_CHANGE'],
+  [RECORDER_URL_CHANGE, 'RECORDER_URL_CHANGE'],
+  [CHAIN_MIGRATION, 'CHAIN_MIGRATION'],
+  [RECORDER_IDENTITY, 'RECORDER_IDENTITY'],
+  [SURROGATE_PROOF, 'SURROGATE_PROOF'],
+  [RECORDER_URL, 'RECORDER_URL'],
+  [RECORDING_FEE_ACTUAL, 'RECORDING_FEE_ACTUAL'],
+  [OWNER_KEY_OVERRIDE, 'OWNER_KEY_OVERRIDE'],
+  [KEY_ROTATION_RATE, 'KEY_ROTATION_RATE'],
+  [REVOCATION_RATE_BASE, 'REVOCATION_RATE_BASE'],
+  [REWARD_RATE, 'REWARD_RATE'],
+  [REWARD_RATE_CHANGE, 'REWARD_RATE_CHANGE'],
   [DESCRIPTION_INSEP, 'DESCRIPTION_INSEP'],
 ]);
 

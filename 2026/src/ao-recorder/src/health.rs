@@ -36,6 +36,17 @@ pub struct HealthResponse {
     pub chains: Vec<ChainHealth>,
     pub system: SystemHealth,
     pub capacity: CapacityEstimate,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub standby: Option<StandbyHealth>,
+}
+
+#[derive(Serialize)]
+pub struct StandbyHealth {
+    pub mode: &'static str,
+    pub primary_url: String,
+    pub sse_connected: bool,
+    pub synced_height: u64,
+    pub blocks_synced: u64,
 }
 
 #[derive(Serialize)]
@@ -137,8 +148,23 @@ pub async fn health(
         },
     };
 
+    // Standby health info
+    let standby_health = state.standby_sync.as_ref().map(|sync| {
+        use std::sync::atomic::Ordering;
+        StandbyHealth {
+            mode: "standby",
+            primary_url: sync.primary_url.clone(),
+            sse_connected: sync.sse_connected.load(Ordering::Relaxed),
+            synced_height: sync.synced_height.load(Ordering::Relaxed),
+            blocks_synced: sync.blocks_synced.load(Ordering::Relaxed),
+        }
+    });
+
     // Determine overall status
-    let status = if chain_health.is_empty() {
+    let is_standby = state.standby_mode.load(std::sync::atomic::Ordering::Relaxed);
+    let status = if is_standby && standby_health.as_ref().map_or(false, |s| !s.sse_connected) {
+        "degraded"
+    } else if chain_health.is_empty() {
         "degraded"
     } else if system_health.disk_free_bytes < 100_000_000 {
         // Less than 100 MB free
@@ -157,6 +183,7 @@ pub async fn health(
         chains: chain_health,
         system: system_health,
         capacity,
+        standby: standby_health,
     }))
 }
 
@@ -456,6 +483,7 @@ mod tests {
                 estimated_assignments_per_second: None,
                 estimated_days_until_disk_full: Some(365.0),
             },
+            standby: None,
         };
         let json = serde_json::to_string(&resp).unwrap();
         assert!(json.contains("\"status\":\"ok\""));

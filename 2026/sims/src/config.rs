@@ -35,6 +35,10 @@ pub struct SimulationConfig {
     /// When present, enables API key auth, rate limiting, connection limits.
     #[serde(default)]
     pub recorder_security: Option<RecorderSecurityConfig>,
+    /// Secondary recorder port for dual-recorder scenarios (Sim-G).
+    /// When non-zero, a second embedded recorder is started on this port.
+    #[serde(default)]
+    pub secondary_recorder_port: u16,
 }
 
 fn default_speed() -> f64 { 1.0 }
@@ -70,6 +74,9 @@ pub struct AgentConfig {
     /// White-hat infrastructure tester config.
     #[serde(default)]
     pub infra_tester: Option<InfraTesterConfig>,
+    /// Recorder operator config (Sim-G: TⒶ³ operations).
+    #[serde(default)]
+    pub recorder_operator: Option<RecorderOperatorConfig>,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -278,6 +285,30 @@ pub struct RecorderSecurityConfig {
     /// Max concurrent SSE/WebSocket connections. 0 = no limit.
     #[serde(default)]
     pub max_connections: usize,
+}
+
+/// Recorder operator configuration for TⒶ³ chain infrastructure operations.
+/// The operator manages owner key rotation, recorder switching, and chain migration
+/// on a timed schedule within the simulation.
+#[derive(Deserialize, Debug, Clone)]
+pub struct RecorderOperatorConfig {
+    /// Target vendor name whose chain this operator manages.
+    pub target_chain: String,
+    /// Seconds (sim time) after start to rotate the owner key.
+    /// 0 or absent = skip rotation.
+    #[serde(default)]
+    pub rotate_after_secs: u64,
+    /// Seconds (sim time) after start to initiate recorder switch.
+    /// 0 or absent = skip switch.
+    #[serde(default)]
+    pub switch_after_secs: u64,
+    /// Seconds (sim time) after start to perform chain migration.
+    /// 0 or absent = skip migration.
+    #[serde(default)]
+    pub migrate_after_secs: u64,
+    /// Symbol for the new chain created during migration (default: target + "2").
+    #[serde(default)]
+    pub migration_symbol: Option<String>,
 }
 
 pub fn parse_bigint(s: &str) -> num_bigint::BigInt {

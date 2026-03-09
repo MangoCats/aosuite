@@ -97,6 +97,19 @@ pub fn verify_recorder_identity(identity: &DataItem) -> bool {
     sign::verify_dataitem(pubkey, &signable, ts, &sig)
 }
 
+/// Extract the Ed25519 public key from a RECORDER_IDENTITY DataItem.
+/// Returns None if the structure is malformed or the key is the wrong size.
+pub fn extract_recorder_pubkey(identity: &DataItem) -> Option<[u8; 32]> {
+    let pub_child = identity.find_child(ED25519_PUB)?;
+    let bytes = pub_child.as_bytes()?;
+    if bytes.len() != 32 {
+        return None;
+    }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(bytes);
+    Some(key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -174,6 +187,21 @@ mod tests {
         ]);
 
         assert!(!verify_recorder_identity(&incomplete));
+    }
+
+    #[test]
+    fn test_extract_pubkey() {
+        let key = SigningKey::generate();
+        let ts = Timestamp::from_unix_seconds(1_772_611_200);
+        let identity = build_recorder_identity(&key, "https://example.com", "Test", ts);
+        let extracted = extract_recorder_pubkey(&identity).unwrap();
+        assert_eq!(&extracted, key.public_key_bytes());
+    }
+
+    #[test]
+    fn test_extract_pubkey_missing() {
+        let empty = DataItem::container(RECORDER_IDENTITY, vec![]);
+        assert!(extract_recorder_pubkey(&empty).is_none());
     }
 
     #[test]

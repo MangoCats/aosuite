@@ -120,6 +120,24 @@ async fn main() -> Result<()> {
     ).await;
     info!("Recorder running at {}", recorder_url);
 
+    // Optionally start a secondary recorder for dual-recorder scenarios (Sim-G)
+    let secondary_recorder_port = scenario.simulation.secondary_recorder_port;
+    let (secondary_recorder_url, secondary_recorder_pubkey) = if secondary_recorder_port > 0 {
+        let sec_key = SigningKey::generate();
+        let sec_pubkey: [u8; 32] = sec_key.public_key_bytes().try_into()
+            .expect("secondary blockmaker pubkey must be 32 bytes");
+        let (sec_url, _sec_state) = start_recorder(
+            secondary_recorder_port,
+            sec_key,
+            known_recorders.clone(),
+            scenario.simulation.recorder_security.as_ref(),
+        ).await;
+        info!("Secondary recorder running at {}", sec_url);
+        (Some(sec_url), Some(sec_pubkey))
+    } else {
+        (None, None)
+    };
+
     // Optionally start MQTT broker for block notifications
     let mqtt_port = scenario.simulation.mqtt_port;
     if mqtt_port > 0 {
@@ -277,6 +295,22 @@ async fn main() -> Result<()> {
                         agent_cfg, infra_cfg, recorder_url, directory, state_tx, mailbox, speed, agent_paused,
                     ).await {
                         tracing::error!("{}: infra_tester error: {}", name, e);
+                    }
+                })
+            }
+            "recorder_operator" => {
+                let Some(op_cfg) = agent_cfg.recorder_operator.clone() else {
+                    bail!("recorder_operator {} missing [agent.recorder_operator] config", name);
+                };
+                let sec_client = secondary_recorder_url.as_ref().map(|url| Arc::new(RecorderClient::new(url)));
+                let sec_pk = secondary_recorder_pubkey;
+                let sec_url = secondary_recorder_url.clone();
+                tokio::spawn(async move {
+                    if let Err(e) = agents::run_recorder_operator(
+                        agent_cfg, op_cfg, client, sec_client, sec_pk, sec_url,
+                        directory, state_tx, mailbox, speed, agent_paused,
+                    ).await {
+                        tracing::error!("{}: recorder_operator error: {}", name, e);
                     }
                 })
             }

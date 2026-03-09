@@ -69,6 +69,16 @@ pub const BLOCK_HEIGHT: i64 = 77;
 /// Coordinator bond amount (VBC value) — anti-theft protection for earlier chains in ouroboros.
 pub const COORDINATOR_BOND: i64 = 78;
 
+/// BLOB_POLICY types — N30, inseparable band (|code| 79–85)
+pub const BLOB_POLICY: i64 = 79;
+pub const BLOB_RULE: i64 = 80;
+pub const MIME_PATTERN: i64 = 81;
+pub const RETENTION_SECS: i64 = 82;
+pub const CAPACITY_LIMIT: i64 = 83;
+pub const THROTTLE_THRESHOLD: i64 = 84;
+pub const MAX_BLOB_SIZE: i64 = 85;
+pub const PRIORITY: i64 = 86;
+
 /// How the data portion of a DataItem is sized.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SizeCategory {
@@ -101,23 +111,29 @@ pub fn size_category(code: i64) -> Option<SizeCategory> {
         ESCROW_DEADLINE => Some(SizeCategory::Fixed(8)),
         CAA_HASH => Some(SizeCategory::Fixed(32)),
 
+        RETENTION_SECS => Some(SizeCategory::Fixed(8)),
+
         AMOUNT | RECORDING_BID | COIN_COUNT | FEE_RATE |
         CHAIN_SYMBOL | SHARES_OUT | REFERRAL_FEE |
         NOTE | DATA_BLOB | DESCRIPTION | ICON |
         CREDENTIAL_URL | ANCHOR_REF |
-        COORDINATOR_BOND => Some(SizeCategory::Variable),
+        COORDINATOR_BOND |
+        MIME_PATTERN | CAPACITY_LIMIT | THROTTLE_THRESHOLD |
+        MAX_BLOB_SIZE => Some(SizeCategory::Variable),
 
         SEQ_ID | PROTOCOL_VER | FIRST_SEQ | SEQ_COUNT |
         LIST_SIZE | PAGE_INDEX | EXPIRY_MODE |
         VALIDATED_HEIGHT |
-        CHAIN_ORDER | BLOCK_HEIGHT => Some(SizeCategory::VbcValue),
+        CHAIN_ORDER | BLOCK_HEIGHT |
+        PRIORITY => Some(SizeCategory::VbcValue),
 
         ASSIGNMENT | AUTHORIZATION | PARTICIPANT |
         BLOCK | BLOCK_SIGNED | BLOCK_CONTENTS |
         PAGE | GENESIS | REFUTATION | AUTH_SIG |
         TAX_PARAMS | VENDOR_PROFILE | EXCHANGE_LISTING |
         CREDENTIAL_REF | VALIDATOR_ATTESTATION |
-        CAA | CAA_COMPONENT | RECORDING_PROOF | BLOCK_REF => Some(SizeCategory::Container),
+        CAA | CAA_COMPONENT | RECORDING_PROOF | BLOCK_REF |
+        BLOB_POLICY | BLOB_RULE => Some(SizeCategory::Container),
 
         _ => None,
     }
@@ -187,6 +203,14 @@ pub fn type_name(code: i64) -> Option<&'static str> {
         BLOCK_REF => Some("BLOCK_REF"),
         BLOCK_HEIGHT => Some("BLOCK_HEIGHT"),
         COORDINATOR_BOND => Some("COORDINATOR_BOND"),
+        BLOB_POLICY => Some("BLOB_POLICY"),
+        BLOB_RULE => Some("BLOB_RULE"),
+        MIME_PATTERN => Some("MIME_PATTERN"),
+        RETENTION_SECS => Some("RETENTION_SECS"),
+        CAPACITY_LIMIT => Some("CAPACITY_LIMIT"),
+        THROTTLE_THRESHOLD => Some("THROTTLE_THRESHOLD"),
+        MAX_BLOB_SIZE => Some("MAX_BLOB_SIZE"),
+        PRIORITY => Some("PRIORITY"),
         _ => None,
     }
 }
@@ -231,6 +255,14 @@ mod tests {
         assert!(!is_separable(CAA_HASH));                // 75
         assert!(!is_separable(BLOCK_REF));               // 76
         assert!(!is_separable(BLOCK_HEIGHT));            // 77
+        assert!(!is_separable(BLOB_POLICY));           // 79
+        assert!(!is_separable(BLOB_RULE));              // 80
+        assert!(!is_separable(MIME_PATTERN));            // 81
+        assert!(!is_separable(RETENTION_SECS));          // 82
+        assert!(!is_separable(CAPACITY_LIMIT));          // 83
+        assert!(!is_separable(THROTTLE_THRESHOLD));      // 84
+        assert!(!is_separable(MAX_BLOB_SIZE));           // 85
+        assert!(!is_separable(PRIORITY));                // 86
         assert!(!is_separable(95));
 
         // Next separable band: 96-127
@@ -255,6 +287,8 @@ mod tests {
             CAA, CAA_COMPONENT, CHAIN_REF, ESCROW_DEADLINE,
             CHAIN_ORDER, RECORDING_PROOF, CAA_HASH, BLOCK_REF, BLOCK_HEIGHT,
             COORDINATOR_BOND,
+            BLOB_POLICY, BLOB_RULE, MIME_PATTERN, RETENTION_SECS,
+            CAPACITY_LIMIT, THROTTLE_THRESHOLD, MAX_BLOB_SIZE, PRIORITY,
         ];
         for code in all_codes {
             assert!(

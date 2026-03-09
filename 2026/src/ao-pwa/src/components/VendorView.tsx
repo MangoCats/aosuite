@@ -5,11 +5,14 @@ import type { BlockInfo } from '../api/client.ts';
 import { playChime, isInQuietHours, isQuickMuted } from '../core/chime.ts';
 import { PrintableQr } from './PrintableQr.tsx';
 import { SalesReport } from './SalesReport.tsx';
+import { VendorDashboard } from './VendorDashboard.tsx';
+import { CredentialIssue } from './CredentialIssue.tsx';
 import { signingKeyFromSeed } from '../core/sign.ts';
 import { bytesToHex, hexToBytes } from '../core/hex.ts';
 import * as tc from '../core/typecodes.ts';
 import {
   containerItem, vbcItem, bytesItem, toJson, encodeDataItem,
+  type DataItem,
 } from '../core/dataitem.ts';
 import { encodeBigint, encodeRational } from '../core/bigint.ts';
 import { fromUnixSeconds, timestampToBytes, nowUnixSeconds } from '../core/timestamp.ts';
@@ -21,9 +24,12 @@ export function VendorView() {
 
   return (
     <div style={{ padding: 16 }}>
-      <h3 style={{ fontSize: 15, marginBottom: 12 }}>AOS Vendor</h3>
+      <VendorDashboard />
       {selectedChainId && chainInfo ? (
         <>
+          <h3 style={{ fontSize: 15, marginBottom: 12, marginTop: 16 }}>
+            {chainInfo.symbol} — Vendor Detail
+          </h3>
           <VendorProfileEditor recorderUrl={recorderUrl} chainId={selectedChainId} />
           <IncomingMonitor
             recorderUrl={recorderUrl}
@@ -36,6 +42,7 @@ export function VendorView() {
             symbol={chainInfo.symbol}
             coinCount={chainInfo.coin_count}
           />
+          <CredentialIssue recorderUrl={recorderUrl} chainId={selectedChainId} />
           <QrSignage
             recorderUrl={recorderUrl}
             chainId={selectedChainId}
@@ -44,7 +51,7 @@ export function VendorView() {
         </>
       ) : (
         <div style={{ marginBottom: 16, color: '#666', fontSize: 13 }}>
-          Select a chain to monitor incoming payments.
+          Select a chain from the dashboard or sidebar for detail view.
         </div>
       )}
       <GenesisCreator recorderUrl={recorderUrl} />
@@ -227,6 +234,57 @@ function QrSignage({ recorderUrl, chainId, symbol }: MonitorProps) {
   );
 }
 
+// ── Blob Policy Presets ───────────────────────────────────────────
+
+function buildBlobPolicyPreset(preset: string): DataItem | null {
+  if (preset === 'none') return null;
+
+  const enc = new TextEncoder();
+
+  if (preset === 'standard') {
+    // Standard: images 5MB/7yr, PDFs 10MB/7yr, catch-all 100MB/7d
+    const ret7y = timestampToBytes(fromUnixSeconds(220_752_000n));
+    const ret7d = timestampToBytes(fromUnixSeconds(604_800n));
+    return containerItem(tc.BLOB_POLICY, [
+      containerItem(tc.BLOB_RULE, [
+        bytesItem(tc.MIME_PATTERN, enc.encode('image/*')),
+        bytesItem(tc.MAX_BLOB_SIZE, encodeBigint(5_242_880n)),
+        bytesItem(tc.RETENTION_SECS, ret7y),
+        vbcItem(tc.PRIORITY, 1n),
+      ]),
+      containerItem(tc.BLOB_RULE, [
+        bytesItem(tc.MIME_PATTERN, enc.encode('application/pdf')),
+        bytesItem(tc.MAX_BLOB_SIZE, encodeBigint(10_485_760n)),
+        bytesItem(tc.RETENTION_SECS, ret7y),
+        vbcItem(tc.PRIORITY, 2n),
+      ]),
+      containerItem(tc.BLOB_RULE, [
+        bytesItem(tc.MIME_PATTERN, enc.encode('*/*')),
+        bytesItem(tc.MAX_BLOB_SIZE, encodeBigint(104_857_600n)),
+        bytesItem(tc.RETENTION_SECS, ret7d),
+        vbcItem(tc.PRIORITY, 99n),
+      ]),
+      bytesItem(tc.CAPACITY_LIMIT, encodeBigint(536_870_912_000n)), // 500 GB
+    ]);
+  }
+
+  if (preset === 'minimal') {
+    // Minimal: images only, 1MB max, 30 days
+    const ret30d = timestampToBytes(fromUnixSeconds(2_592_000n));
+    return containerItem(tc.BLOB_POLICY, [
+      containerItem(tc.BLOB_RULE, [
+        bytesItem(tc.MIME_PATTERN, enc.encode('image/*')),
+        bytesItem(tc.MAX_BLOB_SIZE, encodeBigint(1_048_576n)),
+        bytesItem(tc.RETENTION_SECS, ret30d),
+        vbcItem(tc.PRIORITY, 1n),
+      ]),
+      bytesItem(tc.CAPACITY_LIMIT, encodeBigint(10_737_418_240n)), // 10 GB
+    ]);
+  }
+
+  return null;
+}
+
 // ── Genesis Chain Creator ─────────────────────────────────────────
 function GenesisCreator({ recorderUrl }: { recorderUrl: string }) {
   const [symbol, setSymbol] = useState('');
@@ -237,6 +295,7 @@ function GenesisCreator({ recorderUrl }: { recorderUrl: string }) {
   const [status, setStatus] = useState('');
   const [loading, setLoading] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
+  const [blobPolicyPreset, setBlobPolicyPreset] = useState('none');
 
   async function handleCreateChain() {
     setLoading(true);
@@ -267,7 +326,7 @@ function GenesisCreator({ recorderUrl }: { recorderUrl: string }) {
       const nowSecs = nowUnixSeconds();
       const ts = fromUnixSeconds(nowSecs);
 
-      const signableChildren = [
+      const signableChildren: DataItem[] = [
         vbcItem(tc.PROTOCOL_VER, 1n),
         bytesItem(tc.CHAIN_SYMBOL, new TextEncoder().encode(symbol)),
         bytesItem(tc.DESCRIPTION, new TextEncoder().encode(description)),
@@ -276,11 +335,17 @@ function GenesisCreator({ recorderUrl }: { recorderUrl: string }) {
         bytesItem(tc.FEE_RATE, feeBytes),
         bytesItem(tc.EXPIRY_PERIOD, timestampToBytes(expiryPeriod)),
         vbcItem(tc.EXPIRY_MODE, 1n),
-        containerItem(tc.PARTICIPANT, [
+      ];
+
+      // Build optional BLOB_POLICY based on preset
+      const policyItem = buildBlobPolicyPreset(blobPolicyPreset);
+      if (policyItem) signableChildren.push(policyItem);
+
+      signableChildren.push(containerItem(tc.PARTICIPANT, [
           bytesItem(tc.ED25519_PUB, issuerKey.publicKey),
           bytesItem(tc.AMOUNT, sharesBytes),
         ]),
-      ];
+      );
       const signable = containerItem(tc.GENESIS, signableChildren);
 
       setStatus('Signing genesis...');
@@ -369,6 +434,18 @@ function GenesisCreator({ recorderUrl }: { recorderUrl: string }) {
               onChange={e => setShares(e.target.value)}
               style={{ width: '100%', padding: '4px 6px' }}
             />
+          </label>
+          <label>
+            <span style={{ fontSize: 13, fontWeight: 500 }}>Blob Retention Policy</span>
+            <select
+              value={blobPolicyPreset}
+              onChange={e => setBlobPolicyPreset(e.target.value)}
+              style={{ width: '100%', padding: '4px 6px' }}
+            >
+              <option value="none">No policy (best-effort)</option>
+              <option value="standard">Standard (images 7yr, PDFs 7yr, other 7d)</option>
+              <option value="minimal">Minimal (images 30d, 1MB max)</option>
+            </select>
           </label>
           <label>
             <span style={{ fontSize: 13, fontWeight: 500 }}>Issuer seed (hex, leave blank to generate)</span>

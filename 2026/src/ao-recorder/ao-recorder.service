@@ -1,0 +1,28 @@
+[Unit]
+Description=AO Recorder — Assign Onward blockchain recorder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ao-recorder /etc/ao-recorder/recorder.toml
+WorkingDirectory=/var/lib/ao-recorder
+Restart=always
+RestartSec=3
+
+# Graceful shutdown: send SIGTERM, wait 30s for WAL checkpoint
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ao-recorder
+PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

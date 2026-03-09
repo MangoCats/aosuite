@@ -14,6 +14,26 @@ function parseChainUrl(url: string): { recorderUrl: string; chainId: string } | 
   return { recorderUrl: match[1], chainId: match[2] };
 }
 
+function PowerUserSettings() {
+  const { showRefutation, setShowRefutation } = useStore();
+  return (
+    <div style={{ marginTop: 12, borderTop: '1px solid #eee', paddingTop: 12 }}>
+      <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 6 }}>Power User</div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
+        <input
+          type="checkbox"
+          checked={showRefutation}
+          onChange={(e) => setShowRefutation(e.target.checked)}
+        />
+        Enable Refutation UI
+      </label>
+      <div style={{ fontSize: 11, color: '#999', marginTop: 2, marginLeft: 22 }}>
+        Adds dispute buttons to transaction history. Refuting voids stale agreements you no longer intend to honor.
+      </div>
+    </div>
+  );
+}
+
 export function Settings() {
   const { recorderUrl, setRecorderUrl, selectChain } = useStore();
   const [url, setUrl] = useState(recorderUrl);
@@ -66,6 +86,9 @@ export function Settings() {
 
       {/* Wallet Backup */}
       <WalletBackup />
+
+      {/* Power User Features */}
+      <PowerUserSettings />
 
       {/* Paired Devices */}
       <div style={{ marginTop: 12, borderTop: '1px solid #eee', paddingTop: 12 }}>

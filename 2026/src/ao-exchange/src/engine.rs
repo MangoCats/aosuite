@@ -17,6 +17,8 @@ pub struct ChainState {
     pub chain_id: String,
     pub symbol: String,
     pub client: RecorderClient,
+    /// Low-stock warning threshold from config (None = no warning).
+    pub low_stock_threshold: Option<num_bigint::BigInt>,
 }
 
 /// A resolved trading pair with chain IDs.
@@ -29,6 +31,20 @@ pub struct ResolvedPair {
     pub spread: f64,
     pub min_trade: Option<u64>,
     pub max_trade: Option<u64>,
+}
+
+/// Result of a completed (or failed) trade, with full metadata for persistence.
+pub struct TradeOutcome {
+    pub trade_id: String,
+    pub buy_symbol: String,
+    pub sell_symbol: String,
+    pub buy_chain_id: String,
+    pub sell_chain_id: String,
+    pub buy_amount: BigInt,
+    pub rate: f64,
+    pub spread: f64,
+    pub requested_at: u64,
+    pub result: Result<(u64, BigInt)>,
 }
 
 /// Core exchange engine holding wallet, chain connections, and trading rules.
@@ -111,10 +127,14 @@ impl ExchangeEngine {
             info!(symbol = %chain_cfg.symbol, chain_id = %chain_id, "Connected to chain");
 
             symbol_to_chain.insert(chain_cfg.symbol.clone(), chain_id.clone());
+            let low_stock_threshold = chain_cfg.low_stock_threshold.as_ref()
+                .and_then(|s| s.parse::<num_bigint::BigInt>().ok());
+
             chains.insert(chain_id.clone(), ChainState {
                 chain_id: chain_id.clone(),
                 symbol: chain_cfg.symbol.clone(),
                 client,
+                low_stock_threshold,
             });
         }
 
@@ -318,8 +338,8 @@ impl ExchangeEngine {
     /// Poll chains for new UTXOs. When a deposit matches a pending trade,
     /// execute the reverse-leg trade automatically.
     ///
-    /// Returns a list of (trade_id, result) for trades attempted this cycle.
-    pub async fn check_deposits(&mut self) -> Vec<(String, Result<(u64, BigInt)>)> {
+    /// Returns a list of trade outcomes for trades attempted this cycle.
+    pub async fn check_deposits(&mut self) -> Vec<TradeOutcome> {
         // Expire stale trade requests
         let expired = self.trades.expire_stale();
         if expired > 0 {
@@ -390,6 +410,10 @@ impl ExchangeEngine {
                 None => continue,
             };
 
+            let pair = &self.pairs[trade.pair_index];
+            let rate = pair.rate;
+            let spread = pair.spread;
+
             let result = self.execute_trade(
                 trade.pair_index,
                 &pay_amount,
@@ -416,7 +440,21 @@ impl ExchangeEngine {
                 }
             }
 
-            results.push((trade_id, result));
+            // Compute requested_at from expires_at minus TTL
+            let requested_at = trade.expires_at.saturating_sub(self.trades.trade_ttl_secs);
+
+            results.push(TradeOutcome {
+                trade_id,
+                buy_symbol: trade.buy_symbol,
+                sell_symbol: trade.sell_symbol,
+                buy_chain_id: trade.buy_chain_id,
+                sell_chain_id: trade.sell_chain_id,
+                buy_amount: pay_amount,
+                rate,
+                spread,
+                requested_at,
+                result,
+            });
         }
 
         results

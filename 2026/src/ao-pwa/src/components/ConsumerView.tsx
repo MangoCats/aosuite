@@ -8,7 +8,7 @@ import { buildAuthorizationJson, buildAssignment } from '../core/assignment.ts';
 import { recordingFee } from '../core/fees.ts';
 import { toBytes, bytesItem } from '../core/dataitem.ts';
 import type { DataItem } from '../core/dataitem.ts';
-import { DATA_BLOB } from '../core/typecodes.ts';
+import { DATA_BLOB, NOTE } from '../core/typecodes.ts';
 import { bytesToHex, hexToBytes } from '../core/hex.ts';
 import type { Giver, Receiver, FeeRate } from '../core/assignment.ts';
 import * as offlineQueue from '../core/offlineQueue.ts';
@@ -16,6 +16,7 @@ import { VendorMap, type VendorPin } from './VendorMap.tsx';
 import { AttachmentPicker } from './AttachmentPicker.tsx';
 import type { AttachedBlob } from '../core/blob.ts';
 import { TransactionHistory } from './TransactionHistory.tsx';
+import { EscrowView } from './EscrowView.tsx';
 import * as walletDb from '../core/walletDb.ts';
 import { validateKeysOnChain } from '../core/walletSync.ts';
 
@@ -61,6 +62,7 @@ export function ConsumerView() {
     setUnsyncedKeyCount, setWalletKeyCount,
     cachedBalance, lastValidatedAt: lastValidatedAtMap,
     setCachedBalance, setLastValidatedAt,
+    showRefutation,
   } = useStore();
 
   const lastValidatedAt = selectedChainId ? lastValidatedAtMap[selectedChainId] ?? null : null;
@@ -319,7 +321,13 @@ export function ConsumerView() {
       const blobItems: DataItem[] = attachments.map(a =>
         bytesItem(DATA_BLOB, a.payload),
       );
-      const separableItems = blobItems.length > 0 ? blobItems : undefined;
+      // Include pending cooperative metadata note if present
+      const coopNote = useStore.getState().pendingCoopNote;
+      const noteItems: DataItem[] = coopNote
+        ? [bytesItem(NOTE, new TextEncoder().encode(coopNote))]
+        : [];
+      const allSeparable = [...blobItems, ...noteItems];
+      const separableItems = allSeparable.length > 0 ? allSeparable : undefined;
 
       // Iterative fee convergence (3 rounds).
       // Fee is computed on pre-substitution size (includes full blob payloads).
@@ -371,7 +379,13 @@ export function ConsumerView() {
       const blobItems: DataItem[] = attachments.map(a =>
         bytesItem(DATA_BLOB, a.payload),
       );
-      const separableItems = blobItems.length > 0 ? blobItems : undefined;
+      // Include pending cooperative metadata note if present
+      const coopNote = useStore.getState().pendingCoopNote;
+      const noteItems: DataItem[] = coopNote
+        ? [bytesItem(NOTE, new TextEncoder().encode(coopNote))]
+        : [];
+      const allSeparable = [...blobItems, ...noteItems];
+      const separableItems = allSeparable.length > 0 ? allSeparable : undefined;
 
       const authJson = await buildAuthorizationJson(givers, receivers, feeRate, separableItems);
 
@@ -478,6 +492,8 @@ export function ConsumerView() {
       }
       setAttachments([]);
       setPendingTransfer(null);
+      // Clear cooperative note after successful submission
+      if (coopNote) useStore.getState().setPendingCoopNote(null);
 
       // Refresh UTXOs after transfer
       setSelectedUtxo(null);
@@ -642,6 +658,7 @@ export function ConsumerView() {
             />
           </label>
           <AttachmentPicker attachments={attachments} onAttach={setAttachments} />
+          <CoopNoteIndicator />
           <button onClick={handleBuild} disabled={loading}>
             {loading ? 'Building...' : 'Review Transfer'}
           </button>
@@ -711,6 +728,19 @@ export function ConsumerView() {
 
       {/* Transaction History (N15) */}
       {storedSeedHex && <TransactionHistory />}
+
+      {/* Atomic Swap / Escrow (N27 — power user) */}
+      {showRefutation && storedSeedHex && <EscrowView />}
+    </div>
+  );
+}
+
+function CoopNoteIndicator() {
+  const pendingCoopNote = useStore(s => s.pendingCoopNote);
+  if (!pendingCoopNote) return null;
+  return (
+    <div style={{ fontSize: 11, color: '#2a7', padding: '4px 0' }}>
+      Co-op note attached (set in Co-op view)
     </div>
   );
 }

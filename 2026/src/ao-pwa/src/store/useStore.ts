@@ -85,10 +85,35 @@ export interface AppState {
   setNotification: (patch: Partial<NotificationSettings>) => void;
 
   // UI
-  view: 'vendor' | 'consumer' | 'investor';
-  setView: (view: 'vendor' | 'consumer' | 'investor') => void;
+  view: 'vendor' | 'consumer' | 'investor' | 'cooperative';
+  setView: (view: 'vendor' | 'consumer' | 'investor' | 'cooperative') => void;
   error: string | null;
   setError: (error: string | null) => void;
+
+  // Power-user features
+  showRefutation: boolean;
+  setShowRefutation: (show: boolean) => void;
+
+  // Cooperative metadata
+  pendingCoopNote: string | null;
+  setPendingCoopNote: (note: string | null) => void;
+
+  // CAA Escrow
+  activeEscrows: EscrowEntry[];
+  addEscrow: (entry: EscrowEntry) => void;
+  updateEscrow: (id: string, patch: Partial<EscrowEntry>) => void;
+  removeEscrow: (id: string) => void;
+}
+
+/** A tracked CAA escrow swap. */
+export interface EscrowEntry {
+  id: string;              // client-side unique ID (crypto.randomUUID)
+  caaHash: string;         // server-assigned, empty until first submission
+  status: 'submitting' | 'escrowed' | 'binding' | 'finalized' | 'expired' | 'failed';
+  chains: { chainId: string; recorderUrl: string; symbol: string }[];
+  createdAt: number;       // Unix ms
+  deadlineUnixSecs: number;
+  errorMessage?: string;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -165,4 +190,42 @@ export const useStore = create<AppState>((set) => ({
   setView: (view) => set({ view }),
   error: null,
   setError: (error) => set({ error }),
+
+  showRefutation: loadString('ao_show_refutation') === 'true',
+  setShowRefutation: (showRefutation) => {
+    saveString('ao_show_refutation', String(showRefutation));
+    set({ showRefutation });
+  },
+
+  pendingCoopNote: null,
+  setPendingCoopNote: (note) => set({ pendingCoopNote: note }),
+
+  activeEscrows: loadEscrows(),
+  addEscrow: (entry) => set(state => {
+    const next = [...state.activeEscrows, entry];
+    saveEscrows(next);
+    return { activeEscrows: next };
+  }),
+  updateEscrow: (id, patch) => set(state => {
+    const next = state.activeEscrows.map(e =>
+      e.id === id ? { ...e, ...patch } : e,
+    );
+    saveEscrows(next);
+    return { activeEscrows: next };
+  }),
+  removeEscrow: (id) => set(state => {
+    const next = state.activeEscrows.filter(e => e.id !== id);
+    saveEscrows(next);
+    return { activeEscrows: next };
+  }),
 }));
+
+function loadEscrows(): EscrowEntry[] {
+  const s = loadString('ao_escrows');
+  if (!s) return [];
+  try { return JSON.parse(s); } catch { return []; }
+}
+
+function saveEscrows(escrows: EscrowEntry[]) {
+  saveString('ao_escrows', JSON.stringify(escrows));
+}

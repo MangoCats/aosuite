@@ -6,12 +6,16 @@ import {
   parseBlocks, loadCachedTx, saveTxRecords, getLastScannedHeight,
   csvExporter, type TxRecord,
 } from '../core/txHistory.ts';
+import { refuteTransaction } from '../core/refutation.ts';
 
 export function TransactionHistory() {
-  const { recorderUrl, selectedChainId, chainInfo } = useStore();
+  const { recorderUrl, selectedChainId, chainInfo, showRefutation } = useStore();
   const [records, setRecords] = useState<TxRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refuting, setRefuting] = useState<string | null>(null); // "height:page" key
+  const [confirmRefute, setConfirmRefute] = useState<TxRecord | null>(null);
+  const [refuteResult, setRefuteResult] = useState<{ key: string; ok: boolean; msg: string } | null>(null);
 
   // Load cached transactions on mount / chain change
   useEffect(() => {
@@ -89,6 +93,22 @@ export function TransactionHistory() {
     URL.revokeObjectURL(url);
   }, [records, chainInfo, selectedChainId]);
 
+  const handleRefute = useCallback(async (r: TxRecord) => {
+    if (!selectedChainId || !recorderUrl) return;
+    const key = `${r.blockHeight}:${r.pageIndex}`;
+    setRefuting(key);
+    setRefuteResult(null);
+    try {
+      const hash = await refuteTransaction(recorderUrl, selectedChainId, r.blockHeight, r.pageIndex);
+      setRefuteResult({ key, ok: true, msg: `Refuted: ${hash.slice(0, 16)}...` });
+    } catch (e) {
+      setRefuteResult({ key, ok: false, msg: e instanceof Error ? e.message : 'Failed' });
+    } finally {
+      setRefuting(null);
+      setConfirmRefute(null);
+    }
+  }, [selectedChainId, recorderUrl]);
+
   if (!selectedChainId) return null;
 
   return (
@@ -122,29 +142,103 @@ export function TransactionHistory() {
                 <th style={thStyle}>Amount</th>
                 <th style={thStyle}>Counterparty</th>
                 <th style={thStyle}>Block</th>
+                {showRefutation && <th style={thStyle}></th>}
               </tr>
             </thead>
             <tbody>
-              {records.map((r, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                  <td style={tdStyle}>{formatDate(r.timestampMs)}</td>
-                  <td style={{
-                    ...tdStyle,
-                    color: r.direction === 'received' ? '#090' : '#c00',
-                    fontWeight: 500,
-                  }}>
-                    {r.direction === 'received' ? '+' : '-'}
-                  </td>
-                  <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{r.amount}</td>
-                  <td style={{ ...tdStyle, fontFamily: 'monospace' }}>
-                    {r.counterparty ? r.counterparty.slice(0, 12) + '...' : '—'}
-                    {r.hasBlob && ' 📎'}
-                  </td>
-                  <td style={tdStyle}>#{r.blockHeight}</td>
-                </tr>
-              ))}
+              {records.map((r, i) => {
+                const key = `${r.blockHeight}:${r.pageIndex}`;
+                const result = refuteResult?.key === key ? refuteResult : null;
+                return (
+                  <tr key={i} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                    <td style={tdStyle}>{formatDate(r.timestampMs)}</td>
+                    <td style={{
+                      ...tdStyle,
+                      color: r.direction === 'received' ? '#090' : '#c00',
+                      fontWeight: 500,
+                    }}>
+                      {r.direction === 'received' ? '+' : '-'}
+                    </td>
+                    <td style={{ ...tdStyle, fontFamily: 'monospace' }}>{r.amount}</td>
+                    <td style={{ ...tdStyle, fontFamily: 'monospace' }}>
+                      {r.counterparty ? r.counterparty.slice(0, 12) + '...' : '—'}
+                      {r.hasBlob && ' 📎'}
+                    </td>
+                    <td style={tdStyle}>#{r.blockHeight}</td>
+                    {showRefutation && (
+                      <td style={tdStyle}>
+                        <button
+                          onClick={() => setConfirmRefute(r)}
+                          disabled={refuting === key}
+                          style={{ fontSize: 10, padding: '1px 6px', color: '#c00' }}
+                        >
+                          {refuting === key ? '...' : 'Dispute'}
+                        </button>
+                        {result && (
+                          <span style={{
+                            fontSize: 10,
+                            marginLeft: 4,
+                            color: result.ok ? '#090' : '#c00',
+                          }}>
+                            {result.msg}
+                          </span>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Refutation confirmation dialog */}
+      {confirmRefute && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.5)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+        }}>
+          <div style={{
+            background: '#fff', borderRadius: 8, padding: 20, maxWidth: 400, width: '90%',
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8 }}>
+              Confirm Refutation
+            </div>
+            <div style={{ fontSize: 12, marginBottom: 12 }}>
+              <p>Block #{confirmRefute.blockHeight}, {formatDate(confirmRefute.timestampMs)}</p>
+              <p>Amount: {confirmRefute.amount} shares ({confirmRefute.direction})</p>
+              {confirmRefute.counterparty && (
+                <p style={{ fontFamily: 'monospace' }}>
+                  Counterparty: {confirmRefute.counterparty.slice(0, 16)}...
+                </p>
+              )}
+              <p style={{ color: '#c00', fontWeight: 500, marginTop: 8 }}>
+                This is permanent and cannot be undone. Refuting blocks late
+                recording of this agreement. Only refute if you are certain
+                the agreement should not be recorded.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setConfirmRefute(null)}
+                style={{ fontSize: 12, padding: '6px 12px' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleRefute(confirmRefute)}
+                disabled={refuting !== null}
+                style={{
+                  fontSize: 12, padding: '6px 12px',
+                  background: '#c00', color: '#fff', border: 'none', borderRadius: 4,
+                }}
+              >
+                {refuting !== null ? 'Submitting...' : 'Refute'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

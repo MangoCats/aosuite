@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { parseBlobPayload, buildBlobPayload } from '../blob.ts';
+import { BlobPrunedError } from '../../api/client.ts';
 
 describe('blob utilities', () => {
   it('parseBlobPayload: valid image/jpeg', () => {
@@ -59,5 +60,17 @@ describe('blob utilities', () => {
     const content = new Uint8Array([0x01]);
     expect(() => buildBlobPayload('text/plain\x00', content)).toThrow('control characters');
     expect(() => buildBlobPayload('text/\nplain', content)).toThrow('control characters');
+  });
+});
+
+describe('BlobPrunedError', () => {
+  it('has correct name and truncated hash', () => {
+    const hash = 'a'.repeat(64);
+    const err = new BlobPrunedError(hash);
+    expect(err.name).toBe('BlobPrunedError');
+    expect(err.hash).toBe(hash);
+    expect(err.message).toContain('aaaaaaaaaaaa…');
+    expect(err.message).toContain('pruned');
+    expect(err instanceof Error).toBe(true);
   });
 });

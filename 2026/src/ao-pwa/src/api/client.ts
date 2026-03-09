@@ -2,6 +2,16 @@
 
 import type { DataItemJson } from '../core/dataitem.ts';
 
+/** Thrown when a blob has been pruned per retention policy (HTTP 410 Gone). */
+export class BlobPrunedError extends Error {
+  public readonly hash: string;
+  constructor(hash: string) {
+    super(`Blob ${hash.slice(0, 12)}… was pruned per retention policy`);
+    this.name = 'BlobPrunedError';
+    this.hash = hash;
+  }
+}
+
 export interface ExchangePairEntry {
   sell_symbol: string;
   buy_symbol: string;
@@ -73,6 +83,38 @@ export interface BlockInfo {
   shares_out: string;
   first_seq: number;
   seq_count: number;
+}
+
+export interface BlobRule {
+  mime_pattern: string;
+  max_blob_size?: number;
+  retention_secs?: number;
+  priority?: number;
+}
+
+export interface BlobPolicyResponse {
+  rules: BlobRule[];
+  capacity_limit?: number;
+  throttle_threshold?: number;
+}
+
+export interface CaaSubmitResponse {
+  caa_hash: string;
+  chain_id: string;
+  block_height: number;
+  block_hash: string;
+  first_seq: number;
+  seq_count: number;
+  proof_json: DataItemJson;
+}
+
+export interface CaaStatusResponse {
+  caa_hash: string;
+  status: string; // 'escrowed' | 'binding' | 'finalized' | 'expired'
+  chain_order: number;
+  deadline: number;
+  block_height: number;
+  has_proof: boolean;
 }
 
 export class RecorderClient {
@@ -160,9 +202,13 @@ export class RecorderClient {
     return res.json();
   }
 
-  /** GET /chain/{id}/blob/{hash} — retrieve blob content */
+  /** GET /chain/{id}/blob/{hash} — retrieve blob content.
+   *  Throws BlobPrunedError (410) if the blob was pruned per retention policy. */
   async getBlob(chainId: string, hash: string): Promise<{ mime: string; data: Uint8Array }> {
     const res = await fetch(`${this.baseUrl}/chain/${chainId}/blob/${hash}`);
+    if (res.status === 410) {
+      throw new BlobPrunedError(hash);
+    }
     if (!res.ok) {
       const body = await res.text();
       throw new Error(`${res.status}: ${body}`);
@@ -170,6 +216,50 @@ export class RecorderClient {
     const contentType = res.headers.get('Content-Type') || 'application/octet-stream';
     const arrayBuf = await res.arrayBuffer();
     return { mime: contentType, data: new Uint8Array(arrayBuf) };
+  }
+
+  /** GET /chain/{id}/blob-policy — get chain's blob retention policy from genesis. */
+  async getBlobPolicy(chainId: string): Promise<BlobPolicyResponse | null> {
+    const res = await fetch(`${this.baseUrl}/chain/${chainId}/blob-policy`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    // Server returns null JSON value if no policy exists
+    if (!data || !data.items) return null;
+    return parseBlobPolicyJson(data);
+  }
+
+  /** POST /chain/{id}/refute — submit a refutation for an agreement hash. */
+  async refute(chainId: string, agreementHash: string): Promise<void> {
+    await this.fetchJson(`/chain/${chainId}/refute`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agreement_hash: agreementHash }),
+    });
+  }
+
+  // ── CAA Escrow Endpoints ───────────────────────────────────────────
+
+  /** POST /chain/{id}/caa/submit — submit CAA DataItem JSON for escrow recording. */
+  async caaSubmit(chainId: string, caaJson: DataItemJson): Promise<CaaSubmitResponse> {
+    return this.fetchJson(`/chain/${chainId}/caa/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(caaJson),
+    });
+  }
+
+  /** POST /chain/{id}/caa/bind — submit binding proofs to finalize escrow. */
+  async caaBind(chainId: string, caaHash: string, proofs: DataItemJson[]): Promise<CaaStatusResponse> {
+    return this.fetchJson(`/chain/${chainId}/caa/bind`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ caa_hash: caaHash, proofs }),
+    });
+  }
+
+  /** GET /chain/{id}/caa/{caaHash} — query CAA escrow status. */
+  async caaStatus(chainId: string, caaHash: string): Promise<CaaStatusResponse> {
+    return this.fetchJson(`/chain/${chainId}/caa/${caaHash}`);
   }
 
   /** Subscribe to block events via SSE. Returns an EventSource. */
@@ -180,5 +270,91 @@ export class RecorderClient {
       onBlock(info);
     });
     return es;
+  }
+}
+
+// ── Blob Policy JSON Parser ───────────────────────────────────────
+
+import { hexToBytes } from '../core/hex.ts';
+import * as tc from '../core/typecodes.ts';
+
+/** Parse a BLOB_POLICY DataItemJson into a typed BlobPolicyResponse. */
+function parseBlobPolicyJson(json: DataItemJson): BlobPolicyResponse {
+  const rules: BlobRule[] = [];
+  let capacity_limit: number | undefined;
+  let throttle_threshold: number | undefined;
+
+  for (const child of json.items ?? []) {
+    if (child.code === Number(tc.BLOB_RULE)) {
+      const rule = parseBlobRuleJson(child);
+      if (rule) rules.push(rule);
+    } else if (child.code === Number(tc.CAPACITY_LIMIT) && child.value != null) {
+      capacity_limit = decodeBigintHex(String(child.value));
+    } else if (child.code === Number(tc.THROTTLE_THRESHOLD) && child.value != null) {
+      throttle_threshold = decodeBigintHex(String(child.value));
+    }
+  }
+
+  return { rules, capacity_limit, throttle_threshold };
+}
+
+function parseBlobRuleJson(json: DataItemJson): BlobRule | null {
+  let mime_pattern = '';
+  let max_blob_size: number | undefined;
+  let retention_secs: number | undefined;
+  let priority: number | undefined;
+
+  for (const child of json.items ?? []) {
+    if (child.code === Number(tc.MIME_PATTERN) && child.value != null) {
+      const bytes = hexToBytes(String(child.value));
+      mime_pattern = new TextDecoder().decode(bytes);
+    } else if (child.code === Number(tc.MAX_BLOB_SIZE) && child.value != null) {
+      max_blob_size = decodeBigintHex(String(child.value));
+    } else if (child.code === Number(tc.RETENTION_SECS) && child.value != null) {
+      // RETENTION_SECS is Fixed(8), stored as 8-byte big-endian timestamp
+      // Convert from AO timestamp (Unix seconds × 189_000_000) back to seconds
+      const hex = String(child.value);
+      const bytes = hexToBytes(hex);
+      if (bytes.length === 8) {
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const raw = view.getBigInt64(0);
+        retention_secs = Number(raw / 189_000_000n);
+      }
+    } else if (child.code === Number(tc.PRIORITY) && child.value != null) {
+      priority = Number(child.value);
+    }
+  }
+
+  if (!mime_pattern) return null;
+  return { mime_pattern, max_blob_size, retention_secs, priority };
+}
+
+/** Decode a hex-encoded bigint value to a JS number. */
+function decodeBigintHex(hex: string): number | undefined {
+  try {
+    const bytes = hexToBytes(hex);
+    // AO bigint encoding: sign in bit 0, value in remaining bits, LSB-first VBC
+    // For simple positive values, just parse the encoded VBC
+    if (bytes.length === 0) return undefined;
+    let value = 0n;
+    let shift = 0n;
+    for (let i = 0; i < bytes.length; i++) {
+      const b = bytes[i];
+      if (i === 0) {
+        // First byte: bit 0 = sign (0=positive), bits 1-6 = value, bit 7 = continuation
+        const magnitude = (b >> 1) & 0x3f;
+        value = BigInt(magnitude);
+        shift = 6n;
+      } else {
+        // Subsequent bytes: bits 0-6 = value, bit 7 = continuation
+        const magnitude = b & 0x7f;
+        value |= BigInt(magnitude) << shift;
+        shift += 7n;
+      }
+      if ((b & 0x80) === 0) break;
+    }
+    return Number(value);
+  } catch {
+    return undefined;
   }
 }

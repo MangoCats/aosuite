@@ -22,12 +22,16 @@ pub struct Config {
     /// Assignment deadline in seconds from now (default: 86400).
     #[serde(default = "default_deadline")]
     pub deadline_secs: i64,
+    /// Path to trade history SQLite database (default: "exchange_trades.db").
+    #[serde(default = "default_db_path")]
+    pub db_path: String,
 }
 
 fn default_deposit_detection() -> String { "sse".to_string() }
 fn default_poll_interval() -> u64 { 5 }
 fn default_trade_ttl() -> u64 { 300 }
 fn default_deadline() -> i64 { 86400 }
+fn default_db_path() -> String { "exchange_trades.db".to_string() }
 
 #[derive(Deserialize, Clone)]
 pub struct TradingPair {
@@ -64,6 +68,9 @@ pub struct ChainConnection {
     /// Maximum shares to hold on this chain (position limit).
     #[serde(default)]
     pub max_position: Option<String>,
+    /// Low-stock warning threshold. Alerts when balance falls below this level.
+    #[serde(default)]
+    pub low_stock_threshold: Option<String>,
 }
 
 #[derive(Deserialize, Clone)]

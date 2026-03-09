@@ -25,6 +25,12 @@ export function Header({ onSyncClick }: HeaderProps) {
             Vendor
           </button>
           <button
+            onClick={() => setView('cooperative')}
+            style={{ fontWeight: view === 'cooperative' ? 'bold' : 'normal' }}
+          >
+            Co-op
+          </button>
+          <button
             onClick={() => setView('investor')}
             style={{ fontWeight: view === 'investor' ? 'bold' : 'normal' }}
           >

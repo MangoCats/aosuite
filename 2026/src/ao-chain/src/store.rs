@@ -945,6 +945,29 @@ impl ChainStore {
         )?;
         Ok(())
     }
+
+    /// Force a WAL checkpoint, flushing all WAL data into the main database file.
+    /// Safe to call on in-memory databases (no-op).
+    pub fn wal_checkpoint(&self) -> Result<()> {
+        self.conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")?;
+        Ok(())
+    }
+
+    /// Run a quick integrity check on the database.
+    /// Returns Ok(()) if healthy, Err with details if corruption is detected.
+    pub fn integrity_check(&self) -> Result<()> {
+        let result: String = self.conn.query_row(
+            "PRAGMA quick_check", [], |row| row.get(0)
+        )?;
+        if result == "ok" {
+            Ok(())
+        } else {
+            Err(ChainError::Database(rusqlite::Error::SqliteFailure(
+                rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_CORRUPT),
+                Some(format!("integrity check failed: {}", result)),
+            )))
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1174,5 +1197,20 @@ mod tests {
         // Profile operations still work
         store.set_vendor_profile(Some("Test"), None, None, None).unwrap();
         assert!(store.get_vendor_profile().unwrap().is_some());
+    }
+
+    #[test]
+    fn test_wal_checkpoint() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+        // WAL checkpoint should succeed (no-op for in-memory)
+        store.wal_checkpoint().unwrap();
+    }
+
+    #[test]
+    fn test_integrity_check_healthy() {
+        let store = ChainStore::open_memory().unwrap();
+        store.init_schema().unwrap();
+        store.integrity_check().unwrap();
     }
 }

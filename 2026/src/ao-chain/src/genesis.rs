@@ -157,6 +157,11 @@ pub fn load_genesis(store: &ChainStore, genesis: &DataItem) -> Result<ChainMeta>
 
     let genesis_timestamp = sig_timestamp.raw();
 
+    // Validate optional BLOB_POLICY if present
+    if let Some(policy) = genesis.find_child(BLOB_POLICY) {
+        validate_blob_policy(policy)?;
+    }
+
     // Build chain metadata
     let meta = ChainMeta {
         chain_id,
@@ -199,6 +204,44 @@ pub fn load_genesis(store: &ChainStore, genesis: &DataItem) -> Result<ChainMeta>
     store.mark_key_used(&pubkey_arr)?;
 
     Ok(meta)
+}
+
+// --- BLOB_POLICY validation ---
+
+/// Validate a BLOB_POLICY DataItem structure.
+/// Rules: must contain at least one BLOB_RULE child. Each BLOB_RULE must have
+/// MIME_PATTERN (non-empty UTF-8). RETENTION_SECS, MAX_BLOB_SIZE, PRIORITY are optional
+/// per-rule. CAPACITY_LIMIT and THROTTLE_THRESHOLD are optional top-level children.
+fn validate_blob_policy(policy: &DataItem) -> Result<()> {
+    let children = policy.children();
+    let rules: Vec<_> = children.iter().filter(|c| c.type_code == BLOB_RULE).collect();
+    if rules.is_empty() {
+        return Err(ChainError::InvalidGenesis(
+            "BLOB_POLICY must contain at least one BLOB_RULE".into()));
+    }
+    for (i, rule) in rules.iter().enumerate() {
+        let mime = rule.find_child(MIME_PATTERN)
+            .and_then(|c| c.as_bytes())
+            .ok_or_else(|| ChainError::InvalidGenesis(
+                format!("BLOB_RULE {} missing MIME_PATTERN", i)))?;
+        if mime.is_empty() {
+            return Err(ChainError::InvalidGenesis(
+                format!("BLOB_RULE {} has empty MIME_PATTERN", i)));
+        }
+        // Validate MIME_PATTERN is valid UTF-8
+        std::str::from_utf8(mime).map_err(|_| ChainError::InvalidGenesis(
+            format!("BLOB_RULE {} MIME_PATTERN is not valid UTF-8", i)))?;
+        // RETENTION_SECS must be 8 bytes (Fixed(8)) if present
+        if let Some(ret) = rule.find_child(RETENTION_SECS) {
+            let bytes = ret.as_bytes().ok_or_else(|| ChainError::InvalidGenesis(
+                format!("BLOB_RULE {} RETENTION_SECS has no bytes", i)))?;
+            if bytes.len() != 8 {
+                return Err(ChainError::InvalidGenesis(
+                    format!("BLOB_RULE {} RETENTION_SECS must be 8 bytes", i)));
+            }
+        }
+    }
+    Ok(())
 }
 
 // --- Helper functions for extracting typed values from DataItem ---
@@ -349,6 +392,146 @@ mod tests {
         let store = ChainStore::open_memory().unwrap();
         store.init_schema().unwrap();
         assert!(load_genesis(&store, &item).is_err());
+    }
+
+    #[test]
+    fn test_genesis_with_blob_policy() {
+        // Build genesis with an optional BLOB_POLICY child
+        let seed = [0x42u8; 32];
+        let key = SigningKey::from_seed(&seed);
+        let pubkey = key.public_key_bytes().to_vec();
+
+        let shares_out_val = BigInt::from(1u64 << 20);
+        let mut shares_bytes = Vec::new();
+        bigint::encode_bigint(&shares_out_val, &mut shares_bytes);
+
+        let coin_count_val = BigInt::from(1_000_000u64);
+        let mut coin_bytes = Vec::new();
+        bigint::encode_bigint(&coin_count_val, &mut coin_bytes);
+
+        let fee_rate = num_rational::BigRational::new(BigInt::from(1), BigInt::from(1000));
+        let mut fee_bytes = Vec::new();
+        bigint::encode_rational(&fee_rate, &mut fee_bytes);
+
+        let expiry_ts = Timestamp::from_unix_seconds(31_536_000);
+        let ts = Timestamp::from_unix_seconds(1_772_611_200);
+
+        // Build a BLOB_POLICY with two rules
+        let retention_7y = Timestamp::from_unix_seconds(220_752_000);
+        let retention_7d = Timestamp::from_unix_seconds(604_800);
+        let mut max5m = Vec::new();
+        bigint::encode_bigint(&BigInt::from(5_242_880u64), &mut max5m);
+        let mut cap500g = Vec::new();
+        bigint::encode_bigint(&BigInt::from(536_870_912_000u64), &mut cap500g);
+
+        let blob_policy = DataItem::container(BLOB_POLICY, vec![
+            DataItem::container(BLOB_RULE, vec![
+                DataItem::bytes(MIME_PATTERN, b"image/*".to_vec()),
+                DataItem::bytes(MAX_BLOB_SIZE, max5m),
+                DataItem::bytes(RETENTION_SECS, retention_7y.to_bytes().to_vec()),
+                DataItem::vbc_value(PRIORITY, 1),
+            ]),
+            DataItem::container(BLOB_RULE, vec![
+                DataItem::bytes(MIME_PATTERN, b"*/*".to_vec()),
+                DataItem::bytes(RETENTION_SECS, retention_7d.to_bytes().to_vec()),
+                DataItem::vbc_value(PRIORITY, 99),
+            ]),
+            DataItem::bytes(CAPACITY_LIMIT, cap500g),
+        ]);
+
+        let signable_children = vec![
+            DataItem::vbc_value(PROTOCOL_VER, 1),
+            DataItem::bytes(CHAIN_SYMBOL, b"TST".to_vec()),
+            DataItem::bytes(COIN_COUNT, coin_bytes),
+            DataItem::bytes(SHARES_OUT, shares_bytes.clone()),
+            DataItem::bytes(FEE_RATE, fee_bytes),
+            DataItem::bytes(EXPIRY_PERIOD, expiry_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(EXPIRY_MODE, 1),
+            blob_policy,
+            DataItem::container(PARTICIPANT, vec![
+                DataItem::bytes(ED25519_PUB, pubkey),
+                DataItem::bytes(AMOUNT, shares_bytes),
+            ]),
+        ];
+        let signable = DataItem::container(GENESIS, signable_children.clone());
+        let sig = sign::sign_dataitem(&key, &signable, ts);
+
+        let mut all_children = signable_children;
+        all_children.push(DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, ts.to_bytes().to_vec()),
+        ]));
+        let mut content_bytes = Vec::new();
+        for child in &all_children {
+            child.encode(&mut content_bytes);
+        }
+        let chain_hash = hash::sha256(&content_bytes);
+        all_children.push(DataItem::bytes(SHA256, chain_hash.to_vec()));
+
+        let genesis = DataItem::container(GENESIS, all_children);
+        let store = ChainStore::open_memory().unwrap();
+        let meta = load_genesis(&store, &genesis).unwrap();
+        assert_eq!(meta.symbol, "TST");
+    }
+
+    #[test]
+    fn test_blob_policy_no_rules_rejected() {
+        let seed = [0x42u8; 32];
+        let key = SigningKey::from_seed(&seed);
+        let pubkey = key.public_key_bytes().to_vec();
+
+        let shares_out_val = BigInt::from(1u64 << 20);
+        let mut shares_bytes = Vec::new();
+        bigint::encode_bigint(&shares_out_val, &mut shares_bytes);
+
+        let coin_count_val = BigInt::from(1_000_000u64);
+        let mut coin_bytes = Vec::new();
+        bigint::encode_bigint(&coin_count_val, &mut coin_bytes);
+
+        let fee_rate = num_rational::BigRational::new(BigInt::from(1), BigInt::from(1000));
+        let mut fee_bytes = Vec::new();
+        bigint::encode_rational(&fee_rate, &mut fee_bytes);
+
+        let expiry_ts = Timestamp::from_unix_seconds(31_536_000);
+        let ts = Timestamp::from_unix_seconds(1_772_611_200);
+
+        // Empty BLOB_POLICY (no rules)
+        let blob_policy = DataItem::container(BLOB_POLICY, vec![]);
+
+        let signable_children = vec![
+            DataItem::vbc_value(PROTOCOL_VER, 1),
+            DataItem::bytes(CHAIN_SYMBOL, b"TST".to_vec()),
+            DataItem::bytes(COIN_COUNT, coin_bytes),
+            DataItem::bytes(SHARES_OUT, shares_bytes.clone()),
+            DataItem::bytes(FEE_RATE, fee_bytes),
+            DataItem::bytes(EXPIRY_PERIOD, expiry_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(EXPIRY_MODE, 1),
+            blob_policy,
+            DataItem::container(PARTICIPANT, vec![
+                DataItem::bytes(ED25519_PUB, pubkey),
+                DataItem::bytes(AMOUNT, shares_bytes),
+            ]),
+        ];
+        let signable = DataItem::container(GENESIS, signable_children.clone());
+        let sig = sign::sign_dataitem(&key, &signable, ts);
+
+        let mut all_children = signable_children;
+        all_children.push(DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, ts.to_bytes().to_vec()),
+        ]));
+        let mut content_bytes = Vec::new();
+        for child in &all_children {
+            child.encode(&mut content_bytes);
+        }
+        let chain_hash = hash::sha256(&content_bytes);
+        all_children.push(DataItem::bytes(SHA256, chain_hash.to_vec()));
+
+        let genesis = DataItem::container(GENESIS, all_children);
+        let store = ChainStore::open_memory().unwrap();
+        let result = load_genesis(&store, &genesis);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("BLOB_RULE"));
     }
 
     #[test]

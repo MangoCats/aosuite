@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { RecorderClient } from '../api/client.ts';
+import { RecorderClient, BlobPrunedError } from '../api/client.ts';
 
 interface BlobViewerProps {
   chainId: string;
@@ -11,16 +11,18 @@ export function BlobViewer({ chainId, recorderUrl, hash }: BlobViewerProps) {
   const [url, setUrl] = useState<string | null>(null);
   const [mime, setMime] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
+  const [pruned, setPruned] = useState(false);
   const objectUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    // Revoke any URL from the previous render/effect run
     if (objectUrlRef.current) {
       URL.revokeObjectURL(objectUrlRef.current);
       objectUrlRef.current = null;
     }
     setUrl(null);
+    setError(null);
+    setPruned(false);
     const client = new RecorderClient(recorderUrl);
     client.getBlob(chainId, hash)
       .then(({ mime: m, data }) => {
@@ -31,7 +33,12 @@ export function BlobViewer({ chainId, recorderUrl, hash }: BlobViewerProps) {
         setUrl(newUrl);
       })
       .catch((e) => {
-        if (!cancelled) setError(String(e));
+        if (cancelled) return;
+        if (e instanceof BlobPrunedError) {
+          setPruned(true);
+        } else {
+          setError(String(e));
+        }
       });
     return () => {
       cancelled = true;
@@ -42,6 +49,13 @@ export function BlobViewer({ chainId, recorderUrl, hash }: BlobViewerProps) {
     };
   }, [chainId, recorderUrl, hash]);
 
+  if (pruned) {
+    return (
+      <span style={{ color: '#888', fontSize: 12, fontStyle: 'italic' }}>
+        Attachment expired (pruned per retention policy)
+      </span>
+    );
+  }
   if (error) return <span style={{ color: '#c00', fontSize: 12 }}>{error}</span>;
   if (!url) return <span style={{ fontSize: 12, color: '#888' }}>Loading...</span>;
 

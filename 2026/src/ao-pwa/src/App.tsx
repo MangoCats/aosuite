@@ -6,6 +6,7 @@ import { Settings } from './components/Settings.tsx';
 import { ConsumerView } from './components/ConsumerView.tsx';
 import { VendorView } from './components/VendorView.tsx';
 import { InvestorView } from './components/InvestorView.tsx';
+import { CooperativeView } from './components/CooperativeView.tsx';
 import { WalletSync } from './components/WalletSync.tsx';
 import { PassphrasePrompt } from './components/PassphrasePrompt.tsx';
 import { useStore } from './store/useStore.ts';
@@ -16,6 +17,7 @@ function ViewContent() {
   const { view } = useStore();
   if (view === 'investor') return <InvestorView />;
   if (view === 'vendor') return <VendorView />;
+  if (view === 'cooperative') return <CooperativeView />;
   return <ConsumerView />;
 }
 

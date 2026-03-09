@@ -14,6 +14,7 @@ use tower_http::limit::RequestBodyLimitLayer;
 use tracing::info;
 
 use ao_exchange::config;
+use ao_exchange::db::{TradeStore, TradeRecord, TradeQuery};
 use ao_exchange::engine::ExchangeEngine;
 use ao_exchange::client::RecorderClient;
 use ao_exchange::client::parse_sse_events;
@@ -46,6 +47,13 @@ enum Command {
 }
 
 type SharedEngine = Arc<Mutex<ExchangeEngine>>;
+type SharedStore = Arc<std::sync::Mutex<TradeStore>>;
+
+#[derive(Clone)]
+struct AppState {
+    engine: SharedEngine,
+    store: SharedStore,
+}
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -84,13 +92,23 @@ async fn run_daemon(config_path: &str, listen: &str) -> Result<()> {
     }
 
     let shared = Arc::new(Mutex::new(engine));
+    let trade_store = TradeStore::open(&cfg.db_path)
+        .context("failed to open trade history database")?;
+    let shared_store = Arc::new(std::sync::Mutex::new(trade_store));
+    info!(db_path = %cfg.db_path, "Trade history database opened");
+
+    let app_state = AppState {
+        engine: shared.clone(),
+        store: shared_store.clone(),
+    };
 
     // HTTP API with body size limit
     let app = Router::new()
         .route("/trade", post(handle_trade_request))
         .route("/status", get(handle_status))
+        .route("/trades", get(handle_trades_query))
         .layer(RequestBodyLimitLayer::new(MAX_BODY_SIZE))
-        .with_state(shared.clone());
+        .with_state(app_state);
 
     let listener = tokio::net::TcpListener::bind(listen).await
         .context("failed to bind HTTP listener")?;
@@ -104,9 +122,55 @@ async fn run_daemon(config_path: &str, listen: &str) -> Result<()> {
     });
 
     if use_sse {
-        run_sse_loop(shared, poll_interval).await
+        run_sse_loop(shared, shared_store, poll_interval).await
     } else {
-        run_polling_loop(shared, poll_interval).await
+        run_polling_loop(shared, shared_store, poll_interval).await
+    }
+}
+
+/// Record trade outcomes to the persistent store.
+fn record_trade_outcomes(
+    store: &SharedStore,
+    outcomes: &[ao_exchange::engine::TradeOutcome],
+) {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    let store = match store.lock() {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("trade store lock poisoned: {}", e);
+            return;
+        }
+    };
+
+    for outcome in outcomes {
+        let (status, sell_amount, error_msg) = match &outcome.result {
+            Ok((_height, amount)) => ("completed", amount.to_string(), None),
+            Err(e) => ("failed", "0".to_string(), Some(e.to_string())),
+        };
+
+        let record = TradeRecord {
+            trade_id: outcome.trade_id.clone(),
+            buy_symbol: outcome.buy_symbol.clone(),
+            sell_symbol: outcome.sell_symbol.clone(),
+            buy_chain_id: outcome.buy_chain_id.clone(),
+            sell_chain_id: outcome.sell_chain_id.clone(),
+            buy_amount: outcome.buy_amount.to_string(),
+            sell_amount,
+            rate: outcome.rate,
+            spread: outcome.spread,
+            status: status.to_string(),
+            requested_at: outcome.requested_at as i64,
+            completed_at: now,
+            error_message: error_msg,
+        };
+
+        if let Err(e) = store.insert_trade(&record) {
+            tracing::error!(trade_id = %outcome.trade_id, "failed to record trade: {}", e);
+        }
     }
 }
 
@@ -118,6 +182,7 @@ const MAX_SSE_BUF: usize = 64 * 1024;
 /// Falls back to polling if SSE connection drops, reconnects after poll_interval.
 async fn run_sse_loop(
     shared: SharedEngine,
+    trade_store: SharedStore,
     poll_interval: std::time::Duration,
 ) -> Result<()> {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<String>(32);
@@ -205,9 +270,10 @@ async fn run_sse_loop(
         while rx.try_recv().is_ok() {}
 
         let mut engine = shared.lock().await;
-        let results = engine.check_deposits().await;
-        if !results.is_empty() {
-            info!(trades = results.len(), "SSE-triggered deposit check completed trades");
+        let outcomes = engine.check_deposits().await;
+        if !outcomes.is_empty() {
+            info!(trades = outcomes.len(), "SSE-triggered deposit check completed trades");
+            record_trade_outcomes(&trade_store, &outcomes);
         }
         for (symbol, balance) in engine.positions() {
             tracing::debug!(symbol = %symbol, balance = %balance, "Position");
@@ -219,15 +285,20 @@ async fn run_sse_loop(
 }
 
 /// Legacy polling-based deposit detection.
-async fn run_polling_loop(shared: SharedEngine, poll_interval: std::time::Duration) -> Result<()> {
+async fn run_polling_loop(
+    shared: SharedEngine,
+    trade_store: SharedStore,
+    poll_interval: std::time::Duration,
+) -> Result<()> {
     loop {
         tokio::time::sleep(poll_interval).await;
 
         let mut engine = shared.lock().await;
-        let results = engine.check_deposits().await;
+        let outcomes = engine.check_deposits().await;
 
-        if !results.is_empty() {
-            info!(trades = results.len(), "Poll cycle completed trades");
+        if !outcomes.is_empty() {
+            info!(trades = outcomes.len(), "Poll cycle completed trades");
+            record_trade_outcomes(&trade_store, &outcomes);
         }
 
         for (symbol, balance) in engine.positions() {
@@ -276,13 +347,13 @@ struct TradeResponse {
 }
 
 async fn handle_trade_request(
-    State(engine): State<SharedEngine>,
+    State(state): State<AppState>,
     Json(req): Json<TradeRequest>,
 ) -> Result<Json<TradeResponse>, (StatusCode, Json<ErrorResponse>)> {
     let amount: num_bigint::BigInt = req.amount.parse()
         .map_err(|e| json_error(StatusCode::BAD_REQUEST, format!("invalid amount: {}", e)))?;
 
-    let mut engine = engine.lock().await;
+    let mut engine = state.engine.lock().await;
     let trade = engine.request_trade(&req.sell_symbol, &req.buy_symbol, &amount)
         .map_err(|e| json_error(StatusCode::BAD_REQUEST, e.to_string()))?;
 
@@ -320,12 +391,13 @@ struct PairStatus {
 struct PositionStatus {
     symbol: String,
     balance: String,
+    low_stock: bool,
 }
 
 async fn handle_status(
-    State(engine): State<SharedEngine>,
+    State(state): State<AppState>,
 ) -> Json<StatusResponse> {
-    let engine = engine.lock().await;
+    let engine = state.engine.lock().await;
     Json(StatusResponse {
         pairs: engine.pairs.iter().map(|p| PairStatus {
             sell: p.sell_symbol.clone(),
@@ -333,12 +405,80 @@ async fn handle_status(
             rate: p.rate,
             spread: p.spread,
         }).collect(),
-        positions: engine.positions().iter().map(|(s, b)| PositionStatus {
-            symbol: s.clone(),
-            balance: b.to_string(),
-        }).collect(),
+        positions: {
+            let positions = engine.positions();
+            positions.iter().map(|(symbol, balance)| {
+                let low_stock = engine.chains.values()
+                    .find(|cs| cs.symbol == *symbol)
+                    .and_then(|cs| cs.low_stock_threshold.as_ref())
+                    .map(|thresh| balance < thresh)
+                    .unwrap_or(false);
+                PositionStatus {
+                    symbol: symbol.clone(),
+                    balance: balance.to_string(),
+                    low_stock,
+                }
+            }).collect()
+        },
         pending_trades: engine.trades.pending_count(),
     })
+}
+
+// ── Trade History Query ───────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct TradesQueryParams {
+    from: Option<i64>,
+    to: Option<i64>,
+    symbol: Option<String>,
+    status: Option<String>,
+    limit: Option<usize>,
+    offset: Option<usize>,
+}
+
+#[derive(Serialize)]
+struct TradesResponse {
+    trades: Vec<TradeRecord>,
+    total: u64,
+    pnl: Vec<ao_exchange::db::PairPnl>,
+}
+
+async fn handle_trades_query(
+    State(state): State<AppState>,
+    axum::extract::Query(params): axum::extract::Query<TradesQueryParams>,
+) -> Result<Json<TradesResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let store = state.store.clone();
+    let from = params.from;
+    let to = params.to;
+    let symbol = params.symbol.clone();
+    let status = params.status.clone();
+    let limit = params.limit.unwrap_or(100);
+    let offset = params.offset.unwrap_or(0);
+
+    tokio::task::spawn_blocking(move || {
+        let store = store.lock()
+            .map_err(|_| json_error(StatusCode::INTERNAL_SERVER_ERROR, "store lock poisoned"))?;
+
+        let q = TradeQuery {
+            from_secs: from,
+            to_secs: to,
+            symbol,
+            status,
+            limit,
+            offset,
+        };
+
+        let trades = store.query_trades(&q)
+            .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let total = store.count_trades(&q)
+            .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let pnl = store.pair_pnl(from, to)
+            .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+        Ok(Json(TradesResponse { trades, total, pnl }))
+    })
+    .await
+    .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, format!("task join: {}", e)))?
 }
 
 async fn show_status(config_path: &str) -> Result<()> {

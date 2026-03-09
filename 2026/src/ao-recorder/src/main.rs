@@ -23,6 +23,19 @@ fn load_chain(db_path: &str, genesis_path: &str, blockmaker_key: &SigningKey) ->
     let store = ChainStore::open(db_path)
         .context("failed to open database")?;
 
+    // Checkpoint any pending WAL from a previous unclean shutdown.
+    // SQLite WAL replay happens automatically on open, but an explicit
+    // TRUNCATE checkpoint ensures the WAL file is reset cleanly.
+    if let Err(e) = store.wal_checkpoint() {
+        tracing::warn!(db = db_path, "Startup WAL checkpoint failed (non-fatal): {}", e);
+    }
+
+    // Integrity quick-check — catches corruption from power loss or disk errors.
+    if let Err(e) = store.integrity_check() {
+        tracing::error!(db = db_path, "Database integrity check FAILED: {}", e);
+        anyhow::bail!("Database {} failed integrity check: {}", db_path, e);
+    }
+
     // Always run init_schema to apply new tables to existing databases.
     // CREATE TABLE IF NOT EXISTS makes this idempotent and safe.
     store.init_schema().context("failed to initialize schema")?;
@@ -31,7 +44,12 @@ fn load_chain(db_path: &str, genesis_path: &str, blockmaker_key: &SigningKey) ->
         .context("failed to query chain metadata")?
     {
         Some(m) => {
-            info!(chain_id = hex::encode(m.chain_id), symbol = %m.symbol, "Chain loaded");
+            info!(
+                chain_id = hex::encode(m.chain_id),
+                symbol = %m.symbol,
+                block_height = m.block_height,
+                "Chain loaded"
+            );
             m
         }
         None => {
@@ -93,6 +111,13 @@ async fn main() -> Result<()> {
         let blob_dir = data_dir.join("blobs");
         let mut store = blob::BlobStore::new(blob_dir, cfg.max_blob_bytes)
             .context("failed to create blob store")?;
+        // Startup WAL checkpoint + integrity check for blob metadata DB
+        if let Err(e) = store.wal_checkpoint() {
+            tracing::warn!("Blob store startup WAL checkpoint failed (non-fatal): {}", e);
+        }
+        if let Err(e) = store.integrity_check() {
+            anyhow::bail!("Blob store integrity check failed: {}", e);
+        }
         store.set_quota(cfg.blob_quota_per_chain);
         Some(store)
     } else {
@@ -194,17 +219,45 @@ async fn main() -> Result<()> {
     let chain_count = state.chains.read()
         .map_err(|e| anyhow::anyhow!("chains lock poisoned: {}", e))?
         .len();
+    let shutdown_state = Arc::clone(&state);
     let app = build_router_with_config(state, &cfg);
 
     let bind_addr = format!("{}:{}", cfg.host, cfg.port);
-    info!(%bind_addr, chain_count, "Starting AO Recorder");
-
     let listener = tokio::net::TcpListener::bind(&bind_addr).await
         .context("failed to bind TCP listener")?;
-    axum::serve(listener, app).await
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal(shutdown_state))
+        .await
         .context("server error")?;
 
     Ok(())
+}
+
+// ── Graceful shutdown ───────────────────────────────────────────────
+
+/// Wait for SIGINT (Ctrl-C) or SIGTERM, then checkpoint all WAL databases.
+async fn shutdown_signal(state: Arc<ao_recorder::AppState>) {
+    let ctrl_c = tokio::signal::ctrl_c();
+
+    #[cfg(unix)]
+    {
+        let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to register SIGTERM handler");
+        tokio::select! {
+            _ = ctrl_c => info!("SIGINT received, shutting down"),
+            _ = sigterm.recv() => info!("SIGTERM received, shutting down"),
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        ctrl_c.await.expect("failed to listen for Ctrl-C");
+        info!("SIGINT received, shutting down");
+    }
+
+    info!("Checkpointing WAL databases...");
+    state.checkpoint_all();
+    info!("Shutdown complete");
 }
 
 // ── Subcommands ─────────────────────────────────────────────────────

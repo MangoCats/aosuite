@@ -600,28 +600,31 @@ Five sub-phases (S1–S5) delivering multi-device key sync for AO's single-use k
 | N14 | Offline balance cache | All three | Small | N11 | ✓ Done |
 | N15 | Transaction history + CSV export | All three | Medium | N2 | ✓ Done |
 | N16 | Vendor profile persistence + on-chain | Tourism | Small | N5 | ✓ Done |
-| N17 | On-chain blob linking + blob fees | Coop, Tourism | Medium | N8 | — |
+| N17 | On-chain blob linking + blob fees | Coop, Tourism | Medium | N8 | ✓ Done |
 | **Tier 2: Adoption** | | | | | |
-| N18 | Payment notifications (chime) | Tourism, UBI | Small | N2 | — |
-| N19 | Printable QR signage (PDF + PNG) | Tourism | Small | N3 | — |
-| N20 | Sales reporting | Tourism, Coop | Medium | N15 | — |
-| N21 | SSE deposit detection (exchange) | All three | Small | N1 | — |
-| N22 | Prometheus metrics | All three | Medium | N9 | — |
-| N23 | Mobile UI polish | All three | Medium | — | — |
+| N18 | Payment notifications (chime) | Tourism, UBI | Small | N2 | ✓ Done |
+| N19 | Printable QR signage (PDF + PNG) | Tourism | Small | N3 | ✓ Done |
+| N20 | Sales reporting | Tourism, Coop | Medium | N15 | ✓ Done |
+| N21 | SSE deposit detection (exchange) | All three | Small | N1 | ✓ Done |
+| N22 | Prometheus metrics | All three | Medium | N9 | ✓ Done |
+| N23 | Mobile UI polish | All three | Medium | — | ✓ Done |
 | **Tier 3: Maturity** | | | | | |
-| N24 | Multi-chain vendor dashboard | Tourism | Medium | N16 | — |
-| N25 | Refutation UI (power user) | All three | Medium | N15 | — |
-| N26 | Exchange trade history + P&L | All three | Medium | N21 | — |
-| N27 | CAA escrow UI in PWA | All three | Large | N11 | — |
+| N24 | Multi-chain vendor dashboard | Tourism | Medium | N16 | ✓ |
+| N25 | Refutation UI (power user) | All three | Medium | N15 | ✓ |
+| N26 | Exchange trade history + P&L | All three | Medium | N21 | ✓ |
+| N27 | CAA escrow UI in PWA | All three | Large | N11 | ✓ |
 | N28 | Credential issuance UI | All three | Medium | — | — |
 | N29 | External anchoring (off-disk) | All three | Medium | — | — |
-| N30 | BLOB_POLICY in genesis | Coop, Tourism | Medium | N17 | — |
-| N31 | Blob pruning + audit endpoints | Coop, Tourism | Medium | N30 | — |
+| N30 | BLOB_POLICY in genesis | Coop, Tourism | Medium | N17 | ✓ |
+| N31 | Blob pruning + audit endpoints | Coop, Tourism | Medium | N30 | ✓ |
 | **Tier 4: Strategic** | | | | | |
-| N32 | Cooperative metadata UI | Coop | Large | N17 | — |
-| N33 | Hot-standby recorder | All three | Large | N10 (F3) | — |
+| N32 | Cooperative metadata UI | Coop | Large | N17 | ✓ |
+| N33 | Recorder federation | All three | Large | N10 (F3) | ✓ (Phase 1) |
+| **Tier 5: TⒶ³** | | | | | |
+| N34 | TⒶ³ recorder competition (Rust) | All three | X-Large | N33 (Phase 4) | — |
+| N35 | TⒶ³ PWA integration | All three | Large | N34 | — |
 
-N1–N8 complete. N9 partially complete (installers remaining; Prometheus now tracked as N22). N10 complete except F3 (deferred). N11 complete. N12–N33 derived from [specs/UnmetNeedsReport.md](specs/UnmetNeedsReport.md) and [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md).
+N1–N8 complete. N9 partially complete (installers remaining; Prometheus now tracked as N22). N10 complete except F3 (deferred). N11 complete. N12–N23 complete (Tier 1 + Tier 2 done). N24–N33 in progress. N12–N33 derived from [specs/UnmetNeedsReport.md](specs/UnmetNeedsReport.md) and [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md). N34–N35 derived from [specs/CompetingRecorders.md](specs/CompetingRecorders.md) (TⒶ³ Phase 0 spec complete).
 
 Remaining hardware-dependent acceptance tests from earlier phases: two-device <3s latency, iOS/Android PWA install, Pi stress tests, Lighthouse PWA audit.
 
@@ -699,29 +702,35 @@ Responsive CSS with 640px mobile breakpoint. Sidebar stacks below header on narr
 
 ## Tier 3: Maturity Features
 
-### N24: Multi-Chain Vendor Dashboard — *Tourism*
+### N24: Multi-Chain Vendor Dashboard — *Tourism* ✓
 
 Unified view for vendors with multiple product lines (e.g. BCG + RMF).
 
-**Deliverables:**
-- Chain selector/summary bar in VendorView showing all vendor-owned chains.
-- Per-chain cards: symbol, today's revenue, last transaction time, SSE status.
-- Tap card to expand into single-chain detail. Combined revenue summary.
+**Delivered:**
+- `VendorDashboard.tsx`: grid of chain cards discovered via walletDb key ownership. Per-card: symbol, business name, block height, session tx count, last tx time, SSE live/off status.
+- Tap card calls `selectChain()` to show single-chain detail in VendorView below dashboard.
+- Combined session tx summary across all chains.
+- SSE subscriptions per card with stable `useMemo` deps to avoid excess reconnections.
+- Parallel profile fetching via `Promise.allSettled`.
+- 6 unit tests for `formatTimeAgo` utility.
 
-**Depends on:** N16 (persistent profiles to identify owned chains).
+**Known limitation:** Both VendorDashboard and IncomingMonitor open independent SSE connections to the same chain when selected. Lifting SSE to a shared context is deferred.
 
-### N25: Refutation UI — *All Three* (power user)
+### N25: Refutation UI — *All Three* (power user) ✓
 
 PWA interface for disputing fraudulent or late assignments. Shipped behind a settings toggle.
 
-**Deliverables:**
-- "Dispute" button on transaction history entries or UTXO detail view.
-- Builds refutation DataItem, signs with user's key, submits to recorder.
-- Confirmation dialog explaining consequences.
+**Delivered:**
+- `showRefutation` toggle in Settings (Power User section), persisted to localStorage, default off.
+- "Dispute" button on every transaction row in TransactionHistory when toggle is enabled.
+- Confirmation dialog showing block, date, amount, direction, counterparty, and permanent-action warning.
+- `refutation.ts`: `extractAssignment` extracts ASSIGNMENT from block JSON by page index, `computeAgreementHash` computes SHA2-256 matching the recorder's expected format, `refuteTransaction` orchestrates fetch-extract-hash-submit.
+- `RecorderClient.refute()` calls `POST /chain/{id}/refute` with agreement hash.
+- 7 unit tests for extraction and hashing.
 
-**Depends on:** N15 (transaction history for discoverability).
+**Known limitation:** Refutations are currently unsigned (bare agreement hash). The recorder accepts refutations from any caller. A future protocol revision should require signed REFUTATION DataItems to prevent third-party griefing.
 
-### N26: Exchange Trade History + P&L Dashboard — *All Three*
+### N26: Exchange Trade History + P&L Dashboard — *All Three* ✓
 
 Exchange operator tools: trade history, inventory tracking, profit/loss.
 
@@ -731,7 +740,14 @@ Exchange operator tools: trade history, inventory tracking, profit/loss.
 
 **Depends on:** N21 (SSE detection makes trade data more complete).
 
-### N27: CAA Escrow UI in PWA — *All Three*
+**Delivered:**
+- **Rust backend**: `db.rs` — SQLite `trade_history` table (WAL mode, indexed) with `TradeStore` (insert, query, count, pair volume aggregation via Rust-side BigInt to avoid SQL integer overflow). `TradeOutcome` struct returned from `check_deposits()` with full trade metadata. `GET /trades` endpoint with time range, symbol, status filters, pagination. Trade store access via `spawn_blocking`.
+- **Config**: `db_path` (default `exchange_trades.db`), `low_stock_threshold` per chain.
+- **PWA**: `exchangeTrades.ts` API client. `ExchangeDashboard.tsx` — period selector (1d/7d/30d/all), status filter, pending trades count, positions with low-stock warnings, trade volume by pair, trade list table, CSV export with proper escaping.
+- **Integration**: `InvestorView.tsx` — collapsible Exchange Dashboard section with URL input.
+- **Tests**: 7 Rust db tests (insert/query/status/time/symbol/count/upsert), 5 PWA fetch tests.
+
+### N27: CAA Escrow UI in PWA — *All Three* ✓
 
 Peer-to-peer atomic swap interface without exchange intermediary.
 
@@ -742,7 +758,18 @@ Peer-to-peer atomic swap interface without exchange intermediary.
 
 **Depends on:** CAA protocol (Phase 6, done), `ao-exchange` HTTP API (exists).
 
-### N28: Credential Issuance UI — *All Three*
+**Delivered:**
+- **Type codes**: CAA codes 69-78 (CAA, CAA_COMPONENT, CHAIN_REF, ESCROW_DEADLINE, CHAIN_ORDER, RECORDING_PROOF, CAA_HASH, BLOCK_REF, BLOCK_HEIGHT, COORDINATOR_BOND) added to `typecodes.ts`.
+- **API client**: `caaSubmit()`, `caaBind()`, `caaStatus()` methods on `RecorderClient`.
+- **Core module**: `caaEscrow.ts` — builds CAA DataItems with per-component and overall signatures, ouroboros recording sequence, status polling. Integer-only bond computation (ceil division), escrow duration max 600s enforced.
+- **Store**: `EscrowEntry` with client-side UUID for reliable tracking, localStorage persistence.
+- **UI**: `EscrowView.tsx` — Propose Swap form with fee-aware balance computation (fetches chain info, computes recording fees), pending escrow list with countdown timer, status polling, dismiss on completion.
+- **Integration**: Gated behind `showRefutation` power-user toggle in `ConsumerView`.
+- **Tests**: 11 tests — CAA structure validation, chain ordering, bond placement, overall status logic, mock status polling.
+
+**Known limitations:** (1) Demo mode only — generates counterparty keys locally (no two-party proposal/acceptance flow yet). (2) No SSE-based real-time status; manual polling only. (3) Receiver keys not yet saved to walletDb.
+
+### N28: Credential Issuance UI — *All Three* ✓
 
 Face-to-face and friends-of-friends trust model. Self-issued credentials only for now — no centralized authority, no complex DID resolution.
 
@@ -752,7 +779,17 @@ Face-to-face and friends-of-friends trust model. Self-issued credentials only fo
 - Revocation: submit revocation entry. `TrustIndicator` checks status.
 - Trust model: face-to-face issuer identity. No institutional authority required.
 
-### N29: External Anchoring — *All Three*
+**Delivered:**
+- **Core module**: `credentialIssue.ts` — build `CREDENTIAL_REF` DataItems (URL + SHA256 hash), fetch and hash credential documents, verify credentials (hash match/mismatch/unreachable), parse credential refs from block JSON with hex-to-UTF8 URL decoding, deduplicate by URL keeping latest block height.
+- **TrustIndicator extended**: Optional `credentials` prop. Credential rows show async verification status (green=verified, red=hash mismatch, grey=unreachable). Click to expand shows URL, hash, block height. Component now renders when either validators or credentials (or both) are present.
+- **CredentialIssue component**: Vendor-facing form to add credential references. Scans existing blocks for credential refs. URL input with auto-fetch and hash computation. Lists existing credentials with block heights.
+- **ChainDetail integration**: Scans chain blocks for `CREDENTIAL_REF` items, passes to TrustIndicator for consumer-facing credential display.
+- **VendorView integration**: CredentialIssue component between SalesReport and QR Signage.
+- **Tests**: 10 tests — DataItem structure, hash validation (32-byte enforcement), verification (match/mismatch/unreachable/HTTP-error), block JSON parsing with hex-encoded URLs, deduplication.
+
+**Known limitations:** (1) Credential references are displayed and verified but not yet automatically attached as separable items in assignments — vendor must manually include in future assignment. (2) CORS prevents browser-side verification of most external credential URLs; a recorder proxy would be needed for production. (3) Revocation is implicit via hash mismatch or URL unavailability — no explicit on-chain revocation entry type. (4) No third-party issuance flow — credentials are self-issued by the vendor.
+
+### N29: External Anchoring — *All Three* ✓ (Phase 1)
 
 Phased approach to off-disk anchor durability. Pluggable anchor trait already exists.
 
@@ -763,31 +800,46 @@ Phased approach to off-disk anchor durability. Pluggable anchor trait already ex
 
 Phase 1 is the near-term target. Phases 2–3 are later.
 
-### N30: BLOB_POLICY in Genesis — *Coop + Tourism*
+**Delivered (Phase 1):**
+- **`AnchorBackend` trait**: Formalized pluggable anchor interface with `publish()` and `verify()` methods. `Send + Sync` for safe use across async contexts.
+- **`FileAnchor`**: Refactored to implement `AnchorBackend` trait. JSON lines append-only format preserved. Usable as trait object (`Box<dyn AnchorBackend>`).
+- **`ReplicatedAnchor`**: New backend wrapping a primary `FileAnchor` + N replica `FileAnchor` paths. Primary must succeed; replicas are best-effort (errors logged, not propagated). Addresses disk-failure risk.
+- **Anchor config**: `[anchor]` TOML section with `path`, `interval_blocks` (default 100), `replica_paths`. Absent = no anchoring (backward compatible).
+- **Auto-anchoring**: Validator daemon automatically publishes anchors after successful verification when `validated_height >= last_anchor_height + interval_blocks`. Anchors recorded to SQLite store and visible in `GET /validate/{chain_id}` responses.
+- **Tests**: 6 new tests — trait object usage, replicated publish/verify, replica failure resilience, config defaults/parsing.
+
+**Known limitations:** (1) Phase 1 only — no S3/SFTP/HTTP push backends yet, only local file paths. Replica paths must be locally accessible (e.g., network mount, second disk). (2) Store mutex held during file I/O — acceptable for local files but may need refactoring for slow remote backends. (3) No anchor-specific metrics yet.
+
+### N30: BLOB_POLICY in Genesis — *Coop + Tourism* ✓
 
 Machine-readable blob retention policy as a genesis DataItem child. Non-separable type codes. Design: [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md) §2.2.
 
-**Deliverables:**
-- Allocate non-separable type codes for `BLOB_POLICY`, `BLOB_RULE`, and children (`MIME_PATTERN`, `RETENTION_SECS`, `CAPACITY_LIMIT`, `THROTTLE_THRESHOLD`). Exact codes allocated during implementation against type code registry.
-- Extend genesis builder (ao-chain, ao-cli, PWA genesis creator) to accept optional `BLOB_POLICY`.
-- Recorder `BlobStore` enforces active chain's policy on upload.
-- `GET /chain/{id}/blob-policy` endpoint. PWA displays policy in `ChainDetail`.
-- Chains without policy: best-effort default, "no retention guarantee" indicator in PWA.
+**Delivered:**
+- Type codes allocated: `BLOB_POLICY` (79), `BLOB_RULE` (80), `MIME_PATTERN` (81), `RETENTION_SECS` (82), `CAPACITY_LIMIT` (83), `THROTTLE_THRESHOLD` (84), `MAX_BLOB_SIZE` (85), `PRIORITY` (86). All in inseparable band 2 (|code| 64–95). Both Rust (`ao-types/src/typecode.rs`) and TypeScript (`ao-pwa/src/core/typecodes.ts`) registries updated with size categories and type names.
+- Genesis builder extended: `ao-chain/src/genesis.rs` validates optional `BLOB_POLICY` child (requires ≥1 BLOB_RULE with non-empty UTF-8 MIME_PATTERN, 8-byte RETENTION_SECS if present). `ao-cli/src/genesis.rs` adds `--blob-policy`, `--blob-capacity`, `--blob-throttle` CLI args. PWA `VendorView` GenesisCreator adds preset selector (none/standard/minimal).
+- Recorder enforcement: `ao-recorder/src/blob.rs` adds `BlobPolicy` struct with `from_genesis()` parser, `find_rule()` MIME matching, per-rule `MAX_BLOB_SIZE` enforcement on upload. `GET /chain/{id}/blob-policy` endpoint returns parsed policy from genesis block 0.
+- PWA display: `ChainDetail` fetches and displays blob policy with human-readable formatting. Chains without policy show "best-effort, no retention guarantee."
+- Tests: 2 genesis tests (with policy, no-rules rejected), 3 blob policy tests (MIME matching, from_genesis parsing, no-policy returns None). 229 Rust + 354 PWA = 583 total tests passing.
+
+**Known limitations:** (1) Genesis block read on every blob upload (no policy cache) — acceptable for current load, should cache for high-throughput. (2) No pruning enforcement yet (N31). (3) `RETENTION_SECS` stored as raw AO timestamp in Rust struct (`retention_raw` field); conversion helper `retention_seconds()` provided for future pruning logic.
 
 **Depends on:** N17 (on-chain blob linking).
 
-### N31: Blob Pruning + Audit Endpoints — *Coop + Tourism*
+### N31: Blob Pruning + Audit Endpoints — *Coop + Tourism* ✓
 
 Automated lifecycle management for blob storage. Design: [specs/BlobRetentionReport.md](specs/BlobRetentionReport.md) §3–4.
 
-**Deliverables:**
-- `blob_meta` SQLite table: `(hash, chain_id, mime, size, uploaded_at)`. Populated on upload; backfilled from filesystem.
-- Background pruning task (configurable interval, default daily): evaluates retention rules, deletes expired blobs, returns **410 Gone** for pruned hashes.
-- `ao-recorder prune --dry-run` command.
-- `HEAD /chain/{id}/blob/{hash}` — existence/age check without body transfer.
-- `GET /chain/{id}/blobs/manifest` — paginated JSON metadata list.
-- PWA `BlobViewer` handles 410 gracefully.
-- Optional `ao-validator` blob audit mode: walk chain blocks, HEAD-check blob hashes, alert on premature pruning.
+**Delivered:**
+- `blob_meta` SQLite table with `chain_id` index replaces in-memory HashMap tracking. Populated on upload via `INSERT OR REPLACE`.
+- `BlobStore.prune()` evaluates per-chain BLOB_POLICY retention rules, deletes expired blob files, keeps metadata for 410 Gone responses. Lock-free filesystem phase prevents blocking other blob operations during pruning.
+- `HEAD /chain/{id}/blob/{hash}` returns Content-Length, Content-Type, X-AO-Uploaded-At headers. Reports 410 for pruned blobs.
+- `GET /chain/{id}/blobs/manifest` paginated JSON metadata list (offset/limit params, default limit 100, max 1000).
+- `GET /chain/{id}/blob/{hash}` returns 410 Gone when file is pruned but metadata exists.
+- PWA `BlobPrunedError` class + `BlobViewer` shows "Attachment expired" for pruned blobs.
+- Hash validation rejects uppercase hex (security hardening).
+- 6 new Rust tests, 1 new PWA test.
+
+**Known limitations:** (1) No CLI `ao-recorder prune --dry-run` command yet (prune available as library method, not wired to CLI). (2) No `ao-validator` blob audit mode yet. (3) No backfill of pre-existing blobs on migration — new uploads get metadata, old blobs without metadata are treated as not found.
 
 **Depends on:** N30 (BLOB_POLICY for retention rules).
 
@@ -795,31 +847,86 @@ Automated lifecycle management for blob storage. Design: [specs/BlobRetentionRep
 
 ## Tier 4: Strategic
 
-### N32: Cooperative Metadata UI — *Coop*
+### N32: Cooperative Metadata UI — *Coop* ✓
 
-Specialized PWA view for agricultural cooperative workflows. Not first pilot, but developed and simulated as if live.
+Specialized PWA view for agricultural cooperative workflows per [specs/CooperativeMetadata.md](specs/CooperativeMetadata.md).
 
-**Deliverables:**
-- `CooperativeView.tsx`: forms for delivery entry (crop, weight, grade, lot), sale recording, cost allocation, advance payments.
-- Records as `NOTE` (type 32) separable items with structured `key:value` content per [specs/CooperativeMetadata.md](specs/CooperativeMetadata.md).
-- Provenance viewer: trace lot from farmer delivery to consumer sale.
-- Photo attachments via blob infrastructure (N17).
-- Sim scenario exercising full cooperative workflow.
+**Delivered:**
+- `cooperativeMetadata.ts`: parser/builder for `key:value` NOTE format. Four record types (delivery, sale, cost, advance). NaN-safe numeric parsing, newline sanitization. Aggregation (per-crop delivery ledger, sales summary with revenue). Lot provenance tracing across deliveries and sales.
+- `CooperativeView.tsx`: tabbed UI (Entry / Ledger / Provenance). Forms for all 4 record types with live preview. Sale form includes lot field for provenance linking. Block scanner extracts cooperative records from chain using canonical `DataItemJson` format.
+- Navigation: `'cooperative'` view added to store, App.tsx, Header.tsx ("Co-op" button).
+- Store integration: `pendingCoopNote` field passes prepared NOTE text to ConsumerView. ConsumerView includes it as a NOTE separable item in assignment build+confirm. Clears after successful submission. Reactive indicator shows when note is attached.
+- 21 tests covering parsing, building, roundtrip, aggregation, provenance, and block scanning.
+
+**Known limitations:** (1) No photo attachment UI in cooperative forms yet — photos can be attached via Consumer view's existing AttachmentPicker. (2) No sim scenario yet. (3) Cooperative records are only visible after they're confirmed on-chain (no local-only preview in ledger).
 
 **Depends on:** N17 (on-chain blob linking for photo receipts).
 
-### N33: Hot-Standby Recorder — *All Three*
+### N33: Recorder Federation — *All Three* ✓ (Phase 1)
 
-Progressive approach to recorder availability. Quick-restart (systemd auto-restart + SQLite WAL recovery) is the near-term target. Hot standby is later.
+Progressive approach to recorder availability and inter-recorder cooperation. Phase 1 (quick-restart) is done. Phase 2 (hot standby) enables same-operator redundancy. Phase 3 (recorder federation) enables the recorder-to-recorder protocols that TⒶ³ competing recorders requires.
 
 **Deliverables (phased):**
-1. **Quick-restart resilience (now):** Document and test systemd `Restart=always` + `WatchdogSec`. Verify SQLite WAL recovery after unclean shutdown. Measure restart-to-serving latency.
-2. **Hot standby (later):** Second recorder subscribes to primary's SSE, mirrors blocks + blobs. DNS/load-balancer failover on primary failure. No simultaneous writes.
-3. **Signed recorder identity (prerequisite for standby):** Implements F3 from N10. Clients verify recorder legitimacy without pre-shared config.
+1. **Quick-restart resilience (done):** Graceful shutdown with SIGTERM/SIGINT handling. WAL checkpoint on shutdown flushes all chain and blob databases. Startup WAL checkpoint + `PRAGMA quick_check` integrity verification on all databases. Systemd unit file with `Restart=always`, security hardening, `TimeoutStopSec=30`. All block commit paths already wrapped in transactions (normal path via `construct_block`, CAA path via explicit `begin_transaction`/`commit`/`rollback`).
+2. **Hot standby:** Second recorder subscribes to primary's SSE, mirrors blocks + blobs. DNS/load-balancer failover on primary failure. No simultaneous writes.
+3. **Signed recorder identity:** Implements F3 from N10. `RECORDER_IDENTITY` (type code 134) signed self-description published on every served chain. Clients verify recorder legitimacy without pre-shared config.
+4. **Recorder federation (prerequisite for TⒶ³):** Inter-recorder protocols enabling chain handoff between independent operators:
+   - **Authenticated chain sync:** Recorder-to-recorder block replay + blob bulk fetch. Must handle uncooperative source (fallback: restore from backup/validator). Streaming transfer, not limited by client-facing 1000-block pagination.
+   - **Client redirect:** Old recorder serves HTTP redirects to new recorder URL. On-chain `RECORDER_CHANGE` confirms redirect legitimacy. Graceful degradation if old recorder disappears.
+   - **Recorder discovery:** `RECORDER_IDENTITY` publication across channels (on-chain, HTTP endpoint, optional registry chains). See [specs/CompetingRecorders.md](specs/CompetingRecorders.md) §10.
 
-Phase 1 sufficient for pilot scale (single vendor, single Pi). Phase 2 for production deployments.
+Phase 1 sufficient for pilot scale (single vendor, single Pi). Phase 2 for production deployments. Phases 3 + 4 unlock TⒶ³.
+
+**Implementation notes (Phase 1):**
+- `ChainStore::wal_checkpoint()` — `PRAGMA wal_checkpoint(TRUNCATE)` flushes WAL to main DB file.
+- `ChainStore::integrity_check()` — `PRAGMA quick_check` detects corruption, fails startup if corrupt.
+- `BlobStore::wal_checkpoint()` / `integrity_check()` — same for blob metadata DB.
+- `AppState::checkpoint_all()` — iterates all chain stores + blob store, logs per-chain results.
+- `shutdown_signal()` in `main.rs` — `tokio::signal` handler for SIGTERM (Unix) / Ctrl-C (all platforms).
+- `ao-recorder.service` — systemd unit with `Restart=always`, `RestartSec=3`, `NoNewPrivileges=true`, `ProtectSystem=strict`.
+- `synchronous=NORMAL` with WAL mode: committed transactions survive process crash (WAL replay). Only a hard power failure can lose the last few uncheckpointed transactions — acceptable trade-off for performance.
 
 **Depends on:** N10 F3 (signed recorder identity) for Phase 2.
+
+**Test counts:** 236 Rust + 376 PWA = 612 total.
+
+---
+
+## Tier 5: TⒶ³ Competing Recorders
+
+Implements the TⒶ³ recorder marketplace per [specs/CompetingRecorders.md](specs/CompetingRecorders.md). One active recorder per chain at a time; competition through migration and market forces, not multi-node consensus. Depends on N33 Phase 3 (recorder federation) for inter-recorder sync.
+
+### N34: TⒶ³ Recorder Competition (Rust) — *All Three*
+
+Core protocol implementation in ao-types, ao-chain, ao-recorder, ao-validator.
+
+**Deliverables:**
+1. **Type codes 128–143** in ao-types: `OWNER_KEY_ROTATION`, `OWNER_KEY_REVOCATION`, `RECORDER_CHANGE_PENDING`, `RECORDER_CHANGE`, `RECORDER_URL_CHANGE`, `CHAIN_MIGRATION`, `RECORDER_IDENTITY`, `SURROGATE_PROOF`, `RECORDER_URL`, `RECORDING_FEE_ACTUAL`, `OWNER_KEY_OVERRIDE`, `KEY_ROTATION_RATE`, `REVOCATION_RATE_BASE`, `REWARD_RATE`, `REWARD_RATE_CHANGE`, `DESCRIPTION_INSEP`. Serialization, parsing, JSON roundtrip.
+2. **Genesis parameters:** `REWARD_RATE`, `KEY_ROTATION_RATE`, `REVOCATION_RATE_BASE` as optional GENESIS children. Default handling when absent.
+3. **Owner key rotation + revocation** in ao-chain: valid key set tracking per block height, rate limiting (pre-live exemption), revocation with override/hold/auto-revocation sweep.
+4. **Recorder switch** in ao-recorder: `RECORDER_CHANGE_PENDING` → CAA drain → auto-constructed `RECORDER_CHANGE`. Queued state management (block new CAA, continue regular transactions).
+5. **Share reward** in ao-chain: extended balance equation `sum(givers) = sum(receivers) + fee_burned + reward_to_recorder`. `REWARD_RATE_CHANGE` dual-signed blocks.
+6. **Chain migration** in ao-chain: `CHAIN_MIGRATION` freeze block, UTXO carry-forward into new genesis, surrogate proof validation (>50% share ownership).
+7. **Recorder URL change** in ao-recorder: dual-signed `RECORDER_URL_CHANGE` blocks.
+8. **Per-block fee transparency:** `RECORDING_FEE_ACTUAL` in every block, validated against genesis ceiling.
+9. **Validator support** in ao-validator: validate all new block types, key authority chain reconstruction, fee ceiling enforcement, reward rate audit.
+10. **Acceptance tests A–P** from CompetingRecorders.md §13 (16 test scenarios).
+
+**Depends on:** N33 Phase 3 (recorder federation — authenticated sync, client redirect, recorder discovery).
+
+### N35: TⒶ³ PWA Integration — *All Three*
+
+PWA support for recorder switching, owner key management, and migration trust UX.
+
+**Deliverables:**
+1. **Owner key management UI:** Key rotation, revocation, override. Display valid key set with expiration status. Rate limit visibility.
+2. **Recorder switch flow:** Select new recorder → initiate PENDING → monitor CAA drain → confirm CHANGE. Progress indicator during transition.
+3. **Recorder identity display:** Show `RECORDER_IDENTITY` details (name, URL, key) with signature verification.
+4. **Chain migration UX:** Wallet behavior for migrated chains — retain old keys, treat old/new as distinct, prompt for migration confirmation.
+5. **Reward rate display:** Show current share reward and burn rates. Rate change proposal flow (owner + recorder dual-sign).
+6. **Notification handling:** Surface key revocation/override alerts with appropriate urgency. Push notification integration where available.
+
+**Depends on:** N34 (Rust protocol implementation).
 
 ---
 
@@ -841,7 +948,7 @@ Items identified but not scheduled. Develop as resources become available.
 
 ## Not Covered
 
-**TⒶ³ (multiple competing recorders)** and **TⒶ⁴ (underwriters/error checkers)** — conceptual only in the 2018 docs. Would need Phase 0-equivalent specification work.
+**TⒶ⁴ (underwriters/error checkers)** — conceptual only in the 2018 docs. Would need Phase 0-equivalent specification work. (TⒶ³ specification is complete — see Tier 5 above.)
 
 **Regulatory compliance** — commodity-backed tokens sit in an unclear space. Architecture targets gift card / loyalty point frameworks (most favorable category). Real deployment needs jurisdiction-specific counsel.
 

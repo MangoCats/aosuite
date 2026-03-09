@@ -54,6 +54,28 @@ export const ROLLED_HASH = 66n;
 export const ANCHOR_REF = 67n;
 export const ANCHOR_TIMESTAMP = 68n;
 
+// CAA (Conditional Assignment Agreement) types (|code| 69-78)
+export const CAA = 69n;
+export const CAA_COMPONENT = 70n;
+export const CHAIN_REF = 71n;
+export const ESCROW_DEADLINE = 72n;
+export const CHAIN_ORDER = 73n;
+export const RECORDING_PROOF = 74n;
+export const CAA_HASH = 75n;
+export const BLOCK_REF = 76n;
+export const BLOCK_HEIGHT = 77n;
+export const COORDINATOR_BOND = 78n;
+
+// BLOB_POLICY types — N30, inseparable band (|code| 79-86)
+export const BLOB_POLICY = 79n;
+export const BLOB_RULE = 80n;
+export const MIME_PATTERN = 81n;
+export const RETENTION_SECS = 82n;
+export const CAPACITY_LIMIT = 83n;
+export const THROTTLE_THRESHOLD = 84n;
+export const MAX_BLOB_SIZE = 85n;
+export const PRIORITY = 86n;
+
 export type SizeCategory =
   | { kind: 'fixed'; size: number }
   | { kind: 'variable' }
@@ -76,16 +98,26 @@ const SIZE_CATEGORIES = new Map<bigint, SizeCategory>([
   [PREV_HASH, fixed(32)],
   [ROLLED_HASH, fixed(32)],
   [ANCHOR_TIMESTAMP, fixed(8)],
+  [CHAIN_REF, fixed(32)],
+  [ESCROW_DEADLINE, fixed(8)],
+  [CAA_HASH, fixed(32)],
 
   [AMOUNT, variable], [RECORDING_BID, variable], [COIN_COUNT, variable],
   [FEE_RATE, variable], [CHAIN_SYMBOL, variable], [SHARES_OUT, variable],
   [REFERRAL_FEE, variable],
   [NOTE, variable], [DATA_BLOB, variable], [DESCRIPTION, variable], [ICON, variable],
   [CREDENTIAL_URL, variable], [ANCHOR_REF, variable],
+  [COORDINATOR_BOND, variable],
+  [MIME_PATTERN, variable], [CAPACITY_LIMIT, variable],
+  [THROTTLE_THRESHOLD, variable], [MAX_BLOB_SIZE, variable],
+
+  [RETENTION_SECS, fixed(8)],
 
   [SEQ_ID, vbcValue], [PROTOCOL_VER, vbcValue], [FIRST_SEQ, vbcValue],
   [SEQ_COUNT, vbcValue], [LIST_SIZE, vbcValue], [PAGE_INDEX, vbcValue],
   [EXPIRY_MODE, vbcValue], [VALIDATED_HEIGHT, vbcValue],
+  [CHAIN_ORDER, vbcValue], [BLOCK_HEIGHT, vbcValue],
+  [PRIORITY, vbcValue],
 
   [ASSIGNMENT, container], [AUTHORIZATION, container], [PARTICIPANT, container],
   [BLOCK, container], [BLOCK_SIGNED, container], [BLOCK_CONTENTS, container],
@@ -93,6 +125,9 @@ const SIZE_CATEGORIES = new Map<bigint, SizeCategory>([
   [AUTH_SIG, container], [TAX_PARAMS, container],
   [VENDOR_PROFILE, container], [EXCHANGE_LISTING, container],
   [CREDENTIAL_REF, container], [VALIDATOR_ATTESTATION, container],
+  [CAA, container], [CAA_COMPONENT, container],
+  [RECORDING_PROOF, container], [BLOCK_REF, container],
+  [BLOB_POLICY, container], [BLOB_RULE, container],
 ]);
 
 export function sizeCategory(code: bigint): SizeCategory | undefined {
@@ -128,6 +163,15 @@ const TYPE_NAMES = new Map<bigint, string>([
   [VALIDATOR_ATTESTATION, 'VALIDATOR_ATTESTATION'],
   [VALIDATED_HEIGHT, 'VALIDATED_HEIGHT'], [ROLLED_HASH, 'ROLLED_HASH'],
   [ANCHOR_REF, 'ANCHOR_REF'], [ANCHOR_TIMESTAMP, 'ANCHOR_TIMESTAMP'],
+  [CAA, 'CAA'], [CAA_COMPONENT, 'CAA_COMPONENT'],
+  [CHAIN_REF, 'CHAIN_REF'], [ESCROW_DEADLINE, 'ESCROW_DEADLINE'],
+  [CHAIN_ORDER, 'CHAIN_ORDER'], [RECORDING_PROOF, 'RECORDING_PROOF'],
+  [CAA_HASH, 'CAA_HASH'], [BLOCK_REF, 'BLOCK_REF'],
+  [BLOCK_HEIGHT, 'BLOCK_HEIGHT'], [COORDINATOR_BOND, 'COORDINATOR_BOND'],
+  [BLOB_POLICY, 'BLOB_POLICY'], [BLOB_RULE, 'BLOB_RULE'],
+  [MIME_PATTERN, 'MIME_PATTERN'], [RETENTION_SECS, 'RETENTION_SECS'],
+  [CAPACITY_LIMIT, 'CAPACITY_LIMIT'], [THROTTLE_THRESHOLD, 'THROTTLE_THRESHOLD'],
+  [MAX_BLOB_SIZE, 'MAX_BLOB_SIZE'], [PRIORITY, 'PRIORITY'],
 ]);
 
 export function typeName(code: bigint): string | undefined {

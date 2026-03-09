@@ -7,6 +7,7 @@ use serde::Serialize;
 use tracing::info;
 
 use ao_validator::alert::{Alert, AlertDispatcher, AlertType};
+use ao_validator::anchor::{AnchorBackend, FileAnchor, ReplicatedAnchor};
 use ao_validator::client::RecorderClient;
 use ao_validator::config;
 use ao_validator::metrics;
@@ -54,6 +55,13 @@ async fn main() -> Result<()> {
 struct ValidatorState {
     store: Mutex<ValidatorStore>,
     alerts: AlertDispatcher,
+    anchor: Option<AnchorState>,
+}
+
+/// Anchor backend state for auto-anchoring (N29).
+struct AnchorState {
+    backend: Box<dyn AnchorBackend>,
+    interval_blocks: u64,
 }
 
 async fn run_daemon(config_path: &str) -> Result<()> {
@@ -69,9 +77,35 @@ async fn run_daemon(config_path: &str) -> Result<()> {
         }
     }
 
+    // Build anchor backend from config (N29)
+    let anchor_state = cfg.anchor.as_ref().map(|anchor_cfg| {
+        let backend: Box<dyn AnchorBackend> = if anchor_cfg.replica_paths.is_empty() {
+            Box::new(FileAnchor::new(std::path::PathBuf::from(&anchor_cfg.path)))
+        } else {
+            let replicas = anchor_cfg.replica_paths.iter()
+                .map(|p| std::path::PathBuf::from(p))
+                .collect();
+            Box::new(ReplicatedAnchor::new(
+                std::path::PathBuf::from(&anchor_cfg.path),
+                replicas,
+            ))
+        };
+        info!(
+            path = %anchor_cfg.path,
+            interval = anchor_cfg.interval_blocks,
+            replicas = anchor_cfg.replica_paths.len(),
+            "Anchor backend configured",
+        );
+        AnchorState {
+            backend,
+            interval_blocks: anchor_cfg.interval_blocks,
+        }
+    });
+
     let state = Arc::new(ValidatorState {
         store: Mutex::new(store),
         alerts: AlertDispatcher::new(cfg.webhook_url.clone()),
+        anchor: anchor_state,
     });
 
     info!(chains = cfg.chains.len(), "Validator started");
@@ -250,6 +284,47 @@ async fn run_daemon(config_path: &str) -> Result<()> {
                     final_height,
                     &rolled, "ok", None,
                 )?;
+
+                // Auto-anchor if configured and enough blocks since last anchor (N29)
+                if let Some(ref anchor_state) = state.anchor {
+                    let last_anchor_height = store
+                        .get_latest_anchor(&chain_cfg.chain_id)?
+                        .map(|a| a.height)
+                        .unwrap_or(0);
+
+                    if final_height >= last_anchor_height + anchor_state.interval_blocks {
+                        match anchor_state.backend.publish(
+                            &chain_cfg.chain_id,
+                            final_height,
+                            &rolled,
+                        ) {
+                            Ok(anchor_ref) => {
+                                let ts = unix_now();
+                                store.record_anchor(
+                                    &chain_cfg.chain_id,
+                                    final_height,
+                                    &rolled,
+                                    &anchor_ref,
+                                    ts,
+                                )?;
+                                info!(
+                                    chain = %label,
+                                    height = final_height,
+                                    anchor_ref = %anchor_ref,
+                                    "Anchor published",
+                                );
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    chain = %label,
+                                    height = final_height,
+                                    "Anchor publish failed: {}",
+                                    e,
+                                );
+                            }
+                        }
+                    }
+                }
             }
         }
 

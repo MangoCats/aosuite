@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useStore } from '../store/useStore.ts';
 import { RecorderClient } from '../api/client.ts';
 import type { ChainInfo } from '../api/client.ts';
+import { ExchangeDashboard } from './ExchangeDashboard.tsx';
 
 interface PortfolioEntry {
   recorderUrl: string;
@@ -17,6 +18,8 @@ export function InvestorView() {
   const [portfolio, setPortfolio] = useState<PortfolioEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [urlInput, setUrlInput] = useState('');
+  const [exchangeUrl, setExchangeUrl] = useState('http://localhost:3100');
+  const [showExchange, setShowExchange] = useState(false);
 
   // Include the main recorder URL plus any additional ones
   const allUrls = [recorderUrl, ...recorderUrls.filter(u => u !== recorderUrl)];
@@ -136,6 +139,29 @@ export function InvestorView() {
               ))}
             </tbody>
           </table>
+        )}
+      </div>
+
+      {/* Exchange Trade Dashboard */}
+      <div style={{ borderTop: '1px solid #eee', paddingTop: 12 }}>
+        <div
+          onClick={() => setShowExchange(!showExchange)}
+          style={{ fontSize: 14, fontWeight: 500, cursor: 'pointer', marginBottom: 8 }}
+        >
+          {showExchange ? '- Exchange Dashboard' : '+ Exchange Dashboard'}
+        </div>
+        {showExchange && (
+          <>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+              <label style={{ fontSize: 12 }}>Exchange URL:</label>
+              <input
+                value={exchangeUrl}
+                onChange={e => setExchangeUrl(e.target.value)}
+                style={{ flex: 1, fontSize: 12, padding: '4px 6px' }}
+              />
+            </div>
+            <ExchangeDashboard exchangeUrl={exchangeUrl} />
+          </>
         )}
       </div>
     </div>

@@ -274,6 +274,38 @@ impl AppState {
             .cloned()
             .ok_or(RecorderError::ChainNotFound)
     }
+
+    /// Checkpoint all WAL databases (chains + blob store).
+    /// Called during graceful shutdown to ensure data is fully flushed.
+    pub fn checkpoint_all(&self) {
+        let chains = match self.chains.read() {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::error!("chains lock poisoned during checkpoint: {}", e);
+                return;
+            }
+        };
+        for (id, cs) in chains.iter() {
+            match cs.store.lock() {
+                Ok(store) => {
+                    if let Err(e) = store.wal_checkpoint() {
+                        tracing::warn!(chain_id = %id, "WAL checkpoint failed: {}", e);
+                    } else {
+                        tracing::info!(chain_id = %id, "WAL checkpoint complete");
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(chain_id = %id, "store lock poisoned during checkpoint: {}", e);
+                }
+            }
+        }
+        if let Some(ref blob_store) = self.blob_store {
+            match blob_store.wal_checkpoint() {
+                Ok(()) => tracing::info!("Blob store WAL checkpoint complete"),
+                Err(e) => tracing::warn!("Blob store WAL checkpoint failed: {}", e),
+            }
+        }
+    }
 }
 
 /// Guard that decrements SSE gauge on drop.
@@ -424,7 +456,9 @@ pub fn build_router_with_config(state: Arc<AppState>, cfg: &config::Config) -> R
         .route("/chain/{id}/caa/bind", axum::routing::post(caa_bind))
         .route("/chain/{id}/caa/{caa_hash}", get(caa_status))
         .route("/chain/{id}/profile", get(get_vendor_profile).post(set_vendor_profile))
-        .route("/chain/{id}/blob/{hash}", get(blob::get_blob))
+        .route("/chain/{id}/blob/{hash}", get(blob::get_blob).head(blob::head_blob))
+        .route("/chain/{id}/blobs/manifest", get(blob::blob_manifest))
+        .route("/chain/{id}/blob-policy", get(get_blob_policy))
         .route("/admin/recorder-keys", get(list_recorder_keys).post(update_recorder_key))
         .layer(DefaultBodyLimit::max(MAX_BODY_SIZE));
 
@@ -921,6 +955,33 @@ async fn register_exchange_agent(
     }
 
     Ok(StatusCode::OK)
+}
+
+// ── Blob Policy ─────────────────────────────────────────────────────
+
+/// GET /chain/{id}/blob-policy — return the chain's BLOB_POLICY from genesis, or null.
+async fn get_blob_policy(
+    State(state): State<Arc<AppState>>,
+    Path(chain_id_hex): Path<String>,
+) -> Result<Json<serde_json::Value>, RecorderError> {
+    let chain = state.get_chain_or_err(&chain_id_hex)?;
+
+    let policy_json = blocking(move || {
+        let store = lock_store(&chain)?;
+        let genesis_bytes = store.get_block(0)
+            .map_err(|e| RecorderError::Internal(e.to_string()))?
+            .ok_or_else(|| RecorderError::Internal("genesis block not found".into()))?;
+        let genesis = ao_types::dataitem::DataItem::from_bytes(&genesis_bytes)
+            .map_err(|e| RecorderError::Internal(format!("genesis decode: {}", e)))?;
+
+        if let Some(policy) = genesis.find_child(ao_types::typecode::BLOB_POLICY) {
+            Ok(ao_types::json::to_json(policy))
+        } else {
+            Ok(serde_json::Value::Null)
+        }
+    }).await?;
+
+    Ok(Json(policy_json))
 }
 
 // ── Vendor Profile ───────────────────────────────────────────────────

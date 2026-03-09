@@ -55,6 +55,20 @@ pub struct GenesisArgs {
     /// Also output JSON representation
     #[arg(long)]
     json: bool,
+
+    /// Blob policy JSON file (optional). Contains rules like:
+    /// [{"mime":"image/*","max_bytes":5242880,"retention_secs":220752000,"priority":1}]
+    /// Top-level capacity_limit and throttle_threshold can be set via separate flags.
+    #[arg(long)]
+    blob_policy: Option<String>,
+
+    /// Total blob storage capacity in bytes (for BLOB_POLICY)
+    #[arg(long)]
+    blob_capacity: Option<u64>,
+
+    /// Throttle threshold in bytes — reject large blobs below this remaining capacity
+    #[arg(long)]
+    blob_throttle: Option<u64>,
 }
 
 fn parse_bigint(s: &str) -> BigInt {
@@ -132,6 +146,12 @@ pub fn run(args: GenesisArgs) {
     // EXPIRY_MODE
     children.push(DataItem::vbc_value(typecode::EXPIRY_MODE, args.expiry_mode));
 
+    // BLOB_POLICY (optional)
+    if let Some(ref policy_path) = args.blob_policy {
+        let policy_item = build_blob_policy(policy_path, args.blob_capacity, args.blob_throttle);
+        children.push(policy_item);
+    }
+
     // PARTICIPANT (issuer — receives all initial shares)
     children.push(DataItem::container(typecode::PARTICIPANT, vec![
         DataItem::bytes(typecode::ED25519_PUB, issuer_key.public_key_bytes().to_vec()),
@@ -182,6 +202,75 @@ pub fn run(args: GenesisArgs) {
         let json = ao_types::json::to_json(&genesis_block);
         println!("{}", serde_json::to_string_pretty(&json).expect("JSON serialization failed"));
     }
+}
+
+#[derive(serde::Deserialize)]
+struct BlobRuleJson {
+    mime: String,
+    #[serde(default)]
+    max_bytes: Option<u64>,
+    #[serde(default)]
+    retention_secs: Option<i64>,
+    #[serde(default)]
+    priority: Option<u64>,
+}
+
+fn build_blob_policy(
+    policy_path: &str,
+    capacity: Option<u64>,
+    throttle: Option<u64>,
+) -> DataItem {
+    let json_str = std::fs::read_to_string(policy_path).unwrap_or_else(|e| {
+        eprintln!("Error reading blob policy file {}: {}", policy_path, e);
+        std::process::exit(1);
+    });
+    let rules: Vec<BlobRuleJson> = serde_json::from_str(&json_str).unwrap_or_else(|e| {
+        eprintln!("Error parsing blob policy JSON: {}", e);
+        std::process::exit(1);
+    });
+    if rules.is_empty() {
+        eprintln!("Blob policy must contain at least one rule");
+        std::process::exit(1);
+    }
+
+    let mut policy_children: Vec<DataItem> = Vec::new();
+
+    for rule in &rules {
+        let mut rule_children: Vec<DataItem> = Vec::new();
+        rule_children.push(DataItem::bytes(
+            typecode::MIME_PATTERN,
+            rule.mime.as_bytes().to_vec(),
+        ));
+        if let Some(max) = rule.max_bytes {
+            let mut buf = Vec::new();
+            bigint::encode_bigint(&BigInt::from(max), &mut buf);
+            rule_children.push(DataItem::bytes(typecode::MAX_BLOB_SIZE, buf));
+        }
+        if let Some(secs) = rule.retention_secs {
+            let ts = Timestamp::from_unix_seconds(secs);
+            rule_children.push(DataItem::bytes(
+                typecode::RETENTION_SECS,
+                ts.to_bytes().to_vec(),
+            ));
+        }
+        if let Some(p) = rule.priority {
+            rule_children.push(DataItem::vbc_value(typecode::PRIORITY, p));
+        }
+        policy_children.push(DataItem::container(typecode::BLOB_RULE, rule_children));
+    }
+
+    if let Some(cap) = capacity {
+        let mut buf = Vec::new();
+        bigint::encode_bigint(&BigInt::from(cap), &mut buf);
+        policy_children.push(DataItem::bytes(typecode::CAPACITY_LIMIT, buf));
+    }
+    if let Some(thr) = throttle {
+        let mut buf = Vec::new();
+        bigint::encode_bigint(&BigInt::from(thr), &mut buf);
+        policy_children.push(DataItem::bytes(typecode::THROTTLE_THRESHOLD, buf));
+    }
+
+    DataItem::container(typecode::BLOB_POLICY, policy_children)
 }
 
 fn load_seed(seed_arg: &str) -> SigningKey {

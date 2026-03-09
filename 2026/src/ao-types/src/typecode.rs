@@ -79,6 +79,11 @@ pub const THROTTLE_THRESHOLD: i64 = 84;
 pub const MAX_BLOB_SIZE: i64 = 85;
 pub const PRIORITY: i64 = 86;
 
+/// Recorder identity types — N33 Phase 3, inseparable band 4 (|code| 128–159)
+pub const RECORDER_IDENTITY: i64 = 134;
+pub const RECORDER_URL: i64 = 136;
+pub const DESCRIPTION_INSEP: i64 = 143;
+
 /// How the data portion of a DataItem is sized.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SizeCategory {
@@ -119,7 +124,8 @@ pub fn size_category(code: i64) -> Option<SizeCategory> {
         CREDENTIAL_URL | ANCHOR_REF |
         COORDINATOR_BOND |
         MIME_PATTERN | CAPACITY_LIMIT | THROTTLE_THRESHOLD |
-        MAX_BLOB_SIZE => Some(SizeCategory::Variable),
+        MAX_BLOB_SIZE |
+        RECORDER_URL | DESCRIPTION_INSEP => Some(SizeCategory::Variable),
 
         SEQ_ID | PROTOCOL_VER | FIRST_SEQ | SEQ_COUNT |
         LIST_SIZE | PAGE_INDEX | EXPIRY_MODE |
@@ -133,7 +139,8 @@ pub fn size_category(code: i64) -> Option<SizeCategory> {
         TAX_PARAMS | VENDOR_PROFILE | EXCHANGE_LISTING |
         CREDENTIAL_REF | VALIDATOR_ATTESTATION |
         CAA | CAA_COMPONENT | RECORDING_PROOF | BLOCK_REF |
-        BLOB_POLICY | BLOB_RULE => Some(SizeCategory::Container),
+        BLOB_POLICY | BLOB_RULE |
+        RECORDER_IDENTITY => Some(SizeCategory::Container),
 
         _ => None,
     }
@@ -211,6 +218,9 @@ pub fn type_name(code: i64) -> Option<&'static str> {
         THROTTLE_THRESHOLD => Some("THROTTLE_THRESHOLD"),
         MAX_BLOB_SIZE => Some("MAX_BLOB_SIZE"),
         PRIORITY => Some("PRIORITY"),
+        RECORDER_IDENTITY => Some("RECORDER_IDENTITY"),
+        RECORDER_URL => Some("RECORDER_URL"),
+        DESCRIPTION_INSEP => Some("DESCRIPTION_INSEP"),
         _ => None,
     }
 }
@@ -268,6 +278,13 @@ mod tests {
         // Next separable band: 96-127
         assert!(is_separable(96));
         assert!(is_separable(127));
+
+        // Inseparable band 4: 128-159 (recorder identity + TⒶ³ types)
+        assert!(!is_separable(RECORDER_IDENTITY)); // 134
+        assert!(!is_separable(RECORDER_URL));       // 136
+        assert!(!is_separable(DESCRIPTION_INSEP));  // 143
+        assert!(!is_separable(128));
+        assert!(!is_separable(159));
     }
 
     #[test]
@@ -289,6 +306,7 @@ mod tests {
             COORDINATOR_BOND,
             BLOB_POLICY, BLOB_RULE, MIME_PATTERN, RETENTION_SECS,
             CAPACITY_LIMIT, THROTTLE_THRESHOLD, MAX_BLOB_SIZE, PRIORITY,
+            RECORDER_IDENTITY, RECORDER_URL, DESCRIPTION_INSEP,
         ];
         for code in all_codes {
             assert!(

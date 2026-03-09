@@ -8,7 +8,7 @@ use ao_types::dataitem::DataItem;
 use ao_crypto::sign::SigningKey;
 use ao_chain::store::ChainStore;
 
-use ao_recorder::{AppState, ChainState, blob, build_router_with_config, config, health, mqtt, poll_validators};
+use ao_recorder::{AppState, ChainState, blob, build_router_with_config, config, health, identity, mqtt, poll_validators};
 
 fn load_blockmaker_key(seed_hex: &str) -> Result<SigningKey> {
     let seed_bytes: Vec<u8> = hex::decode(seed_hex.trim())
@@ -133,6 +133,31 @@ async fn main() -> Result<()> {
     if cfg.max_connections > 0 {
         state_inner.connection_semaphore = Some(Arc::new(tokio::sync::Semaphore::new(cfg.max_connections)));
     }
+
+    // Build signed RECORDER_IDENTITY if configured
+    if let (Some(name), Some(url)) = (&cfg.recorder_name, &cfg.recorder_url) {
+        if !url.starts_with("http://") && !url.starts_with("https://") {
+            anyhow::bail!("recorder_url must start with http:// or https://, got: {}", url);
+        }
+        if name.is_empty() {
+            anyhow::bail!("recorder_name must be non-empty when configured");
+        }
+        let now_secs = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let ts = ao_types::timestamp::Timestamp::from_unix_seconds(now_secs);
+        let identity_item = identity::build_recorder_identity(
+            &default_key,
+            url,
+            name,
+            ts,
+        );
+        let identity_json = ao_types::json::to_json(&identity_item);
+        state_inner.recorder_identity = Some(identity_json);
+        info!(name = %name, url = %url, "Recorder identity built and signed");
+    }
+
     let state = Arc::new(state_inner);
 
     // Load single-chain config (backward compatible)
@@ -483,6 +508,10 @@ data_dir = "data"
 # Blob storage (optional):
 # max_blob_bytes = 5242880           # max single blob size (default 5 MB)
 # blob_quota_per_chain = 104857600   # per-chain storage quota (default 100 MB)
+
+# Recorder identity (optional, enables GET /recorder/identity):
+# recorder_name = "My Recorder"
+# recorder_url = "https://recorder.example.com"
 
 # Security (optional):
 # api_keys = ["secret-key-1", "secret-key-2"]

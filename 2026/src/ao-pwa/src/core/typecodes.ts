@@ -76,6 +76,11 @@ export const THROTTLE_THRESHOLD = 84n;
 export const MAX_BLOB_SIZE = 85n;
 export const PRIORITY = 86n;
 
+// Recorder identity types — N33 Phase 3, inseparable band 4 (|code| 128-159)
+export const RECORDER_IDENTITY = 134n;
+export const RECORDER_URL = 136n;
+export const DESCRIPTION_INSEP = 143n;
+
 export type SizeCategory =
   | { kind: 'fixed'; size: number }
   | { kind: 'variable' }
@@ -110,6 +115,7 @@ const SIZE_CATEGORIES = new Map<bigint, SizeCategory>([
   [COORDINATOR_BOND, variable],
   [MIME_PATTERN, variable], [CAPACITY_LIMIT, variable],
   [THROTTLE_THRESHOLD, variable], [MAX_BLOB_SIZE, variable],
+  [RECORDER_URL, variable], [DESCRIPTION_INSEP, variable],
 
   [RETENTION_SECS, fixed(8)],
 
@@ -128,6 +134,7 @@ const SIZE_CATEGORIES = new Map<bigint, SizeCategory>([
   [CAA, container], [CAA_COMPONENT, container],
   [RECORDING_PROOF, container], [BLOCK_REF, container],
   [BLOB_POLICY, container], [BLOB_RULE, container],
+  [RECORDER_IDENTITY, container],
 ]);
 
 export function sizeCategory(code: bigint): SizeCategory | undefined {
@@ -172,6 +179,8 @@ const TYPE_NAMES = new Map<bigint, string>([
   [MIME_PATTERN, 'MIME_PATTERN'], [RETENTION_SECS, 'RETENTION_SECS'],
   [CAPACITY_LIMIT, 'CAPACITY_LIMIT'], [THROTTLE_THRESHOLD, 'THROTTLE_THRESHOLD'],
   [MAX_BLOB_SIZE, 'MAX_BLOB_SIZE'], [PRIORITY, 'PRIORITY'],
+  [RECORDER_IDENTITY, 'RECORDER_IDENTITY'], [RECORDER_URL, 'RECORDER_URL'],
+  [DESCRIPTION_INSEP, 'DESCRIPTION_INSEP'],
 ]);
 
 export function typeName(code: bigint): string | undefined {

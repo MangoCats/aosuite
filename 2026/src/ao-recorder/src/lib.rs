@@ -27,6 +27,7 @@ pub mod blob;
 pub mod config;
 pub mod dashboard;
 pub mod health;
+pub mod identity;
 pub mod metrics;
 pub mod mqtt;
 pub mod security;
@@ -186,6 +187,8 @@ pub struct AppState {
     pub blob_store: Option<blob::BlobStore>,
     /// Semaphore limiting concurrent SSE/WebSocket connections. None = unlimited.
     pub connection_semaphore: Option<Arc<tokio::sync::Semaphore>>,
+    /// Cached signed RECORDER_IDENTITY DataItem as JSON. Built at startup if configured.
+    pub recorder_identity: Option<serde_json::Value>,
 }
 
 /// Cached result from polling a validator's GET /validate/{chain_id}.
@@ -220,6 +223,7 @@ impl AppState {
             vendor_profiles: RwLock::new(HashMap::new()),
             blob_store: None,
             connection_semaphore: None,
+            recorder_identity: None,
         }
     }
 
@@ -236,6 +240,7 @@ impl AppState {
             vendor_profiles: RwLock::new(HashMap::new()),
             blob_store: None,
             connection_semaphore: None,
+            recorder_identity: None,
         }
     }
 
@@ -460,6 +465,7 @@ pub fn build_router_with_config(state: Arc<AppState>, cfg: &config::Config) -> R
         .route("/chain/{id}/blobs/manifest", get(blob::blob_manifest))
         .route("/chain/{id}/blob-policy", get(get_blob_policy))
         .route("/admin/recorder-keys", get(list_recorder_keys).post(update_recorder_key))
+        .route("/recorder/identity", get(get_recorder_identity))
         .layer(DefaultBodyLimit::max(MAX_BODY_SIZE));
 
     // Blob upload route gets a separate, larger body limit (configurable, default 5 MB).
@@ -1488,6 +1494,16 @@ async fn update_recorder_key(
         kr.insert(chain_id, pubkey);
         tracing::info!(chain = %req.chain_id, "Added recorder key");
         Ok(Json(serde_json::json!({"status": "added"})))
+    }
+}
+
+/// GET /recorder/identity — return the signed RECORDER_IDENTITY DataItem as JSON.
+async fn get_recorder_identity(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<serde_json::Value>, RecorderError> {
+    match &state.recorder_identity {
+        Some(json) => Ok(Json(json.clone())),
+        None => Err(RecorderError::NotFound("recorder identity not configured".into())),
     }
 }
 

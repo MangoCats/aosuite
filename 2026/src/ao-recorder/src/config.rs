@@ -79,6 +79,12 @@ pub struct Config {
     /// Per-chain blob storage quota in bytes. Default: 100 MB (104857600).
     #[serde(default = "default_blob_quota_per_chain")]
     pub blob_quota_per_chain: u64,
+    /// Human-readable recorder name/description for RECORDER_IDENTITY.
+    #[serde(default)]
+    pub recorder_name: Option<String>,
+    /// Public URL where this recorder is reachable (e.g. "https://recorder.example.com").
+    #[serde(default)]
+    pub recorder_url: Option<String>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -150,6 +156,8 @@ impl Default for Config {
             allow_insecure_validators: false,
             max_blob_bytes: default_max_blob_bytes(),
             blob_quota_per_chain: default_blob_quota_per_chain(),
+            recorder_name: None,
+            recorder_url: None,
         }
     }
 }

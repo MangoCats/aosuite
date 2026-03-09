@@ -619,7 +619,7 @@ Five sub-phases (S1–S5) delivering multi-device key sync for AO's single-use k
 | N31 | Blob pruning + audit endpoints | Coop, Tourism | Medium | N30 | ✓ |
 | **Tier 4: Strategic** | | | | | |
 | N32 | Cooperative metadata UI | Coop | Large | N17 | ✓ |
-| N33 | Recorder federation | All three | Large | N10 (F3) | ✓ (Phase 1) |
+| N33 | Recorder federation | All three | Large | N10 (F3) | ✓ (Phases 1+3) |
 | **Tier 5: TⒶ³** | | | | | |
 | N34 | TⒶ³ recorder competition (Rust) | All three | X-Large | N33 (Phase 4) | — |
 | N35 | TⒶ³ PWA integration | All three | Large | N34 | — |
@@ -862,14 +862,14 @@ Specialized PWA view for agricultural cooperative workflows per [specs/Cooperati
 
 **Depends on:** N17 (on-chain blob linking for photo receipts).
 
-### N33: Recorder Federation — *All Three* ✓ (Phase 1)
+### N33: Recorder Federation — *All Three* ✓ (Phases 1 + 3)
 
-Progressive approach to recorder availability and inter-recorder cooperation. Phase 1 (quick-restart) is done. Phase 2 (hot standby) enables same-operator redundancy. Phase 3 (recorder federation) enables the recorder-to-recorder protocols that TⒶ³ competing recorders requires.
+Progressive approach to recorder availability and inter-recorder cooperation. Phase 1 (quick-restart) and Phase 3 (signed recorder identity) are done. Phase 2 (hot standby) enables same-operator redundancy. Phase 4 (recorder federation) enables the recorder-to-recorder protocols that TⒶ³ competing recorders requires.
 
 **Deliverables (phased):**
 1. **Quick-restart resilience (done):** Graceful shutdown with SIGTERM/SIGINT handling. WAL checkpoint on shutdown flushes all chain and blob databases. Startup WAL checkpoint + `PRAGMA quick_check` integrity verification on all databases. Systemd unit file with `Restart=always`, security hardening, `TimeoutStopSec=30`. All block commit paths already wrapped in transactions (normal path via `construct_block`, CAA path via explicit `begin_transaction`/`commit`/`rollback`).
 2. **Hot standby:** Second recorder subscribes to primary's SSE, mirrors blocks + blobs. DNS/load-balancer failover on primary failure. No simultaneous writes.
-3. **Signed recorder identity:** Implements F3 from N10. `RECORDER_IDENTITY` (type code 134) signed self-description published on every served chain. Clients verify recorder legitimacy without pre-shared config.
+3. **Signed recorder identity (done):** Implements F3 from N10. `RECORDER_IDENTITY` (type code 134) signed self-description. Type codes 134 (RECORDER_IDENTITY), 136 (RECORDER_URL), 143 (DESCRIPTION_INSEP) added to Rust and TypeScript registries. `identity.rs`: `build_recorder_identity()` constructs and signs per CompetingRecorders.md §10.1; `verify_recorder_identity()` validates self-signature. Config fields `recorder_name` + `recorder_url` (both optional). `GET /recorder/identity` HTTP endpoint returns signed DataItem as JSON. URL validation on startup. 5 Rust tests + 2 TypeScript tests.
 4. **Recorder federation (prerequisite for TⒶ³):** Inter-recorder protocols enabling chain handoff between independent operators:
    - **Authenticated chain sync:** Recorder-to-recorder block replay + blob bulk fetch. Must handle uncooperative source (fallback: restore from backup/validator). Streaming transfer, not limited by client-facing 1000-block pagination.
    - **Client redirect:** Old recorder serves HTTP redirects to new recorder URL. On-chain `RECORDER_CHANGE` confirms redirect legitimacy. Graceful degradation if old recorder disappears.
@@ -888,7 +888,7 @@ Phase 1 sufficient for pilot scale (single vendor, single Pi). Phase 2 for produ
 
 **Depends on:** N10 F3 (signed recorder identity) for Phase 2.
 
-**Test counts:** 236 Rust + 376 PWA = 612 total.
+**Test counts:** 241 Rust + 378 PWA = 619 total.
 
 ---
 

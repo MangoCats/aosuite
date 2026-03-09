@@ -9,8 +9,17 @@ describe('Type codes', () => {
     tc.RECORDING_BID, tc.DEADLINE, tc.COIN_COUNT, tc.FEE_RATE, tc.EXPIRY_PERIOD,
     tc.CHAIN_SYMBOL, tc.PROTOCOL_VER, tc.SHARES_OUT, tc.PREV_HASH,
     tc.FIRST_SEQ, tc.SEQ_COUNT, tc.LIST_SIZE, tc.REFUTATION, tc.PAGE_INDEX,
-    tc.AUTH_SIG, tc.EXPIRY_MODE, tc.TAX_PARAMS,
+    tc.AUTH_SIG, tc.REFERRAL_FEE, tc.EXPIRY_MODE, tc.TAX_PARAMS,
     tc.NOTE, tc.DATA_BLOB, tc.DESCRIPTION, tc.ICON, tc.VENDOR_PROFILE,
+    tc.EXCHANGE_LISTING, tc.CREDENTIAL_REF, tc.CREDENTIAL_URL,
+    tc.VALIDATOR_ATTESTATION, tc.VALIDATED_HEIGHT, tc.ROLLED_HASH,
+    tc.ANCHOR_REF, tc.ANCHOR_TIMESTAMP,
+    tc.CAA, tc.CAA_COMPONENT, tc.CHAIN_REF, tc.ESCROW_DEADLINE,
+    tc.CHAIN_ORDER, tc.RECORDING_PROOF, tc.CAA_HASH, tc.BLOCK_REF,
+    tc.BLOCK_HEIGHT, tc.COORDINATOR_BOND,
+    tc.BLOB_POLICY, tc.BLOB_RULE, tc.MIME_PATTERN, tc.RETENTION_SECS,
+    tc.CAPACITY_LIMIT, tc.THROTTLE_THRESHOLD, tc.MAX_BLOB_SIZE, tc.PRIORITY,
+    tc.RECORDER_IDENTITY, tc.RECORDER_URL, tc.DESCRIPTION_INSEP,
   ];
 
   it('all codes have size categories', () => {
@@ -49,5 +58,19 @@ describe('Type codes', () => {
   it('separability: next separable band 96-127', () => {
     expect(tc.isSeparable(96n)).toBe(true);
     expect(tc.isSeparable(127n)).toBe(true);
+  });
+
+  it('separability: inseparable band 4 (128-159, recorder identity + TⒶ³)', () => {
+    expect(tc.isSeparable(tc.RECORDER_IDENTITY)).toBe(false);
+    expect(tc.isSeparable(tc.RECORDER_URL)).toBe(false);
+    expect(tc.isSeparable(tc.DESCRIPTION_INSEP)).toBe(false);
+    expect(tc.isSeparable(128n)).toBe(false);
+    expect(tc.isSeparable(159n)).toBe(false);
+  });
+
+  it('recorder identity type codes have correct categories', () => {
+    expect(tc.sizeCategory(tc.RECORDER_IDENTITY)?.kind).toBe('container');
+    expect(tc.sizeCategory(tc.RECORDER_URL)?.kind).toBe('variable');
+    expect(tc.sizeCategory(tc.DESCRIPTION_INSEP)?.kind).toBe('variable');
   });
 });

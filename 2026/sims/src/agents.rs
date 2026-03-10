@@ -1057,7 +1057,9 @@ pub async fn run_consumer(
     let mut wallet = Wallet::new(&name);
     let mut tx_count: u64 = 0;
 
-    let is_cross_chain = consumer_cfg.want_symbol.is_some() && consumer_cfg.pay_symbol.is_some();
+    let has_purchases = !consumer_cfg.purchases.is_empty();
+    let is_cross_chain = has_purchases
+        || (consumer_cfg.want_symbol.is_some() && consumer_cfg.pay_symbol.is_some());
 
     if is_cross_chain && consumer_cfg.atomic {
         run_atomic_consumer(

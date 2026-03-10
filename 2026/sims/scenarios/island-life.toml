@@ -11,12 +11,12 @@
 #   Ziggy — ZIC (Ziggy's Island Credits), aggressive competitor at The Valley
 #   Ted — TCC (Ted's Caribbean Credits), regional intermediary in Tortola
 #
-# Consumers:
-#   Alice — tourist, buys BCG via Charlie (pays CCC) on the beach
-#   Eddie — local investor, buys BCG via Charlie (pays CCC) on the village road
-#   Karen — nurse, buys RMF via Charlie (pays CCC) at George Hill
-#   Luke — tourist, buys DEB via Ziggy (pays ZIC, cheaper) at Blowing Point
-#   Mona — local, buys BCG via Ziggy (pays ZIC, undercut) at The Valley
+# Consumers (multi-vendor — each buys from 2 vendors via their exchange):
+#   Alice — tourist, buys BCG + RMF via Charlie on the beach
+#   Eddie — local investor, buys BCG + OGP via Charlie on the village road
+#   Karen — nurse, buys RMF + DEB via Charlie at George Hill
+#   Luke — tourist, buys DEB + BCG via Ziggy at Blowing Point
+#   Mona — local, buys BCG + DEB via Ziggy at The Valley
 #
 # Recorders:
 #   Gene — primary recorder at Crocus Bay
@@ -27,12 +27,12 @@
 [simulation]
 name = "island-life"
 title = "Island Life — Sandy Ground Beach Economy"
-description = "A beach economy on Anguilla: four vendors sell curry goat, mango futures, e-bike rentals, and goat plates. Three competing exchange agents bridge tourist spending to local chains. Watch prices converge as exchanges compete for the same customers."
+description = "A beach economy on Anguilla: four vendors, three exchanges, five consumers. Each consumer shops at multiple vendors through their exchange — Alice alternates between curry goat and mangoes, Luke rents bikes and grabs lunch."
 what_to_watch = [
-    "Charlie and Ziggy compete on BCG rates — watch Ziggy undercut Charlie's prices",
-    "Transaction arcs on the map show the flow of commerce across Sandy Ground",
-    "Click any agent to see their wallet, inventory, and trading rates",
-    "Ted operates from Tortola — a regional exchange with different rate dynamics",
+    "Each consumer visits multiple vendors — watch Alice alternate between Bob and Rita",
+    "Charlie serves 4 vendors from a single dock exchange — a true marketplace hub",
+    "Ziggy competes on BCG and DEB — Luke and Mona use him for lower rates",
+    "Transaction arcs on the map show multi-vendor shopping patterns",
 ]
 recorder_port = 0
 speed = 1.0             # real-time (1x)
@@ -253,74 +253,114 @@ shares = "2^42"
 plate_price = 1
 initial_float = 2000
 
-# ── Consumers ────────────────────────────────────────────────────────
+# ── Consumers (multi-vendor round-robin) ────────────────────────────
 
 [[agent]]
 name = "Alice"
 role = "consumer"
-blurb = "Tourist at Sandy Ground — buys curry goat via Charlie"
+blurb = "Tourist — buys curry goat and mango futures via Charlie"
 lat = 18.2008
 lon = -63.0905          # Sandy Ground beach
 
 [agent.consumer]
 buy_from = "Charlie"
-want_symbol = "BCG"
 pay_symbol = "CCC"
 fund_from = "CCC-Issuer"
+
+[[agent.consumer.purchases]]
+want_symbol = "BCG"
+redeem_at = "Bob"
 interval_secs = 30
+
+[[agent.consumer.purchases]]
+want_symbol = "RMF"
+redeem_at = "Rita"
+interval_secs = 40
 
 [[agent]]
 name = "Eddie"
 role = "consumer"
-blurb = "Local investor — also buys BCG via Charlie"
+blurb = "Local investor — buys curry goat and goat plates via Charlie"
 lat = 18.2025
 lon = -63.0878          # Sandy Ground village road
 
 [agent.consumer]
 buy_from = "Charlie"
-want_symbol = "BCG"
 pay_symbol = "CCC"
 fund_from = "CCC-Issuer"
+
+[[agent.consumer.purchases]]
+want_symbol = "BCG"
+redeem_at = "Bob"
 interval_secs = 45
+
+[[agent.consumer.purchases]]
+want_symbol = "OGP"
+redeem_at = "Oscar"
+interval_secs = 35
 
 [[agent]]
 name = "Karen"
 role = "consumer"
-blurb = "Nurse at George Hill — buys mango futures via Charlie"
+blurb = "Nurse at George Hill — buys mango futures and e-bike rentals via Charlie"
 lat = 18.2165
 lon = -63.0560          # near George Hill hospital
 
 [agent.consumer]
 buy_from = "Charlie"
-want_symbol = "RMF"
 pay_symbol = "CCC"
 fund_from = "CCC-Issuer"
+
+[[agent.consumer.purchases]]
+want_symbol = "RMF"
+redeem_at = "Rita"
 interval_secs = 40
+
+[[agent.consumer.purchases]]
+want_symbol = "DEB"
+redeem_at = "Dave"
+interval_secs = 60
 
 [[agent]]
 name = "Luke"
 role = "consumer"
-blurb = "Tourist at Blowing Point — rents e-bikes via Ziggy (cheaper)"
+blurb = "Tourist at Blowing Point — rents e-bikes and buys curry goat via Ziggy"
 lat = 18.1760
 lon = -63.0920          # Blowing Point
 
 [agent.consumer]
 buy_from = "Ziggy"
-want_symbol = "DEB"
 pay_symbol = "ZIC"
 fund_from = "ZIC-Issuer"
+
+[[agent.consumer.purchases]]
+want_symbol = "DEB"
+redeem_at = "Dave"
 interval_secs = 60
+
+[[agent.consumer.purchases]]
+want_symbol = "BCG"
+redeem_at = "Bob"
+interval_secs = 45
 
 [[agent]]
 name = "Mona"
 role = "consumer"
-blurb = "Local in The Valley — uses Ziggy for cheaper curry goat"
+blurb = "Local in The Valley — buys curry goat and e-bikes via Ziggy"
 lat = 18.2100
 lon = -63.0500          # The Valley
 
 [agent.consumer]
 buy_from = "Ziggy"
-want_symbol = "BCG"
 pay_symbol = "ZIC"
 fund_from = "ZIC-Issuer"
+
+[[agent.consumer.purchases]]
+want_symbol = "BCG"
+redeem_at = "Bob"
 interval_secs = 35
+
+[[agent.consumer.purchases]]
+want_symbol = "DEB"
+redeem_at = "Dave"
+interval_secs = 50

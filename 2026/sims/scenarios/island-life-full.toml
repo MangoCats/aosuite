@@ -17,22 +17,23 @@
 #   Ziggy — ZIC (Ziggy's Island Credits), aggressive competitor at The Valley, atomic
 #   Ted — TCC (Ted's Caribbean Credits), regional in Tortola, legacy
 #
-# Consumers (mixed atomic and legacy):
-#   Alice, Eddie — atomic via Charlie
-#   Karen — legacy via Charlie
-#   Luke — atomic via Ziggy
-#   Mona — legacy via Ziggy
+# Consumers (multi-vendor, mixed atomic and legacy):
+#   Alice — atomic via Charlie: BCG + RMF
+#   Eddie — atomic via Charlie: BCG + OGP
+#   Karen — legacy via Charlie: RMF + DEB
+#   Luke — atomic via Ziggy: DEB + BCG
+#   Mona — legacy via Ziggy: BCG + DEB
 #
 # MQTT enabled for exchange agent block notifications.
 
 [simulation]
 name = "island-life-full"
 title = "Island Life Full — Atomic Exchange on Anguilla"
-description = "The complete IslandLife scenario with CAA atomic cross-chain swaps. Charlie and Ziggy use cryptographic escrow to guarantee trades complete atomically — no counterparty risk. Victor validates all chains while Mallory tries to double-spend."
+description = "The complete IslandLife scenario with CAA atomic swaps and multi-vendor consumers. Each consumer shops at multiple vendors — Alice alternates between curry goat and mangoes, Luke rents bikes and grabs lunch. Victor validates while Mallory attacks."
 what_to_watch = [
-    "Solid purple arcs on the map are atomic (CAA) swaps — dashed arcs are legacy two-leg trades",
-    "Click Charlie or Ziggy to see their CAA Atomic Swaps panel — successful vs failed counts",
-    "Victor (validator) monitors all chains — enable the Audit overlay to see green/red halos",
+    "Each consumer visits multiple vendors — watch Alice alternate between Bob and Rita",
+    "Solid purple arcs are atomic (CAA) swaps — dashed arcs are legacy two-leg trades",
+    "Charlie serves 4 vendors, Ziggy serves 2 — realistic exchange marketplace hubs",
     "Mallory attempts double-spend attacks on Bob — all should be rejected",
 ]
 recorder_port = 0
@@ -253,80 +254,120 @@ shares = "2^42"
 plate_price = 1
 initial_float = 2000
 
-# ── Consumers ────────────────────────────────────────────────────────
+# ── Consumers (multi-vendor round-robin) ────────────────────────────
 
 [[agent]]
 name = "Alice"
 role = "consumer"
-blurb = "Tourist — atomic purchases via Charlie"
+blurb = "Tourist — atomic purchases of curry goat and mango futures via Charlie"
 lat = 18.2008
 lon = -63.0905          # Sandy Ground beach (atomic)
 
 [agent.consumer]
 buy_from = "Charlie"
-want_symbol = "BCG"
 pay_symbol = "CCC"
 fund_from = "CCC-Issuer"
-interval_secs = 30
 atomic = true
+
+[[agent.consumer.purchases]]
+want_symbol = "BCG"
+redeem_at = "Bob"
+interval_secs = 30
+
+[[agent.consumer.purchases]]
+want_symbol = "RMF"
+redeem_at = "Rita"
+interval_secs = 40
 
 [[agent]]
 name = "Eddie"
 role = "consumer"
-blurb = "Local investor — atomic purchases via Charlie"
+blurb = "Local investor — atomic purchases of curry goat and goat plates via Charlie"
 lat = 18.2025
 lon = -63.0878          # Sandy Ground village road (atomic)
 
 [agent.consumer]
 buy_from = "Charlie"
-want_symbol = "BCG"
 pay_symbol = "CCC"
 fund_from = "CCC-Issuer"
-interval_secs = 45
 atomic = true
+
+[[agent.consumer.purchases]]
+want_symbol = "BCG"
+redeem_at = "Bob"
+interval_secs = 45
+
+[[agent.consumer.purchases]]
+want_symbol = "OGP"
+redeem_at = "Oscar"
+interval_secs = 35
 
 [[agent]]
 name = "Karen"
 role = "consumer"
-blurb = "Nurse — legacy purchases via Charlie"
+blurb = "Nurse — legacy purchases of mango futures and e-bike rentals via Charlie"
 lat = 18.2165
 lon = -63.0560          # George Hill (legacy two-leg)
 
 [agent.consumer]
 buy_from = "Charlie"
-want_symbol = "RMF"
 pay_symbol = "CCC"
 fund_from = "CCC-Issuer"
+
+[[agent.consumer.purchases]]
+want_symbol = "RMF"
+redeem_at = "Rita"
 interval_secs = 40
+
+[[agent.consumer.purchases]]
+want_symbol = "DEB"
+redeem_at = "Dave"
+interval_secs = 60
 
 [[agent]]
 name = "Luke"
 role = "consumer"
-blurb = "Tourist — atomic e-bike rentals via Ziggy"
+blurb = "Tourist — atomic e-bike rentals and curry goat via Ziggy"
 lat = 18.1760
 lon = -63.0920          # Blowing Point (atomic via Ziggy)
 
 [agent.consumer]
 buy_from = "Ziggy"
-want_symbol = "DEB"
 pay_symbol = "ZIC"
 fund_from = "ZIC-Issuer"
-interval_secs = 60
 atomic = true
+
+[[agent.consumer.purchases]]
+want_symbol = "DEB"
+redeem_at = "Dave"
+interval_secs = 60
+
+[[agent.consumer.purchases]]
+want_symbol = "BCG"
+redeem_at = "Bob"
+interval_secs = 45
 
 [[agent]]
 name = "Mona"
 role = "consumer"
-blurb = "Local — legacy purchases via Ziggy"
+blurb = "Local — legacy purchases of curry goat and e-bikes via Ziggy"
 lat = 18.2100
 lon = -63.0500          # The Valley (legacy via Ziggy)
 
 [agent.consumer]
 buy_from = "Ziggy"
-want_symbol = "BCG"
 pay_symbol = "ZIC"
 fund_from = "ZIC-Issuer"
+
+[[agent.consumer.purchases]]
+want_symbol = "BCG"
+redeem_at = "Bob"
 interval_secs = 35
+
+[[agent.consumer.purchases]]
+want_symbol = "DEB"
+redeem_at = "Dave"
+interval_secs = 50
 
 # ── Validator ────────────────────────────────────────────────────────
 

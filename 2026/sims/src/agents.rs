@@ -1171,6 +1171,16 @@ async fn run_single_chain_consumer(
     }
 }
 
+/// Resolved purchase target with chain IDs looked up at startup.
+struct ResolvedTarget {
+    want_chain_id: String,
+    want_sym: String,
+    want_plate_price: u64,
+    redeem_at: Option<String>,
+    buy_from: String,
+    interval_secs: f64,
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn run_cross_chain_consumer(
     name: &str, lat: f64, lon: f64,
@@ -1183,12 +1193,35 @@ async fn run_cross_chain_consumer(
     speed: &SharedSpeed,
     paused: &PauseFlag,
 ) -> Result<()> {
-    let want_sym = consumer_cfg.want_symbol.as_deref().unwrap();
     let pay_sym = consumer_cfg.pay_symbol.as_deref().unwrap();
-
-    // Wait for both chains to exist
-    let (want_chain_id, _want_vendor, want_plate_price) = wait_for_chain_symbol(directory, want_sym).await?;
     let (pay_chain_id, _pay_vendor, _pay_plate_price) = wait_for_chain_symbol(directory, pay_sym).await?;
+
+    // Build target list: either from purchases array or single want_symbol
+    let mut targets: Vec<ResolvedTarget> = Vec::new();
+    if !consumer_cfg.purchases.is_empty() {
+        for p in &consumer_cfg.purchases {
+            let (chain_id, _vendor, plate_price) = wait_for_chain_symbol(directory, &p.want_symbol).await?;
+            targets.push(ResolvedTarget {
+                want_chain_id: chain_id,
+                want_sym: p.want_symbol.clone(),
+                want_plate_price: plate_price,
+                redeem_at: p.redeem_at.clone(),
+                buy_from: p.buy_from.as_deref().unwrap_or(&consumer_cfg.buy_from).to_string(),
+                interval_secs: p.interval_secs as f64,
+            });
+        }
+    } else {
+        let want_sym = consumer_cfg.want_symbol.as_deref().unwrap();
+        let (chain_id, _vendor, plate_price) = wait_for_chain_symbol(directory, want_sym).await?;
+        targets.push(ResolvedTarget {
+            want_chain_id: chain_id,
+            want_sym: want_sym.to_string(),
+            want_plate_price: plate_price,
+            redeem_at: consumer_cfg.redeem_at.clone(),
+            buy_from: consumer_cfg.buy_from.clone(),
+            interval_secs: consumer_cfg.interval_secs as f64,
+        });
+    }
 
     // Fund ourselves: buy initial pay_chain shares from fund_from vendor
     if let Some(fund_from) = &consumer_cfg.fund_from {
@@ -1197,8 +1230,9 @@ async fn run_cross_chain_consumer(
         let info = client.chain_info(&pay_chain_id).await?;
         let total_shares: BigInt = info.shares_out.parse()?;
         let total_coins: BigInt = info.coin_count.parse()?;
-        // Buy enough for ~10 plates worth of exchange (overestimate to ensure enough)
-        let fund_coins = BigInt::from(want_plate_price) * BigInt::from(150u64);
+        // Fund enough for all targets (~10 plates each, generous)
+        let max_plate_price = targets.iter().map(|t| t.want_plate_price).max().unwrap_or(25);
+        let fund_coins = BigInt::from(max_plate_price) * BigInt::from(150u64 * targets.len() as u64);
         let fund_shares = &total_shares * &fund_coins / &total_coins;
 
         request_purchase(name, wallet, directory, fund_from, &pay_chain_id, &fund_shares).await?;
@@ -1208,12 +1242,16 @@ async fn run_cross_chain_consumer(
 
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-    let base_interval = consumer_cfg.interval_secs as f64;
-    info!("{}: Starting cross-chain loop {} → {} (base interval {}s)", name, pay_sym, want_sym, base_interval);
+    let target_names: Vec<&str> = targets.iter().map(|t| t.want_sym.as_str()).collect();
+    info!("{}: Starting cross-chain loop on {} targets: {:?} (pay {})",
+        name, targets.len(), target_names, pay_sym);
 
-    let mut my_chains = HashMap::new();
-    my_chains.insert(want_chain_id.clone(), want_sym.to_string());
+    // Build chain tracking maps for all targets + pay chain
+    let mut my_chains: HashMap<String, String> = HashMap::new();
     my_chains.insert(pay_chain_id.clone(), pay_sym.to_string());
+    for t in &targets {
+        my_chains.insert(t.want_chain_id.clone(), t.want_sym.clone());
+    }
 
     let chain_meta: HashMap<String, (String, String)> = {
         let dir = directory.read().await;
@@ -1222,26 +1260,34 @@ async fn run_cross_chain_consumer(
         }).collect()
     };
 
+    let mut target_idx: usize = 0;
+
     loop {
+        let target = &targets[target_idx];
+        let want_chain_id = &target.want_chain_id;
+        let want_sym = &target.want_sym;
+        let buy_from = &target.buy_from;
+
         wait_while_paused(paused).await;
-        let interval = std::time::Duration::from_secs_f64(base_interval / read_speed(speed).max(0.1));
+        let interval = std::time::Duration::from_secs_f64(target.interval_secs / read_speed(speed).max(0.1));
         tokio::time::sleep(interval).await;
 
         // Calculate how many pay_chain shares to send for 1 plate of want_chain
-        let want_info = match client.chain_info(&want_chain_id).await {
+        let want_info = match client.chain_info(want_chain_id).await {
             Ok(i) => i,
             Err(e) => {
                 warn!("{}: chain_info failed: {}", name, e);
                 let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                    &want_chain_id, want_sym, name, &consumer_cfg.buy_from, 0,
+                    want_chain_id, want_sym, name, buy_from, 0,
                     &format!("[ERROR] {}: chain_info failed: {}", name, e),
                 ))).await;
+                target_idx = (target_idx + 1) % targets.len();
                 continue;
             }
         };
         let want_total_shares: BigInt = want_info.shares_out.parse()?;
         let want_total_coins: BigInt = want_info.coin_count.parse()?;
-        let _plate_want_shares = &want_total_shares * BigInt::from(want_plate_price) / &want_total_coins;
+        let _plate_want_shares = &want_total_shares * BigInt::from(target.want_plate_price) / &want_total_coins;
 
         // Leg 1: Send payment shares to exchange agent on pay_chain
         let pay_utxo = match wallet.find_unspent(&pay_chain_id) {
@@ -1249,7 +1295,7 @@ async fn run_cross_chain_consumer(
             None => {
                 warn!("{}: no pay_chain UTXOs left", name);
                 let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                    &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
+                    &pay_chain_id, pay_sym, name, buy_from, 0,
                     &format!("[ERROR] {}: no {} UTXOs left", name, pay_sym),
                 ))).await;
                 info!("{}: Out of {} funds — going idle", name, pay_sym);
@@ -1260,14 +1306,11 @@ async fn run_cross_chain_consumer(
             }
         };
 
-        // Calculate pay amount: assume exchange rate is embedded in the pair config
-        // For now, use the exchange agent's rate. We'll send a fraction of our UTXO.
-        // The exchange agent will calculate the sell amount from this.
         let pay_amount = &pay_utxo.amount / BigInt::from(10); // ~10% per trade
         if pay_amount <= BigInt::from(0) {
             warn!("{}: pay amount too small", name);
             let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
+                &pay_chain_id, pay_sym, name, buy_from, 0,
                 &format!("[ERROR] {}: pay amount too small on {}", name, pay_sym),
             ))).await;
             info!("{}: {} balance too small — going idle", name, pay_sym);
@@ -1278,8 +1321,8 @@ async fn run_cross_chain_consumer(
         }
 
         let dir = directory.read().await;
-        let exchange_sender = dir.get(&consumer_cfg.buy_from)
-            .ok_or_else(|| anyhow::anyhow!("{} not found", consumer_cfg.buy_from))?
+        let exchange_sender = dir.get(buy_from)
+            .ok_or_else(|| anyhow::anyhow!("{} not found", buy_from))?
             .clone();
         drop(dir);
 
@@ -1320,9 +1363,10 @@ async fn run_cross_chain_consumer(
             Err(e) => {
                 warn!("{}: Leg 1 failed: {}", name, e);
                 let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                    &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
+                    &pay_chain_id, pay_sym, name, buy_from, 0,
                     &format!("[ERROR] {}: payment failed: {}", name, e),
                 ))).await;
+                target_idx = (target_idx + 1) % targets.len();
                 continue;
             }
         };
@@ -1338,10 +1382,10 @@ async fn run_cross_chain_consumer(
 
         *tx_count += 1;
         info!("{}: Leg 1 done: sent {} to {} on {} (block {})",
-            name, pay_amount, consumer_cfg.buy_from, pay_sym, pay_result.height);
+            name, pay_amount, buy_from, pay_sym, pay_result.height);
 
         // Generate our receiving key on want_chain
-        let want_recv = wallet.generate_key(&want_chain_id);
+        let want_recv = wallet.generate_key(want_chain_id);
 
         // Leg 2: Ask exchange to send us want_chain shares
         let (reply_tx, reply_rx) = oneshot::channel();
@@ -1362,26 +1406,27 @@ async fn run_cross_chain_consumer(
                 info!("{}: Leg 2 done: received {} {} (block {})",
                     name, result.sell_amount, want_sym, result.sell_block);
                 let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                    &want_chain_id, want_sym, &consumer_cfg.buy_from, name, result.sell_block,
+                    want_chain_id, want_sym, buy_from, name, result.sell_block,
                     &format!("{}: cross-chain {} → {}", name, pay_sym, want_sym),
                 ))).await;
 
-                // Redeem at vendor if configured
-                if let Some(ref vendor_name) = consumer_cfg.redeem_at {
-                    while wallet.find_unspent(&want_chain_id).is_some() {
-                        match redeem_at(name, wallet, client, directory, vendor_name, &want_chain_id).await {
+                // Redeem at vendor if configured for this target
+                let redeem_vendor = target.redeem_at.as_deref();
+                if let Some(vendor_name) = redeem_vendor {
+                    while wallet.find_unspent(want_chain_id).is_some() {
+                        match redeem_at(name, wallet, client, directory, vendor_name, want_chain_id).await {
                             Ok(h) => {
                                 *tx_count += 1;
                                 info!("{}: Redeemed {} at {} (block {})", name, want_sym, vendor_name, h);
                                 let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                                    &want_chain_id, want_sym, name, vendor_name, h,
+                                    want_chain_id, want_sym, name, vendor_name, h,
                                     &format!("{} redeemed {} at {}", name, want_sym, vendor_name),
                                 ))).await;
                             }
                             Err(e) => {
                                 warn!("{}: Redeem failed: {}", name, e);
                                 let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                                    &want_chain_id, want_sym, name, vendor_name, 0,
+                                    want_chain_id, want_sym, name, vendor_name, 0,
                                     &format!("[ERROR] {}: redeem failed: {}", name, e),
                                 ))).await;
                                 break;
@@ -1393,16 +1438,19 @@ async fn run_cross_chain_consumer(
             Err(e) => {
                 warn!("{}: Leg 2 failed: {}", name, e);
                 let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                    &want_chain_id, want_sym, &consumer_cfg.buy_from, name, 0,
+                    want_chain_id, want_sym, buy_from, name, 0,
                     &format!("[ERROR] {}: exchange delivery failed: {}", name, e),
                 ))).await;
             }
         }
 
-        let last_action = if consumer_cfg.redeem_at.is_some() { "traded + redeemed" } else { "cross-chain trade" };
+        let last_action = format!("traded {}", want_sym);
         let _ = state_tx.send(ViewerEvent::State(Box::new(build_multi_state(
-            name, "consumer", "active", lat, lon, wallet, &my_chains, &chain_meta, paused, *tx_count, last_action,
+            name, "consumer", "active", lat, lon, wallet, &my_chains, &chain_meta, paused, *tx_count, &last_action,
         )))).await;
+
+        // Advance to next target (round-robin)
+        target_idx = (target_idx + 1) % targets.len();
     }
 }
 
@@ -1418,12 +1466,35 @@ async fn run_atomic_consumer(
     speed: &SharedSpeed,
     paused: &PauseFlag,
 ) -> Result<()> {
-    let want_sym = consumer_cfg.want_symbol.as_deref().unwrap();
     let pay_sym = consumer_cfg.pay_symbol.as_deref().unwrap();
-
-    // Wait for both chains to exist
-    let (want_chain_id, _want_vendor, want_plate_price) = wait_for_chain_symbol(directory, want_sym).await?;
     let (pay_chain_id, _pay_vendor, _pay_plate_price) = wait_for_chain_symbol(directory, pay_sym).await?;
+
+    // Build target list: either from purchases array or single want_symbol
+    let mut targets: Vec<ResolvedTarget> = Vec::new();
+    if !consumer_cfg.purchases.is_empty() {
+        for p in &consumer_cfg.purchases {
+            let (chain_id, _vendor, plate_price) = wait_for_chain_symbol(directory, &p.want_symbol).await?;
+            targets.push(ResolvedTarget {
+                want_chain_id: chain_id,
+                want_sym: p.want_symbol.clone(),
+                want_plate_price: plate_price,
+                redeem_at: p.redeem_at.clone(),
+                buy_from: p.buy_from.as_deref().unwrap_or(&consumer_cfg.buy_from).to_string(),
+                interval_secs: p.interval_secs as f64,
+            });
+        }
+    } else {
+        let want_sym = consumer_cfg.want_symbol.as_deref().unwrap();
+        let (chain_id, _vendor, plate_price) = wait_for_chain_symbol(directory, want_sym).await?;
+        targets.push(ResolvedTarget {
+            want_chain_id: chain_id,
+            want_sym: want_sym.to_string(),
+            want_plate_price: plate_price,
+            redeem_at: consumer_cfg.redeem_at.clone(),
+            buy_from: consumer_cfg.buy_from.clone(),
+            interval_secs: consumer_cfg.interval_secs as f64,
+        });
+    }
 
     // Fund ourselves: buy initial pay_chain shares from fund_from vendor
     if let Some(fund_from) = &consumer_cfg.fund_from {
@@ -1432,7 +1503,8 @@ async fn run_atomic_consumer(
         let info = client.chain_info(&pay_chain_id).await?;
         let total_shares: BigInt = info.shares_out.parse()?;
         let total_coins: BigInt = info.coin_count.parse()?;
-        let fund_coins = BigInt::from(want_plate_price) * BigInt::from(150u64);
+        let max_plate_price = targets.iter().map(|t| t.want_plate_price).max().unwrap_or(25);
+        let fund_coins = BigInt::from(max_plate_price) * BigInt::from(150u64 * targets.len() as u64);
         let fund_shares = &total_shares * &fund_coins / &total_coins;
 
         request_purchase(name, wallet, directory, fund_from, &pay_chain_id, &fund_shares).await?;
@@ -1442,12 +1514,16 @@ async fn run_atomic_consumer(
 
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-    let base_interval = consumer_cfg.interval_secs as f64;
-    info!("{}: Starting atomic CAA loop {} → {} (base interval {}s)", name, pay_sym, want_sym, base_interval);
+    let target_names: Vec<&str> = targets.iter().map(|t| t.want_sym.as_str()).collect();
+    info!("{}: Starting atomic CAA loop on {} targets: {:?} (pay {})",
+        name, targets.len(), target_names, pay_sym);
 
-    let mut my_chains = HashMap::new();
-    my_chains.insert(want_chain_id.clone(), want_sym.to_string());
+    // Build chain tracking maps
+    let mut my_chains: HashMap<String, String> = HashMap::new();
     my_chains.insert(pay_chain_id.clone(), pay_sym.to_string());
+    for t in &targets {
+        my_chains.insert(t.want_chain_id.clone(), t.want_sym.clone());
+    }
 
     let chain_meta: HashMap<String, (String, String)> = {
         let dir = directory.read().await;
@@ -1456,9 +1532,16 @@ async fn run_atomic_consumer(
         }).collect()
     };
 
+    let mut target_idx: usize = 0;
+
     loop {
+        let target = &targets[target_idx];
+        let want_chain_id = &target.want_chain_id;
+        let want_sym = &target.want_sym;
+        let buy_from = &target.buy_from;
+
         wait_while_paused(paused).await;
-        let interval = std::time::Duration::from_secs_f64(base_interval / read_speed(speed).max(0.1));
+        let interval = std::time::Duration::from_secs_f64(target.interval_secs / read_speed(speed).max(0.1));
         tokio::time::sleep(interval).await;
 
         // Find our unspent UTXO on pay_chain
@@ -1467,7 +1550,7 @@ async fn run_atomic_consumer(
             None => {
                 warn!("{}: No unspent UTXO on {}", name, pay_sym);
                 let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                    &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
+                    &pay_chain_id, pay_sym, name, buy_from, 0,
                     &format!("[ERROR] {}: no {} UTXOs left", name, pay_sym),
                 ))).await;
                 info!("{}: Out of {} funds — going idle", name, pay_sym);
@@ -1484,21 +1567,22 @@ async fn run_atomic_consumer(
             Err(e) => {
                 warn!("{}: chain_info failed: {}", name, e);
                 let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                    &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
+                    &pay_chain_id, pay_sym, name, buy_from, 0,
                     &format!("[ERROR] {}: chain_info failed: {}", name, e),
                 ))).await;
+                target_idx = (target_idx + 1) % targets.len();
                 continue;
             }
         };
         let total_shares: BigInt = info.shares_out.parse().unwrap_or_default();
         let total_coins: BigInt = info.coin_count.parse().unwrap_or_default();
-        let plate_coins = BigInt::from(want_plate_price);
+        let plate_coins = BigInt::from(target.want_plate_price);
         let pay_amount = &total_shares * &plate_coins / &total_coins;
 
         if pay_amount > pay_utxo.amount {
             warn!("{}: Insufficient funds on {} ({} < {})", name, pay_sym, pay_utxo.amount, pay_amount);
             let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
+                &pay_chain_id, pay_sym, name, buy_from, 0,
                 &format!("[ERROR] {}: insufficient funds on {}", name, pay_sym),
             ))).await;
             info!("{}: Insufficient {} funds — going idle", name, pay_sym);
@@ -1509,17 +1593,21 @@ async fn run_atomic_consumer(
         }
 
         // Generate receiver key on want_chain and change key on pay_chain
-        let sell_recv = wallet.generate_key(&want_chain_id);
+        let sell_recv = wallet.generate_key(want_chain_id);
         let pay_change = wallet.generate_key(&pay_chain_id);
 
         // Send AtomicBuy to exchange
         let exchange_sender = {
             let dir = directory.read().await;
-            dir.get(&consumer_cfg.buy_from).cloned()
+            dir.get(buy_from).cloned()
         };
         let exchange_sender = match exchange_sender {
             Some(s) => s,
-            None => { warn!("{}: Exchange {} not found", name, consumer_cfg.buy_from); continue; }
+            None => {
+                warn!("{}: Exchange {} not found", name, buy_from);
+                target_idx = (target_idx + 1) % targets.len();
+                continue;
+            }
         };
 
         let (reply_tx, reply_rx) = oneshot::channel();
@@ -1537,11 +1625,12 @@ async fn run_atomic_consumer(
         };
 
         if exchange_sender.send(AgentMessage::AtomicBuy { request, reply: reply_tx }).await.is_err() {
-            warn!("{}: Failed to send AtomicBuy to {}", name, consumer_cfg.buy_from);
+            warn!("{}: Failed to send AtomicBuy to {}", name, buy_from);
             let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
-                &format!("[ERROR] {}: failed to reach exchange {}", name, consumer_cfg.buy_from),
+                &pay_chain_id, pay_sym, name, buy_from, 0,
+                &format!("[ERROR] {}: failed to reach exchange {}", name, buy_from),
             ))).await;
+            target_idx = (target_idx + 1) % targets.len();
             continue;
         }
 
@@ -1554,29 +1643,33 @@ async fn run_atomic_consumer(
                 info!("{}: CAA atomic done: {} → {} (caa {})",
                     name, pay_sym, want_sym, &result.caa_hash[..12.min(result.caa_hash.len())]);
                 let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                    &want_chain_id, want_sym, &consumer_cfg.buy_from, name, result.sell_chain_block,
+                    want_chain_id, want_sym, buy_from, name, result.sell_chain_block,
                     &format!("{}: CAA atomic {} → {}", name, pay_sym, want_sym),
                 ))).await;
             }
             Ok(Err(e)) => {
                 warn!("{}: AtomicBuy failed: {}", name, e);
                 let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                    &want_chain_id, want_sym, name, &consumer_cfg.buy_from, 0,
+                    want_chain_id, want_sym, name, buy_from, 0,
                     &format!("[ERROR] {}: atomic swap failed: {}", name, e),
                 ))).await;
             }
             Err(_) => {
                 warn!("{}: AtomicBuy reply channel dropped", name);
                 let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
-                    &want_chain_id, want_sym, name, &consumer_cfg.buy_from, 0,
+                    want_chain_id, want_sym, name, buy_from, 0,
                     &format!("[ERROR] {}: exchange connection lost", name),
                 ))).await;
             }
         }
 
+        let last_action = format!("atomic {}", want_sym);
         let _ = state_tx.send(ViewerEvent::State(Box::new(build_multi_state(
-            name, "consumer", "active", lat, lon, wallet, &my_chains, &chain_meta, paused, *tx_count, "atomic trade",
+            name, "consumer", "active", lat, lon, wallet, &my_chains, &chain_meta, paused, *tx_count, &last_action,
         )))).await;
+
+        // Advance to next target (round-robin)
+        target_idx = (target_idx + 1) % targets.len();
     }
 }
 

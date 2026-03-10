@@ -1,23 +1,49 @@
-# Three-chain scenario: 3 vendors, 3 exchange agents, 2 consumers
-# Tests cross-vendor exchange behavior on a single recorder.
+# Three-chain scenario: 3 vendors, 1 exchange, 3 consumers
+#
+# Demonstrates a single exchange agent (Charlie) serving multiple vendors,
+# and consumers who buy from multiple vendors through the same exchange.
+#
+# Vendors:
+#   Bob — BCG (Bob's Curry Goat) at Sandy Ground beach
+#   Maria — MEP (Maria's Empanadas) at Sandy Ground beach, north of Bob
+#   Kwame — KJC (Kwame's Jerk Chicken) at Sandy Ground beach, south of Bob
+#
+# Exchange:
+#   Charlie — CCC (Charlie's Cruise Credits) at the dock
+#   Serves all 3 vendors, single exchange for the whole beach economy
+#
+# Consumers (multi-vendor round-robin):
+#   Alice — tourist, buys curry goat AND empanadas via Charlie
+#   Fatima — local, buys empanadas AND jerk chicken via Charlie
+#   Jamal — tourist, buys all three: curry goat, empanadas, jerk chicken
 
 [simulation]
 name = "three-chain"
+title = "Three-Chain Beach Economy"
+description = "Three food vendors on Sandy Ground beach, one exchange agent, three consumers. Each consumer buys from multiple vendors through Charlie's exchange — realistic multi-vendor shopping."
+what_to_watch = [
+    "Alice alternates between curry goat (Bob) and empanadas (Maria)",
+    "Fatima alternates between empanadas (Maria) and jerk chicken (Kwame)",
+    "Jamal cycles through all three vendors — the hungriest tourist on the beach",
+    "Charlie serves all three vendors from a single exchange at the dock",
+]
 recorder_port = 0
 speed = 1.0             # real-time (1x)
 duration_secs = 300     # 5 minutes
 
-# ── Gene: recorder operator ────────────────────────────────────────
+# ── Recorder ────────────────────────────────────────────────────────
 
 [[agent]]
 name = "Gene"
 role = "recorder"
+blurb = "Hosts all blockchains"
 
-# ── Bob: curry goat vendor (on the beach) ─────────────────────────
+# ── Vendors ─────────────────────────────────────────────────────────
 
 [[agent]]
 name = "Bob"
 role = "vendor"
+blurb = "Curry goat grill on Sandy Ground beach"
 lat = 18.2003
 lon = -63.0908          # Sandy Ground beach
 
@@ -27,13 +53,12 @@ description = "Bob's Curry Goat"
 coins = "1000000000"
 shares = "2^40"
 plate_price = 25
-initial_float = 50
-
-# ── Maria: empanada vendor (beach, north of Bob) ─────────────────
+initial_float = 80
 
 [[agent]]
 name = "Maria"
 role = "vendor"
+blurb = "Empanada stand on Sandy Ground beach"
 lat = 18.2012
 lon = -63.0903          # Sandy Ground beach, north of Bob
 
@@ -43,13 +68,12 @@ description = "Maria's Empanadas"
 coins = "500000000"
 shares = "2^38"
 plate_price = 10
-initial_float = 80
-
-# ── Kwame: jerk chicken vendor (beach, south of Bob) ─────────────
+initial_float = 120
 
 [[agent]]
 name = "Kwame"
 role = "vendor"
+blurb = "Jerk chicken stand on Sandy Ground beach"
 lat = 18.1993
 lon = -63.0910          # Sandy Ground beach, south of Bob
 
@@ -59,66 +83,125 @@ description = "Kwame's Jerk Chicken"
 coins = "1000000000"
 shares = "2^40"
 plate_price = 30
-initial_float = 40
+initial_float = 60
 
-# ── Charlie: exchange agent for Bob (on the dock) ──────────────────
+# ── Payment chain issuer ────────────────────────────────────────────
+
+[[agent]]
+name = "CCC-Issuer"
+role = "vendor"
+blurb = "Issues Charlie's Cruise Credits — the payment currency"
+lat = 18.1978
+lon = -63.0897          # next to Charlie at the dock
+
+[agent.vendor]
+symbol = "CCC"
+description = "Charlie's Cruise Credits"
+coins = "10000000000"
+shares = "2^44"
+plate_price = 1
+initial_float = 5000
+
+# ── Exchange agent (serves all 3 vendors) ───────────────────────────
 
 [[agent]]
 name = "Charlie"
 role = "exchange"
+blurb = "Single exchange at the dock — serves all three beach vendors"
 lat = 18.1975
 lon = -63.0900          # Sandy Ground dock
 
 [agent.exchange]
-buy_from = "Bob"
-initial_buy = 50
+referral_fee = 0.05
+rebalance_threshold = 0.25
 
-# ── Dave: exchange agent for Maria (The Valley) ─────────────────
+pairs = [
+    { sell = "BCG", buy = "CCC", rate = 12.0 },   # 1 curry goat plate = 12 CCC
+    { sell = "MEP", buy = "CCC", rate = 5.0 },    # 1 empanada plate = 5 CCC
+    { sell = "KJC", buy = "CCC", rate = 15.0 },   # 1 jerk chicken plate = 15 CCC
+]
 
-[[agent]]
-name = "Dave"
-role = "exchange"
-lat = 18.2170
-lon = -63.0505          # The Valley
+[[agent.exchange.inventory]]
+vendor = "Bob"
+plates = 60
 
-[agent.exchange]
-buy_from = "Maria"
-initial_buy = 80
+[[agent.exchange.inventory]]
+vendor = "Maria"
+plates = 100
 
-# ── Eli: exchange agent for Kwame (The Valley) ──────────────────
+[[agent.exchange.inventory]]
+vendor = "Kwame"
+plates = 50
 
-[[agent]]
-name = "Eli"
-role = "exchange"
-lat = 18.2160
-lon = -63.0495          # The Valley
-
-[agent.exchange]
-buy_from = "Kwame"
-initial_buy = 40
-
-# ── Alice: tourist (buys curry goat from Charlie) ────────────────
+# ── Consumers (multi-vendor) ───────────────────────────────────────
 
 [[agent]]
 name = "Alice"
 role = "consumer"
+blurb = "Tourist — buys curry goat and empanadas"
 lat = 18.2008
 lon = -63.0905          # Sandy Ground beach
 
 [agent.consumer]
 buy_from = "Charlie"
+pay_symbol = "CCC"
+fund_from = "CCC-Issuer"
+
+[[agent.consumer.purchases]]
+want_symbol = "BCG"
 redeem_at = "Bob"
 interval_secs = 30
 
-# ── Fatima: local (buys empanadas from Dave) ─────────────────────
+[[agent.consumer.purchases]]
+want_symbol = "MEP"
+redeem_at = "Maria"
+interval_secs = 25
 
 [[agent]]
 name = "Fatima"
 role = "consumer"
+blurb = "Local — buys empanadas and jerk chicken"
 lat = 18.2015
 lon = -63.0898          # Sandy Ground beach, near Maria
 
 [agent.consumer]
-buy_from = "Dave"
+buy_from = "Charlie"
+pay_symbol = "CCC"
+fund_from = "CCC-Issuer"
+
+[[agent.consumer.purchases]]
+want_symbol = "MEP"
 redeem_at = "Maria"
 interval_secs = 20
+
+[[agent.consumer.purchases]]
+want_symbol = "KJC"
+redeem_at = "Kwame"
+interval_secs = 35
+
+[[agent]]
+name = "Jamal"
+role = "consumer"
+blurb = "Hungry tourist — cycles through all three vendors"
+lat = 18.2000
+lon = -63.0906          # Sandy Ground beach, between vendors
+
+[agent.consumer]
+buy_from = "Charlie"
+pay_symbol = "CCC"
+fund_from = "CCC-Issuer"
+
+[[agent.consumer.purchases]]
+want_symbol = "BCG"
+redeem_at = "Bob"
+interval_secs = 40
+
+[[agent.consumer.purchases]]
+want_symbol = "MEP"
+redeem_at = "Maria"
+interval_secs = 30
+
+[[agent.consumer.purchases]]
+want_symbol = "KJC"
+redeem_at = "Kwame"
+interval_secs = 45

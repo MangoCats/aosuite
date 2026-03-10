@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<!--
+ MIT License
+
+ Copyright (c) 2018 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    /* Position the tooltip text */
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    /* Fade in tooltip */
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+
+<meta charset="UTF-8"/>
+<title>2026 Update</title>
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+
+<img src="AO.png" alt="&#x24B6;" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">2026 Update</h1>
+
+<span itemprop="articleBody">
+
+The <a href="2026review.html">2026 Review</a> assessed the Assign Onward design documents and outlined what a fresh implementation could look like. Four days later, development began. This update reports what was actually built: eight Rust crates, a React PWA, 742 tests, and a protocol that has progressed from serialization primitives to competing recorders with atomic cross-chain escrow.<br/><br/>
+
+<h2>What Was Built</h2>
+
+<h3>Phase 0: Specifications (Weeks 1&ndash;4)</h3>
+
+The 2018 design documents were spread across 30+ HTML files with numerous ambiguities&mdash;unspecified negative VBC encoding, undocumented type code schema, unresolved separability bit positions, unspecified signature byte format, undetermined deterministic rounding rules. All were resolved in writing before any code was written. Four specification documents and a conformance test vector file now serve as the single source of truth:<br/><br/>
+
+<b>Architecture.</b> Actor model with precise trust boundaries. System topology (HTTP, WebSocket, MQTT, SSE). Data flow diagrams for the full lifecycle of a share assignment. Security model: where private keys live, what each component can and cannot do if compromised.<br/><br/>
+
+<b>Wire Format.</b> Byte-level binary specification. VBC encoding with 30+ worked examples including negative numbers. DataItem structure. GMP integer and rational fraction encoding. Timestamp encoding (signed i64, Unix seconds &times; 189,000,000, ~5.29ns resolution). Complete block layout with a worked minimal example.<br/><br/>
+
+<b>Cryptographic Choices.</b> Ed25519 (RFC 8032) for signatures, SHA2-256 for chain integrity, BLAKE3 for content addressing. Wallet encryption via Argon2id + XChaCha20-Poly1305. One signature type, two hash types, extensible via type codes.<br/><br/>
+
+<b>Economic Rules.</b> Deterministic fee arithmetic (<tt>ceil(data_bytes &times; FEE_RATE_num &times; SHARES_OUT / FEE_RATE_den)</tt>), arbitrary-precision integer, division last. Expiration modes (hard cutoff and age tax). Late recording semantics. Five worked fee examples.<br/><br/>
+
+<b>Conformance Vectors.</b> A JSON file with hand-computed test vectors: VBC (30+), GMP integers (15+), rationals (10+), timestamps, signatures with timestamp concatenation, minimal genesis block, assignment, block with correct hash, fee calculations, expiration calculations. These are the ground truth all implementations build against.<br/><br/>
+
+<h3>Foundation Layer (Weeks 5&ndash;10)</h3>
+
+Three Rust crates established the protocol foundation.<br/><br/>
+
+<b>ao-types</b> implements VBC signed/unsigned codec, DataItem binary and JSON serialization, a 56-code type registry, BigInt/Rational encoding via <tt>num-bigint</tt>/<tt>num-rational</tt>, the AO timestamp type, recording fee arithmetic with ceil rounding, and separable item identification. 42 tests including property-based fuzzing across the full i64/u64 range.<br/><br/>
+
+<b>ao-crypto</b> wraps Ed25519 via <tt>ring</tt> 0.17,<div class="tooltip"><sup>*</sup><span class="tooltiptext">Originally specified as <tt>ed25519-dalek</tt>, switched early in Phase 1 after discovering a test vector incompatibility. The lesson is documented in the repository.</span></div> provides SHA2-256 and BLAKE3, implements separable-item hash substitution, and signs/verifies DataItems per the wire format specification. 13 tests.<br/><br/>
+
+<b>ao-cli</b> provides command-line tools: <tt>ao keygen</tt> (Ed25519 keypair generation), <tt>ao genesis</tt> (complete genesis block creation), <tt>ao inspect</tt> (binary DataItem to JSON/hex), and later expanded to nine commands covering balance queries, assignment building, refutation, history, and export.<br/><br/>
+
+All Phase 0 conformance vectors pass. Genesis block binary round-trips produce identical bytes. Fee arithmetic matches the specification examples exactly.<br/><br/>
+
+<h3>Single-Chain Recorder&mdash;T&#x24B6;&sup1; (Weeks 11&ndash;20)</h3>
+
+<b>ao-chain</b> implements the chain engine: genesis loading with issuer signature verification, SQLite UTXO store (sequence ID to pubkey, amount, block, timestamp, status), block construction with hash chaining, assignment validation (participant signatures, timestamp ordering, UTXO availability, expiration, single-use key enforcement, deadline with late-recording rules, balance equation), expiration sweep, and refutation tracking.<br/><br/>
+
+<b>ao-recorder</b> is the HTTP server: Axum 0.8 with multi-chain hosting. Create chains from genesis JSON at runtime. Per-chain endpoints for info, UTXO lookup, block retrieval, assignment submission, refutation, SSE real-time events, and WebSocket. TOML configuration supports single-chain and multi-chain startup. 14 integration tests cover the full API surface including double-spend rejection, key reuse rejection, and real-time notifications.<br/><br/>
+
+Deployment artifacts: multi-stage Dockerfile, hardened systemd service file, GitHub Actions CI with x86_64 build/test/clippy and aarch64 cross-compilation.<br/><br/>
+
+<h3>Vendor and Consumer Apps (Weeks 21&ndash;28)</h3>
+
+A React Progressive Web App provides vendor and consumer interfaces, built in progressive layers:<br/><br/>
+
+<b>Protocol simulation harness.</b> A Rust binary exercising genesis, assignments, SSE, and error cases against a live recorder, producing reference JSON fixtures for TypeScript conformance testing.<br/><br/>
+
+<b>TypeScript core data layer.</b> VBC codec, DataItem JSON serialization, BigInt/Rational encoding (native JS BigInt), timestamp conversion, recording fee calculation. All conformance vectors pass.<br/><br/>
+
+<b>Browser crypto.</b> Ed25519 keygen/sign/verify via the Web Crypto API,<div class="tooltip"><sup>*</sup><span class="tooltiptext">Supported natively in Chrome 113+, Edge, Firefox 129+, Safari 17+. No fallback library needed&mdash;coverage is effectively universal for modern browsers.</span></div> SHA-256, BLAKE3 (WASM), separable-item hash substitution, wallet encryption (Argon2id in Web Worker), IndexedDB key storage.<br/><br/>
+
+<b>Consumer view (AOE).</b> Wallet with persistent Ed25519 seed, UTXO balance scanner, transfer with change (two-receiver assignment, 3-round iterative fee convergence), real-time SSE block events, chain discovery via QR scanner, transaction history with CSV export, offline assignment queue with auto-submit on reconnection.<br/><br/>
+
+<b>Vendor view (AOS).</b> Incoming assignment monitor via SSE, share float display, price card, vendor profile editor with GPS location, printable QR signage (SVG preview, PDF print, PNG download), sales reporting with daily/weekly/monthly aggregation, payment notification chime (three sound styles, quiet hours, quick-mute).<br/><br/>
+
+<b>Investor view (AOI).</b> Multi-chain portfolio dashboard, exchange status with current rates, trade history with filters.<br/><br/>
+
+<b>PWA infrastructure.</b> Vite + React 19 + TypeScript. Service worker with stale-while-revalidate caching. Offline-first with IndexedDB queues. 70KB gzipped production build. Installs from the browser on iOS and Android without app store review.<br/><br/>
+
+<h3>Market Making and Exchange (Weeks 29&ndash;38)</h3>
+
+<b>ao-exchange</b> is a standalone daemon with a config-driven trading rules engine (configurable spreads, float-sensitive pricing, position limits). The agent loop monitors chains via SSE, matches incoming shares against rules, and executes two-leg trades automatically. The trade request API generates fresh deposit and receive keys with configurable TTL. Deposit detection upgraded from polling to SSE with automatic polling fallback. Trade history persisted in SQLite with time-range queries, pair volume aggregation, and P&L tracking.<br/><br/>
+
+<b>MQTT block publishing</b> via <tt>rumqttc</tt>: optional integration in ao-recorder. Blocks published to topic-prefixed channels after construction. Recorder runs normally without MQTT configured. Exchange agent registration with TTL expiration, spread/min/max metadata, and contact URL for trade requests.<br/><br/>
+
+<b>EXCHANGE_LISTING</b> on-chain structure: separable container children (chain symbol, amount, note) attached to every agent-initiated assignment, making exchange rates transparent and auditable.<br/><br/>
+
+<h3>Validation and Trust (Weeks 39&ndash;44)</h3>
+
+<b>ao-validator</b> is a standalone daemon that periodically polls recorder chains, verifies blocks against a rolled-up hash, tracks chain status (ok / unreachable / alert), and maintains state in SQLite. It provides an HTTP API for querying validation status, fires webhooks on alteration/unreachable/recovered events, and publishes external anchors.<br/><br/>
+
+The design principle is <i>built-in, not required</i>. A chain with zero validators, zero anchors, and zero credentials is a valid, functional chain. Trust features reduce risk when available, degrade gracefully when absent, and never gate basic operation.<br/><br/>
+
+<b>External anchoring.</b> File-based append-only anchor backend with a pluggable trait for future Bitcoin OP_RETURN, transparency log, or IPFS backends. Replicated anchors write to a primary path plus N replica paths (best-effort). Anchoring is operator-invoked&mdash;frequency is a deployment decision. Auto-anchoring triggers after configurable block intervals.<br/><br/>
+
+<b>Vendor credentials.</b> <tt>CREDENTIAL_REF</tt> and <tt>CREDENTIAL_URL</tt> as separable items in vendor profiles. Structure: URL + SHA2-256 content hash. Client-side verification fetches the URL and compares the hash. No JSON-LD parsing, no DID resolution, no issuer signature verification&mdash;hash-match only, which is sufficient for the face-to-face trust model the system targets.<br/><br/>
+
+<b>PWA trust indicators.</b> Validator endorsement display: green (verified, at most one block behind), amber (lagging), red (alert/unreachable). Credential hash-match: green check, red warning, grey dash. Indicators appear automatically when data is present, hidden when absent.<br/><br/>
+
+<h3>Atomic Multi-Chain Exchange&mdash;T&#x24B6;&sup2; (Weeks 45&ndash;54)</h3>
+
+The CAA (Conditional Assignment Agreement) protocol enables atomic value transfer across independent blockchains. This was identified in the <a href="2026review.html">2026 Review</a> as the most technically demanding component of the system.<br/><br/>
+
+<b>Ten new type codes</b> (69&ndash;78) define the CAA wire format: CAA envelope, per-chain components, chain references, escrow deadlines, chain ordering, recording proofs, coordinator bonds.<br/><br/>
+
+<b>Escrow state machine</b> in ao-chain: proposed &rarr; signed &rarr; recording &rarr; binding &rarr; finalized / expired. Escrowed shares cannot be spent in regular assignments. Expired escrows auto-release. The ouroboros recording protocol submits to chains in order, collects recording proofs from each, then submits binding proofs back to earlier chains. Idempotent submission handles retries.<br/><br/>
+
+<b>Coordinator</b> in ao-exchange: <tt>execute_caa()</tt> orchestrates the full ouroboros sequence&mdash;builds signed CAA with per-component and overall signatures, iterative fee convergence, sequential submission, proof collection, binding.<br/><br/>
+
+<b>PWA escrow UI.</b> Propose Swap form with fee-aware balance computation, pending escrow list with countdown timer, status polling. The Review noted that &ldquo;a practical first deployment could defer multi-chain atomicity by having exchange agents hold inventory and absorb the settlement risk themselves.&rdquo; Both approaches are now implemented: Charlie-style inventory holding (ao-exchange auto-trade) and full atomic CAA escrow.<br/><br/>
+
+<h2>Beyond the Protocol: Deployment Readiness</h2>
+
+Phases 0&ndash;6 produced working protocol software. The next 35 work items (N1&ndash;N35) closed the gap between &ldquo;protocol works&rdquo; and &ldquo;a real person can use this.&rdquo;<br/><br/>
+
+<h3>Operations</h3>
+
+<b>Server setup.</b> <tt>ao-recorder init</tt> generates a starter config with fresh keypair. <tt>ao-recorder doctor</tt> runs a diagnostic checklist: config parseable, seed valid, directory writable, port available, SQLite functional. <tt>ao-recorder bench</tt> benchmarks block insertion and Ed25519 throughput.<br/><br/>
+
+<b>Monitoring.</b> <tt>/health</tt> JSON endpoint with per-chain metrics (block height, UTXO count, DB size, last block age) and system metrics (RAM, CPU, disk). Self-contained <tt>/dashboard</tt> HTML page with 10-second auto-refresh, color-coded status dots, RAM and disk gauges. Optional Prometheus <tt>/metrics</tt> endpoint behind a feature flag, with counters, gauges, and histograms for block submissions, blob uploads, SSE/WebSocket connections, validation runs. Example Grafana dashboard provided.<br/><br/>
+
+<b>Alerting.</b> Background task checks disk space, stale chains, and memory baseline every 60 seconds. Webhook integration fires HTTP POST for disk warnings, critical disk, and stale chain events.<br/><br/>
+
+<b>Sysop guide.</b> Comprehensive operations document covering installation (Pi, Debian, Windows, source), first-time setup, monitoring, common problems and solutions, disk management, TLS configuration (Caddy and nginx examples), benchmarking, full configuration reference, and operational checklists.<br/><br/>
+
+<h3>Security Hardening</h3>
+
+A structured security audit identified ten items in the HTTP/deployment harness. All resolved:<div class="tooltip"><sup>*</sup><span class="tooltiptext">The core protocol (signatures, shares, fees, timestamps, serialization) was clean. Every security finding was in the surrounding infrastructure: authentication, rate limiting, connection management, error sanitization, BigInt precision in exchange arithmetic.</span></div><br/><br/>
+
+API key authentication with <tt>Authorization: Bearer</tt> header. Per-IP token-bucket rate limiting with configurable read/write limits. Connection semaphore for SSE and WebSocket (excess connections get 503). BigInt exchange arithmetic replacing f64 (exact precision, no rounding errors). PREV_HASH chain validation in the validator. Lock error handling (no more <tt>.expect()</tt> on mutex locks). Validator URL validation rejecting non-HTTPS for non-local hosts. Block size guard (1 MB) before deserialization. Error sanitization (generic messages to clients, details in server logs only).<br/><br/>
+
+<h3>Wallet and Multi-Device Sync</h3>
+
+The single-use key model means a wallet is not one key but a continuously growing set of keys. Multi-device sync was built in five sub-phases:<br/><br/>
+
+<b>UTXO validation on connect</b>&mdash;queries the recorder for each held key's status on startup and on new block events. Stale keys marked spent. Unknown-device spend alerts displayed.<br/><br/>
+
+<b>IndexedDB wallet</b> with <tt>keys</tt>, <tt>peers</tt>, <tt>config</tt> object stores. Device identity (persistent 16-byte random ID). Seed encryption via Argon2id + XChaCha20-Poly1305. Passphrase prompt for setup and session unlock. Migration from single-seed localStorage wallet on first load.<br/><br/>
+
+<b>QR key transfer</b> with multi-frame animated QR for large payloads (&gt;1800 bytes). File-based fallback for desktop-to-desktop. Idempotent key import.<br/><br/>
+
+<b>Paired-device push relay.</b> X25519 key agreement, HKDF-SHA256, AES-GCM encrypted relay messages. <b>ao-relay</b> crate: Axum WebSocket forwarder with per-wallet broadcast channels and 72-hour message retention. KEY_ACQUIRED/KEY_SPENT/HEARTBEAT sync messages with sequence replay protection.<br/><br/>
+
+<b>Encrypted backup.</b> PBKDF2-SHA256 + AES-256-GCM file-based backup/restore. Backup age tracking with staleness warnings.<br/><br/>
+
+<h3>Binary Attachments</h3>
+
+Photo and document attachments on assignments, using DATA_BLOB (type 33) as a separable item with MIME metadata (NUL-delimited: <tt>image/jpeg\0&lt;bytes&gt;</tt>). Content-addressed blob storage on the recorder with atomic writes, MIME allowlist, per-chain storage quotas (configurable, default 100 MB), and cross-chain isolation. Upload endpoint with security headers (nosniff, no-script CSP, attachment disposition for non-images). Client-side image compression (WebP/JPEG, max 2048px) before upload.<br/><br/>
+
+Recording fees computed on pre-substitution size (full blob payloads, not just the 33-byte hash that replaces them on-chain). Machine-readable <tt>BLOB_POLICY</tt> in genesis blocks (8 new type codes: policy, rule, MIME pattern, retention period, capacity limit, throttle, max size, priority). Automated blob pruning evaluates retention rules, deletes expired files, keeps metadata for 410 Gone responses. Paginated blob manifest endpoint. HEAD endpoint for blob metadata.<br/><br/>
+
+<h3>Cooperative Metadata</h3>
+
+Structured metadata conventions for agricultural cooperatives, using existing AO separable types. Four record types (delivery, sale, cost allocation, advance) encoded in NOTE (type 32) key:value format. Provenance tracing via lot identifiers across deliveries and sales. Dedicated CooperativeView in the PWA with tabbed Entry/Ledger/Provenance interface, per-crop delivery aggregation, and sales summary with revenue tracking.<br/><br/>
+
+<h3>Recorder Federation and Competing Recorders&mdash;T&#x24B6;&sup3;</h3>
+
+The protocol advanced from T&#x24B6;&sup1; (single recorder per chain) through T&#x24B6;&sup2; (atomic multi-chain escrow) to T&#x24B6;&sup3; (competing recorders with chain migration). This is the most architecturally significant progression: it means no single recorder operator can hold a chain hostage.<br/><br/>
+
+<b>Federation infrastructure.</b> Quick-restart resilience with WAL checkpoint on shutdown and integrity verification on startup. Hot standby mode with batch sync and live SSE replication. Signed recorder identity (<tt>RECORDER_IDENTITY</tt>, type 134). Authenticated sync endpoint (<tt>/chain/{id}/sync</tt>) with NDJSON streaming and identity header verification. Chain redirect (HTTP 307) for migrated chains. Trusted sync peer configuration.<br/><br/>
+
+<b>Owner key rotation.</b> 16 new type codes (128&ndash;143) for key rotation, revocation, recorder changes, chain migration, reward rates. Valid key set tracking per block height. Rate-limited rotation with pre-live exemption. Revocation with override, hold, and auto-revocation sweep.<br/><br/>
+
+<b>Recorder switching.</b> <tt>RECORDER_CHANGE_PENDING</tt> &rarr; CAA drain &rarr; auto-constructed <tt>RECORDER_CHANGE</tt>. New CAA blocked during transition while regular transactions continue. Dual-signed recorder URL change blocks.<br/><br/>
+
+<b>Share rewards.</b> Extended balance equation: givers = receivers + fee burned + reward to recorder. <tt>REWARD_RATE_CHANGE</tt> via dual-signed blocks (owner + recorder consent). Per-block fee transparency via <tt>RECORDING_FEE_ACTUAL</tt>, validated against the genesis ceiling.<br/><br/>
+
+<b>Chain migration.</b> <tt>CHAIN_MIGRATION</tt> freeze block, UTXO carry-forward into new genesis, surrogate proof validation (&gt;50% share ownership). Chain reference linking old and new chains.<br/><br/>
+
+<b>PWA integration.</b> Owner key management UI with active/held/inactive key grouping and cooldown display. Recorder switch flow with 4-phase visual indicator. Chain migration banner for frozen chains. Reward rate display with dual-signed change flow.<br/><br/>
+
+13 of 16 acceptance test scenarios from the T&#x24B6;&sup3; specification pass. Three are deferred pending owner key override implementation and multi-recorder infrastructure.<br/><br/>
+
+<h2>By the Numbers</h2>
+
+<table border="1" cellpadding="6" cellspacing="0">
+<tr><td><b>Rust crates</b></td><td>8 (ao-types, ao-crypto, ao-chain, ao-recorder, ao-exchange, ao-validator, ao-cli, ao-relay)</td></tr>
+<tr><td><b>Rust tests</b></td><td>326</td></tr>
+<tr><td><b>PWA tests</b></td><td>416</td></tr>
+<tr><td><b>Total tests</b></td><td>742</td></tr>
+<tr><td><b>Type codes</b></td><td>56 standard + 16 T&#x24B6;&sup3; = 72</td></tr>
+<tr><td><b>Clippy warnings</b></td><td>0</td></tr>
+<tr><td><b>Specifications</b></td><td>Architecture, Wire Format, Crypto Choices, Economic Rules, Validation &amp; Trust, Atomic Exchange, Wallet Sync, Blob Retention, Cooperative Metadata, Competing Recorders</td></tr>
+<tr><td><b>PWA production build</b></td><td>70 KB gzipped</td></tr>
+</table><br/>
+
+<h2>What the Review Got Right</h2>
+
+The <a href="2026review.html">2026 Review</a> made several predictions. Most held up:<br/><br/>
+
+<b>Rust was the right choice.</b> Memory safety for cryptographic code, cross-compilation to ARM, the <tt>ring</tt> and <tt>sha2</tt> crates, <tt>num-bigint</tt>/<tt>num-rational</tt> replacing GMP&mdash;all as predicted. The one deviation: <tt>no_std</tt> was dropped as a hard requirement. No current consumer needs it, the Meshtastic goal is served by the compact wire format (a mesh relay forwards opaque bytes, it doesn't parse DataItems), and the <tt>alloc</tt> feature-flag machinery added maintenance cost for no benefit. Core serialization signatures are kept <tt>alloc</tt>-compatible for future extraction if needed.<br/><br/>
+
+<b>Axum + SQLite + MQTT + React PWA</b> was the right stack. Axum's tower middleware composability proved especially valuable for adding authentication, rate limiting, and connection management as layers. SQLite's single-file databases simplified multi-chain hosting&mdash;each chain gets its own file, trivially backed up or migrated.<br/><br/>
+
+<b>PWAs work.</b> Cross-platform, no app store, offline-capable, 70 KB gzipped. Web Crypto API provides native Ed25519 in all target browsers. The one gap the Review didn't anticipate: the single-use key model creates a wallet sync problem that required significant engineering (IndexedDB state model, QR transfer, WebSocket relay, encrypted backup).<br/><br/>
+
+<b>CAA was the hardest part.</b> The Review called it &ldquo;the most technically demanding component&rdquo; and suggested deferring it by having exchange agents absorb settlement risk. Both approaches were implemented: the simple path (ao-exchange auto-trade with inventory holding) and the full protocol (CAA ouroboros escrow with recording proofs). Having both means deployments can start simple and upgrade to atomic swaps when the volume justifies the complexity.<br/><br/>
+
+<h2>What Changed</h2>
+
+<b><tt>ed25519-dalek</tt> was replaced by <tt>ring</tt> 0.17</b> early in Phase 1 after a test vector incompatibility. The lesson: trust the specification vectors, not the library's defaults.<br/><br/>
+
+<b>SHA3-512 was dropped entirely.</b> The original 2018 design specified SHA3 as an option. SHA2-256 handles chain integrity and separable item replacement; BLAKE3 handles content addressing and performance-sensitive hashing. Two hash types are sufficient.<br/><br/>
+
+<b>T&#x24B6;&sup3; competing recorders went from &ldquo;not covered&rdquo; to implemented.</b> The Review did not discuss recorder competition. The specification and implementation were driven by the deployment stories: if a chain's recorder becomes unreliable or extractive, the chain owner needs an exit path. Owner key rotation, recorder switching, and chain migration provide that exit.<br/><br/>
+
+<b>Cooperative metadata emerged from the deployment stories.</b> The <a href="FarmingCooperatives.html">Farming Cooperatives</a> story created requirements not anticipated in the original protocol design: structured record types, lot-level provenance tracing, crop aggregation. These were implemented using existing separable types (NOTE, DESCRIPTION, DATA_BLOB) with conventions rather than new protocol features&mdash;the type system was flexible enough to accommodate agricultural accounting without modification.<br/><br/>
+
+<h2>What Remains</h2>
+
+<h3>Hardware Testing</h3>
+
+Several acceptance criteria require physical hardware that has not yet been exercised: 72-hour Pi stress test without memory growth, two-device assignment latency under 3 seconds, iOS and Android PWA install testing, Lighthouse PWA audit, Pi MQTT throughput at 100 messages per second, chaos testing with random process kills and network partitions. The software is ready for these tests; the hardware is not yet provisioned.<br/><br/>
+
+<h3>The Same Hard Problems</h3>
+
+The Review identified three non-technical challenges. None have been solved by code, because they cannot be:<br/><br/>
+
+<b>Cold start.</b> The system delivers value only when vendors, consumers, and exchange agents are using it simultaneously in the same area. The software now exists to support a pilot; finding the first community willing to try it is a business problem, not a software deliverable.<br/><br/>
+
+<b>Regulatory exposure.</b> Exchange agents likely qualify as money transmitters. Commodity-backed tokens sit closer to gift cards than securities, but the line remains blurry. The architecture targets the most favorable regulatory category, but any real deployment needs jurisdiction-specific legal counsel.<br/><br/>
+
+<b>Competition from established systems.</b> Square, Venmo, M-Pesa already solve &ldquo;pay the vendor without cash&rdquo; in most markets. Assign Onward's advantage remains in contexts where those systems are unavailable, unreliable, or too expensive: small island economies, informal markets, agricultural cooperatives, communities that want to keep economic value circulating locally.<br/><br/>
+
+The Review concluded that &ldquo;the hard problems are not in the code.&rdquo; That assessment was correct. The code is now written. The hard problems&mdash;finding Eddie, Bob, Charlie, and Gene on the same island at the same time&mdash;remain exactly where they were.<br/><br/>
+
+</span>
+
+</div>
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2026-03-09"><div class="tooltip">9 March 2026<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2018 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+</div>
+
+</body></html>

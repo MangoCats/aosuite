@@ -192,14 +192,31 @@ pub struct InventoryConfig {
 fn default_initial_buy() -> u64 { 50 }
 fn default_rebalance_threshold() -> f64 { 0.25 }
 
+/// A single purchase target for multi-vendor consumers.
+/// When `purchases` is populated, the consumer cycles round-robin through targets.
+#[derive(Deserialize, Debug, Clone)]
+pub struct PurchaseTarget {
+    /// Symbol of chain consumer wants.
+    pub want_symbol: String,
+    /// Vendor name to redeem at (optional).
+    #[serde(default)]
+    pub redeem_at: Option<String>,
+    /// Override buy_from exchange for this target.
+    #[serde(default)]
+    pub buy_from: Option<String>,
+    /// Seconds between purchases for this target (sim time).
+    #[serde(default = "default_interval")]
+    pub interval_secs: u64,
+}
+
 #[derive(Deserialize, Debug, Clone)]
 pub struct ConsumerConfig {
-    /// Exchange agent name to buy from.
+    /// Exchange agent name to buy from (default for all purchases).
     pub buy_from: String,
     /// Vendor name to redeem at (single-chain mode).
     #[serde(default)]
     pub redeem_at: Option<String>,
-    /// For cross-chain: symbol of chain consumer wants.
+    /// For cross-chain: symbol of chain consumer wants (single target).
     #[serde(default)]
     pub want_symbol: Option<String>,
     /// For cross-chain: symbol of chain consumer pays with.
@@ -214,6 +231,10 @@ pub struct ConsumerConfig {
     /// Use CAA atomic swap instead of two-leg cross-chain (default false).
     #[serde(default)]
     pub atomic: bool,
+    /// Multiple purchase targets — consumer cycles round-robin through these.
+    /// If non-empty, overrides want_symbol/redeem_at for cross-chain/atomic modes.
+    #[serde(default)]
+    pub purchases: Vec<PurchaseTarget>,
 }
 
 fn default_interval() -> u64 { 30 }

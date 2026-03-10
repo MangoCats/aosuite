@@ -4,16 +4,16 @@
 [simulation]
 name = "minimal"
 recorder_port = 0       # auto-assign
-speed = 10.0            # 10x accelerated
-duration_secs = 120     # 2 minutes real time
+speed = 1.0             # real-time (1x)
+duration_secs = 300     # 5 minutes real time
 
 # ── Bob: curry goat vendor ───────────────────────────────────────────
 
 [[agent]]
 name = "Bob"
 role = "vendor"
-lat = 18.2027
-lon = -63.0490
+lat = 18.2003
+lon = -63.0908
 
 [agent.vendor]
 symbol = "BCG"
@@ -34,8 +34,8 @@ role = "recorder"
 [[agent]]
 name = "Charlie"
 role = "exchange"
-lat = 18.2060
-lon = -63.0519
+lat = 18.1975
+lon = -63.0900
 
 [agent.exchange]
 buy_from = "Bob"
@@ -46,8 +46,8 @@ initial_buy = 50
 [[agent]]
 name = "Alice"
 role = "consumer"
-lat = 18.2040
-lon = -63.0500
+lat = 18.2008
+lon = -63.0905
 
 [agent.consumer]
 buy_from = "Charlie"

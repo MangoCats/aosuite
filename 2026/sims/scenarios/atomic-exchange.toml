@@ -21,8 +21,8 @@ what_to_watch = [
     "Victor validates both chains during active CAA trading",
 ]
 recorder_port = 0
-speed = 10.0
-duration_secs = 180
+speed = 1.0             # real-time (1x)
+duration_secs = 300     # 5 minutes
 mqtt_port = 0
 
 # ── Vendors ─────────────────────────────────────────────────────────
@@ -31,8 +31,8 @@ mqtt_port = 0
 name = "Bob"
 role = "vendor"
 blurb = "BCG vendor — Bob's Curry Goat chain"
-lat = 18.2027
-lon = -63.0490
+lat = 18.2003
+lon = -63.0908          # Sandy Ground beach
 
 [agent.vendor]
 symbol = "BCG"
@@ -46,8 +46,8 @@ initial_float = 50
 name = "Carol"
 role = "vendor"
 blurb = "CCC vendor — Carol's Cold Coffee chain"
-lat = 18.2070
-lon = -63.0460
+lat = 18.2012
+lon = -63.0903          # Sandy Ground beach, north of Bob
 
 [agent.vendor]
 symbol = "CCC"
@@ -70,8 +70,8 @@ blurb = "Recorder hosting both chains"
 name = "Charlie"
 role = "exchange"
 blurb = "Exchange agent — executes CAA atomic swaps on both chains"
-lat = 18.2060
-lon = -63.0519
+lat = 18.1975
+lon = -63.0900          # Sandy Ground dock
 
 [agent.exchange]
 atomic = true
@@ -95,8 +95,8 @@ plates = 120
 name = "Alice"
 role = "consumer"
 blurb = "Consumer — buys BCG, pays with CCC (atomic)"
-lat = 18.2040
-lon = -63.0500
+lat = 18.2008
+lon = -63.0905          # Sandy Ground beach
 
 [agent.consumer]
 buy_from = "Charlie"
@@ -110,8 +110,8 @@ atomic = true
 name = "Dan"
 role = "consumer"
 blurb = "Consumer — buys CCC, pays with BCG (atomic, reverse direction)"
-lat = 18.2055
-lon = -63.0495
+lat = 18.2015
+lon = -63.0898          # Sandy Ground beach, north
 
 [agent.consumer]
 buy_from = "Charlie"
@@ -127,8 +127,8 @@ atomic = true
 name = "Victor"
 role = "validator"
 blurb = "Validator — verifies chains during CAA activity"
-lat = 18.2050
-lon = -63.0530
+lat = 18.2030
+lon = -63.0872          # Sandy Ground village road
 
 [agent.validator]
 poll_interval_secs = 5

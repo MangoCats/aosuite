@@ -24,8 +24,8 @@ what_to_watch = [
 ]
 recorder_port = 4100
 secondary_recorder_port = 4101
-speed = 10.0
-duration_secs = 180
+speed = 1.0             # real-time (1x)
+duration_secs = 300     # 5 minutes
 
 # ── Recorders ────────────────────────────────────────────────────────
 
@@ -33,15 +33,15 @@ duration_secs = 180
 name = "Gene"
 role = "recorder"
 blurb = "Primary recorder (Recorder A) hosting Bob's chain"
-lat = 18.22
-lon = -63.06
+lat = 18.2030
+lon = -63.0872          # Sandy Ground village road
 
 [[agent]]
 name = "Faythe"
 role = "recorder"
 blurb = "Secondary recorder (Recorder B) — migration target"
-lat = 18.21
-lon = -63.05
+lat = 18.2040
+lon = -63.0865          # Sandy Ground village, north
 
 # ── Vendor ───────────────────────────────────────────────────────────
 
@@ -49,8 +49,8 @@ lon = -63.05
 name = "Bob"
 role = "vendor"
 blurb = "Bob's Curry Goat — chain owner, sells plates for BCG coins"
-lat = 18.2206
-lon = -63.0686
+lat = 18.2003
+lon = -63.0908          # Sandy Ground beach
 
 [agent.vendor]
 symbol = "BCG"
@@ -66,8 +66,8 @@ initial_float = 50
 name = "Charlie"
 role = "exchange"
 blurb = "Charlie's Currency Counter — exchanges CCC for BCG"
-lat = 18.2185
-lon = -63.0580
+lat = 18.1975
+lon = -63.0900          # Sandy Ground dock
 
 [agent.exchange]
 buy_from = "Bob"
@@ -79,8 +79,8 @@ initial_buy = 50
 name = "Alice"
 role = "consumer"
 blurb = "Tourist buying curry goat plates through Charlie"
-lat = 18.2250
-lon = -63.0550
+lat = 18.2008
+lon = -63.0905          # Sandy Ground beach
 
 [agent.consumer]
 buy_from = "Charlie"
@@ -93,8 +93,8 @@ interval_secs = 15
 name = "Victor"
 role = "validator"
 blurb = "Independent validator — monitors chain integrity through all TⒶ³ operations"
-lat = 18.2150
-lon = -63.0700
+lat = 18.2025
+lon = -63.0878          # Sandy Ground village road
 
 [agent.validator]
 poll_interval_secs = 5
@@ -106,8 +106,8 @@ batch_size = 100
 name = "Helen"
 role = "recorder_operator"
 blurb = "Infrastructure operator — manages owner keys, recorder switch, and chain migration"
-lat = 18.2180
-lon = -63.0650
+lat = 18.2018
+lon = -63.0882          # Sandy Ground village road
 
 [agent.recorder_operator]
 target_chain = "Bob"

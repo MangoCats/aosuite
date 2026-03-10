@@ -14,16 +14,16 @@
 [simulation]
 name = "price-war"
 recorder_port = 0
-speed = 10.0
-duration_secs = 300
+speed = 1.0             # real-time (1x)
+duration_secs = 300     # 5 minutes
 
 # ── Vendors ─────────────────────────────────────────────────────────
 
 [[agent]]
 name = "Bob"
 role = "vendor"
-lat = 18.2027
-lon = -63.0490
+lat = 18.2003
+lon = -63.0908          # Sandy Ground beach
 
 [agent.vendor]
 symbol = "BCG"
@@ -36,8 +36,8 @@ initial_float = 100
 [[agent]]
 name = "Carol"
 role = "vendor"
-lat = 18.2035
-lon = -63.0485
+lat = 18.2012
+lon = -63.0903          # Sandy Ground beach, north of Bob
 
 [agent.vendor]
 symbol = "CCC"
@@ -58,8 +58,8 @@ role = "recorder"
 [[agent]]
 name = "Charlie"
 role = "exchange"
-lat = 18.2060
-lon = -63.0519
+lat = 18.1975
+lon = -63.0900          # Sandy Ground dock
 
 [agent.exchange]
 price_discovery = true
@@ -79,8 +79,8 @@ plates = 180
 [[agent]]
 name = "Eve"
 role = "exchange"
-lat = 18.2045
-lon = -63.0510
+lat = 18.2025
+lon = -63.0878          # Sandy Ground village road
 
 [agent.exchange]
 price_discovery = true
@@ -102,8 +102,8 @@ plates = 180
 [[agent]]
 name = "Alice"
 role = "consumer"
-lat = 18.2040
-lon = -63.0500
+lat = 18.2008
+lon = -63.0905          # Sandy Ground beach
 
 [agent.consumer]
 buy_from = "Charlie"
@@ -115,8 +115,8 @@ interval_secs = 20
 [[agent]]
 name = "Dan"
 role = "consumer"
-lat = 18.2055
-lon = -63.0495
+lat = 18.2015
+lon = -63.0898          # Sandy Ground beach, north
 
 [agent.consumer]
 buy_from = "Eve"

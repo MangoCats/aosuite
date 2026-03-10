@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useStore } from '../store/useStore.ts';
-import { RecorderClient } from '../api/client.ts';
+import { RecorderClient, ssePool } from '../api/client.ts';
 import type { ChainListEntry, BlockInfo } from '../api/client.ts';
 import { getKeys } from '../core/walletDb.ts';
 
@@ -19,7 +19,7 @@ export function VendorDashboard() {
   const { recorderUrl, chains, selectChain } = useStore();
   const [cards, setCards] = useState<ChainCard[]>([]);
   const [loading, setLoading] = useState(true);
-  const esRefs = useRef<Map<string, EventSource>>(new Map());
+  const unsubRefs = useRef<Map<string, () => void>>(new Map());
 
   // Discover owned chains: chains where we have keys in walletDb
   useEffect(() => {
@@ -72,51 +72,50 @@ export function VendorDashboard() {
     [cards.map(c => c.chainId).join(',')]
   );
 
-  // SSE subscriptions for each card
+  // SSE subscriptions for each card via shared pool
   useEffect(() => {
-    const client = new RecorderClient(recorderUrl);
-    const currentRefs = esRefs.current;
+    const currentUnsubs = unsubRefs.current;
 
     // Close stale connections
-    for (const [id, es] of currentRefs) {
+    for (const [id, unsub] of currentUnsubs) {
       if (!cardChainIds.includes(id)) {
-        es.close();
-        currentRefs.delete(id);
+        unsub();
+        currentUnsubs.delete(id);
       }
     }
 
     // Open new connections
     for (const chainId of cardChainIds) {
-      if (currentRefs.has(chainId)) continue;
-      const es = client.subscribeBlocks(chainId, (block: BlockInfo) => {
-        setCards(prev => prev.map(c => {
-          if (c.chainId !== chainId) return c;
-          return {
-            ...c,
-            sessionTxCount: block.seq_count > 0
-              ? c.sessionTxCount + block.seq_count
-              : c.sessionTxCount,
-            lastTxTime: block.seq_count > 0 ? Date.now() : c.lastTxTime,
-            blockHeight: block.height,
-          };
-        }));
-      });
-      es.onopen = () => {
-        setCards(prev => prev.map(c =>
-          c.chainId === chainId ? { ...c, sseConnected: true } : c
-        ));
-      };
-      es.onerror = () => {
-        setCards(prev => prev.map(c =>
-          c.chainId === chainId ? { ...c, sseConnected: false } : c
-        ));
-      };
-      currentRefs.set(chainId, es);
+      if (currentUnsubs.has(chainId)) continue;
+      const cid = chainId; // capture for closures
+      const unsub = ssePool.subscribe(
+        recorderUrl,
+        cid,
+        (block: BlockInfo) => {
+          setCards(prev => prev.map(c => {
+            if (c.chainId !== cid) return c;
+            return {
+              ...c,
+              sessionTxCount: block.seq_count > 0
+                ? c.sessionTxCount + block.seq_count
+                : c.sessionTxCount,
+              lastTxTime: block.seq_count > 0 ? Date.now() : c.lastTxTime,
+              blockHeight: block.height,
+            };
+          }));
+        },
+        (connected: boolean) => {
+          setCards(prev => prev.map(c =>
+            c.chainId === cid ? { ...c, sseConnected: connected } : c
+          ));
+        },
+      );
+      currentUnsubs.set(chainId, unsub);
     }
 
     return () => {
-      for (const [, es] of currentRefs) es.close();
-      currentRefs.clear();
+      for (const [, unsub] of currentUnsubs) unsub();
+      currentUnsubs.clear();
     };
   }, [recorderUrl, cardChainIds]);
 

@@ -7,15 +7,15 @@
 #   - Mallory attempts double-spend attacks
 #
 # Vendors:
-#   Bob — BCG (Bob's Curry Goat) at Sandy Ground
+#   Bob — BCG (Bob's Curry Goat) at Sandy Ground beach
 #   Rita — RMF (Rita's Mango Futures) at George Hill
 #   Dave — DEB (Dave's E-Bikes) at Blowing Point
 #   Oscar — OGP (Oscar's Goat Plates) at The Valley
 #
 # Exchange agents (atomic CAA):
-#   Charlie — CCC (Charlie's Cruise Credits), main exchange, atomic
-#   Ziggy — ZIC (Ziggy's Island Credits), aggressive competitor, atomic
-#   Ted — TCC (Ted's Caribbean Credits), regional, legacy
+#   Charlie — CCC (Charlie's Cruise Credits), main exchange at the dock, atomic
+#   Ziggy — ZIC (Ziggy's Island Credits), aggressive competitor at The Valley, atomic
+#   Ted — TCC (Ted's Caribbean Credits), regional in Tortola, legacy
 #
 # Consumers (mixed atomic and legacy):
 #   Alice, Eddie — atomic via Charlie
@@ -36,8 +36,8 @@ what_to_watch = [
     "Mallory attempts double-spend attacks on Bob — all should be rejected",
 ]
 recorder_port = 0
-speed = 10.0
-duration_secs = 300
+speed = 1.0             # real-time (1x)
+duration_secs = 300     # 5 minutes
 mqtt_port = 1884
 
 # ── Vendors ──────────────────────────────────────────────────────────
@@ -46,8 +46,8 @@ mqtt_port = 1884
 name = "Bob"
 role = "vendor"
 blurb = "Sells curry goat at Sandy Ground — the anchor vendor"
-lat = 18.2027
-lon = -63.0890   # Sandy Ground
+lat = 18.2003
+lon = -63.0908          # Sandy Ground beach
 
 [agent.vendor]
 symbol = "BCG"
@@ -62,7 +62,7 @@ name = "Rita"
 role = "vendor"
 blurb = "Sells mango futures at George Hill"
 lat = 18.2173
-lon = -63.0578   # George Hill
+lon = -63.0578          # George Hill
 
 [agent.vendor]
 symbol = "RMF"
@@ -77,7 +77,7 @@ name = "Dave"
 role = "vendor"
 blurb = "Rents e-bikes at Blowing Point"
 lat = 18.1755
-lon = -63.0925   # Blowing Point
+lon = -63.0925          # Blowing Point
 
 [agent.vendor]
 symbol = "DEB"
@@ -92,7 +92,7 @@ name = "Oscar"
 role = "vendor"
 blurb = "Sells goat plates in The Valley"
 lat = 18.2167
-lon = -63.0500   # The Valley
+lon = -63.0500          # The Valley
 
 [agent.vendor]
 symbol = "OGP"
@@ -109,23 +109,23 @@ name = "Gene"
 role = "recorder"
 blurb = "Primary recorder at Crocus Bay"
 lat = 18.2060
-lon = -63.1510   # Crocus Bay
+lon = -63.1510          # Crocus Bay
 
 [[agent]]
 name = "Faythe"
 role = "recorder"
 blurb = "Backup recorder at George Hill"
 lat = 18.2173
-lon = -63.0578   # George Hill
+lon = -63.0578          # George Hill
 
 # ── Exchange agents ──────────────────────────────────────────────────
 
 [[agent]]
 name = "Charlie"
 role = "exchange"
-blurb = "Main exchange — uses CAA atomic swaps for guaranteed trades"
-lat = 18.2190
-lon = -63.0350   # near cruise port
+blurb = "Main exchange at Sandy Ground dock — uses CAA atomic swaps"
+lat = 18.1975
+lon = -63.0900          # Sandy Ground dock
 
 [agent.exchange]
 atomic = true
@@ -161,7 +161,7 @@ name = "Ziggy"
 role = "exchange"
 blurb = "Aggressive competitor — atomic swaps at lower rates"
 lat = 18.2100
-lon = -63.0600   # The Valley area
+lon = -63.0600          # The Valley area
 
 [agent.exchange]
 atomic = true
@@ -187,7 +187,7 @@ name = "Ted"
 role = "exchange"
 blurb = "Regional legacy exchange in Tortola"
 lat = 18.4400
-lon = -64.6200   # Road Town, Tortola
+lon = -64.6200          # Road Town, Tortola
 
 [agent.exchange]
 referral_fee = 0.03
@@ -212,8 +212,8 @@ plates = 80
 name = "CCC-Issuer"
 role = "vendor"
 blurb = "Issues Charlie's Cruise Credits"
-lat = 18.2190
-lon = -63.0355
+lat = 18.1978
+lon = -63.0897          # next to Charlie at Sandy Ground dock
 
 [agent.vendor]
 symbol = "CCC"
@@ -228,7 +228,7 @@ name = "ZIC-Issuer"
 role = "vendor"
 blurb = "Issues Ziggy's Island Credits"
 lat = 18.2105
-lon = -63.0605
+lon = -63.0605          # next to Ziggy at The Valley
 
 [agent.vendor]
 symbol = "ZIC"
@@ -243,7 +243,7 @@ name = "TCC-Issuer"
 role = "vendor"
 blurb = "Issues Ted's Caribbean Credits"
 lat = 18.4405
-lon = -64.6205
+lon = -64.6205          # next to Ted in Tortola
 
 [agent.vendor]
 symbol = "TCC"
@@ -259,8 +259,8 @@ initial_float = 2000
 name = "Alice"
 role = "consumer"
 blurb = "Tourist — atomic purchases via Charlie"
-lat = 18.2030
-lon = -63.0885   # Sandy Ground (tourist, atomic)
+lat = 18.2008
+lon = -63.0905          # Sandy Ground beach (atomic)
 
 [agent.consumer]
 buy_from = "Charlie"
@@ -274,8 +274,8 @@ atomic = true
 name = "Eddie"
 role = "consumer"
 blurb = "Local investor — atomic purchases via Charlie"
-lat = 18.2050
-lon = -63.0870   # Sandy Ground (local investor, atomic)
+lat = 18.2025
+lon = -63.0878          # Sandy Ground village road (atomic)
 
 [agent.consumer]
 buy_from = "Charlie"
@@ -290,7 +290,7 @@ name = "Karen"
 role = "consumer"
 blurb = "Nurse — legacy purchases via Charlie"
 lat = 18.2165
-lon = -63.0560   # George Hill (nurse, legacy two-leg)
+lon = -63.0560          # George Hill (legacy two-leg)
 
 [agent.consumer]
 buy_from = "Charlie"
@@ -304,7 +304,7 @@ name = "Luke"
 role = "consumer"
 blurb = "Tourist — atomic e-bike rentals via Ziggy"
 lat = 18.1760
-lon = -63.0920   # Blowing Point (tourist, atomic via Ziggy)
+lon = -63.0920          # Blowing Point (atomic via Ziggy)
 
 [agent.consumer]
 buy_from = "Ziggy"
@@ -319,7 +319,7 @@ name = "Mona"
 role = "consumer"
 blurb = "Local — legacy purchases via Ziggy"
 lat = 18.2100
-lon = -63.0500   # The Valley (local, legacy via Ziggy)
+lon = -63.0500          # The Valley (legacy via Ziggy)
 
 [agent.consumer]
 buy_from = "Ziggy"
@@ -334,8 +334,8 @@ interval_secs = 35
 name = "Victor"
 role = "validator"
 blurb = "Validates all chains — detects tampering and fraud"
-lat = 18.2050
-lon = -63.0530
+lat = 18.2030
+lon = -63.0872          # Sandy Ground village road
 
 [agent.validator]
 poll_interval_secs = 5
@@ -347,8 +347,8 @@ batch_size = 100
 name = "Mallory"
 role = "attacker"
 blurb = "Attempts double-spend attacks — should always be rejected"
-lat = 18.2015
-lon = -63.0475
+lat = 18.2040
+lon = -63.0865          # Sandy Ground village, north
 
 [agent.attacker]
 attack = "double_spend"

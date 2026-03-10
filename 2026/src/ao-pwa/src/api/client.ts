@@ -301,6 +301,85 @@ export class RecorderClient {
   }
 }
 
+// ── Shared SSE Connection Pool ────────────────────────────────────
+
+interface PoolEntry {
+  es: EventSource;
+  listeners: Set<(info: BlockInfo) => void>;
+  statusListeners: Set<(connected: boolean) => void>;
+  connected: boolean;
+}
+
+/**
+ * Shared SSE connection pool. Deduplicates EventSource connections per
+ * (recorderUrl, chainId) pair. Multiple components subscribe to the same
+ * underlying connection; the connection is closed when the last subscriber
+ * unsubscribes.
+ */
+class SsePool {
+  private connections = new Map<string, PoolEntry>();
+
+  private key(baseUrl: string, chainId: string): string {
+    return `${baseUrl}|${chainId}`;
+  }
+
+  /**
+   * Subscribe to block events. Returns an unsubscribe function.
+   * Optionally receives connection status updates via onStatus callback.
+   */
+  subscribe(
+    baseUrl: string,
+    chainId: string,
+    onBlock: (info: BlockInfo) => void,
+    onStatus?: (connected: boolean) => void,
+  ): () => void {
+    const k = this.key(baseUrl, chainId);
+    let entry = this.connections.get(k);
+
+    if (!entry) {
+      const es = new EventSource(`${baseUrl}/chain/${chainId}/events`);
+      entry = { es, listeners: new Set(), statusListeners: new Set(), connected: false };
+      const entryRef = entry;
+      es.addEventListener('block', (event) => {
+        const info = JSON.parse((event as MessageEvent).data) as BlockInfo;
+        for (const cb of entryRef.listeners) {
+          cb(info);
+        }
+      });
+      es.onopen = () => {
+        entryRef.connected = true;
+        for (const cb of entryRef.statusListeners) cb(true);
+      };
+      es.onerror = () => {
+        entryRef.connected = false;
+        for (const cb of entryRef.statusListeners) cb(false);
+      };
+      this.connections.set(k, entry);
+    }
+
+    entry.listeners.add(onBlock);
+    if (onStatus) {
+      entry.statusListeners.add(onStatus);
+      // Immediately notify current status
+      onStatus(entry.connected);
+    }
+
+    return () => {
+      const e = this.connections.get(k);
+      if (!e) return;
+      e.listeners.delete(onBlock);
+      if (onStatus) e.statusListeners.delete(onStatus);
+      if (e.listeners.size === 0 && e.statusListeners.size === 0) {
+        e.es.close();
+        this.connections.delete(k);
+      }
+    };
+  }
+}
+
+/** Global SSE connection pool — shared across all components. */
+export const ssePool = new SsePool();
+
 // ── Blob Policy JSON Parser ───────────────────────────────────────
 
 import { hexToBytes } from '../core/hex.ts';

@@ -1,26 +1,26 @@
 # Island Life scenario — full IslandLife cast on Anguilla geography
 #
 # Vendors:
-#   Bob — BCG (Bob's Curry Goat) at Sandy Ground
+#   Bob — BCG (Bob's Curry Goat) at Sandy Ground beach
 #   Rita — RMF (Rita's Mango Futures) at George Hill
 #   Dave — DEB (Dave's E-Bikes) at Blowing Point
 #   Oscar — OGP (Oscar's Goat Plates) at The Valley (competing, incompetent)
 #
 # Exchange agents:
-#   Charlie — CCC (Charlie's Cruise Credits, USD-pegged), main exchange
-#   Ziggy — ZIC (Ziggy's Island Credits), aggressive competitor, undercuts Charlie
-#   Ted — TCC (Ted's Caribbean Credits), regional intermediary
+#   Charlie — CCC (Charlie's Cruise Credits, USD-pegged), main exchange at the dock
+#   Ziggy — ZIC (Ziggy's Island Credits), aggressive competitor at The Valley
+#   Ted — TCC (Ted's Caribbean Credits), regional intermediary in Tortola
 #
 # Consumers:
-#   Alice — tourist, buys BCG via Charlie (pays CCC)
-#   Eddie — local investor, buys BCG via Charlie (pays CCC)
-#   Karen — nurse, buys RMF via Charlie (pays CCC)
-#   Luke — tourist, buys DEB via Ziggy (pays ZIC, cheaper)
-#   Mona — local, buys BCG via Ziggy (pays ZIC, undercut)
+#   Alice — tourist, buys BCG via Charlie (pays CCC) on the beach
+#   Eddie — local investor, buys BCG via Charlie (pays CCC) on the village road
+#   Karen — nurse, buys RMF via Charlie (pays CCC) at George Hill
+#   Luke — tourist, buys DEB via Ziggy (pays ZIC, cheaper) at Blowing Point
+#   Mona — local, buys BCG via Ziggy (pays ZIC, undercut) at The Valley
 #
 # Recorders:
 #   Gene — primary recorder at Crocus Bay
-#   Faythe — backup recorder (embedded, no agent loop)
+#   Faythe — backup recorder at George Hill
 #
 # MQTT is enabled for exchange agent block notifications.
 
@@ -35,8 +35,8 @@ what_to_watch = [
     "Ted operates from Tortola — a regional exchange with different rate dynamics",
 ]
 recorder_port = 0
-speed = 10.0
-duration_secs = 300
+speed = 1.0             # real-time (1x)
+duration_secs = 300     # 5 minutes
 mqtt_port = 1884
 
 # ── Vendors ──────────────────────────────────────────────────────────
@@ -45,8 +45,8 @@ mqtt_port = 1884
 name = "Bob"
 role = "vendor"
 blurb = "Sells curry goat at Sandy Ground — the anchor vendor"
-lat = 18.2027
-lon = -63.0890   # Sandy Ground
+lat = 18.2003
+lon = -63.0908          # Sandy Ground beach
 
 [agent.vendor]
 symbol = "BCG"
@@ -61,7 +61,7 @@ name = "Rita"
 role = "vendor"
 blurb = "Sells mango futures at George Hill"
 lat = 18.2173
-lon = -63.0578   # George Hill
+lon = -63.0578          # George Hill
 
 [agent.vendor]
 symbol = "RMF"
@@ -76,7 +76,7 @@ name = "Dave"
 role = "vendor"
 blurb = "Rents e-bikes at Blowing Point"
 lat = 18.1755
-lon = -63.0925   # Blowing Point
+lon = -63.0925          # Blowing Point
 
 [agent.vendor]
 symbol = "DEB"
@@ -91,7 +91,7 @@ name = "Oscar"
 role = "vendor"
 blurb = "Sells goat plates in The Valley — cheaper than Bob, but sketchy"
 lat = 18.2167
-lon = -63.0500   # The Valley
+lon = -63.0500          # The Valley
 
 [agent.vendor]
 symbol = "OGP"
@@ -108,23 +108,23 @@ name = "Gene"
 role = "recorder"
 blurb = "Hosts all blockchains from Crocus Bay"
 lat = 18.2060
-lon = -63.1510   # Crocus Bay
+lon = -63.1510          # Crocus Bay
 
 [[agent]]
 name = "Faythe"
 role = "recorder"
 blurb = "Backup recorder at George Hill"
 lat = 18.2173
-lon = -63.0578   # George Hill (Faythe's closet)
+lon = -63.0578          # George Hill
 
 # ── Exchange agents ──────────────────────────────────────────────────
 
 [[agent]]
 name = "Charlie"
 role = "exchange"
-blurb = "Main exchange at the cruise port — issues CCC (Cruise Credits)"
-lat = 18.2190
-lon = -63.0350   # near the cruise port / Sandy Ground marina
+blurb = "Main exchange at Sandy Ground dock — issues CCC (Cruise Credits)"
+lat = 18.1975
+lon = -63.0900          # Sandy Ground dock
 
 [agent.exchange]
 referral_fee = 0.05         # 5% referral fee on cross-chain trades
@@ -159,7 +159,7 @@ name = "Ziggy"
 role = "exchange"
 blurb = "Aggressive competitor — undercuts Charlie with ZIC (Island Credits)"
 lat = 18.2100
-lon = -63.0600   # The Valley area
+lon = -63.0600          # The Valley area
 
 [agent.exchange]
 referral_fee = 0.02         # 2% referral — Ziggy undercuts Charlie
@@ -183,7 +183,7 @@ name = "Ted"
 role = "exchange"
 blurb = "Regional exchange in Road Town, Tortola — issues TCC"
 lat = 18.4400
-lon = -64.6200   # off-island (Road Town, Tortola — regional)
+lon = -64.6200          # off-island (Road Town, Tortola — regional)
 
 [agent.exchange]
 referral_fee = 0.03
@@ -210,8 +210,8 @@ plates = 80
 name = "CCC-Issuer"
 role = "vendor"
 blurb = "Issues Charlie's Cruise Credits (USD-pegged payment chain)"
-lat = 18.2190
-lon = -63.0355
+lat = 18.1978
+lon = -63.0897          # next to Charlie at Sandy Ground dock
 
 [agent.vendor]
 symbol = "CCC"
@@ -227,7 +227,7 @@ name = "ZIC-Issuer"
 role = "vendor"
 blurb = "Issues Ziggy's Island Credits"
 lat = 18.2105
-lon = -63.0605
+lon = -63.0605          # next to Ziggy at The Valley
 
 [agent.vendor]
 symbol = "ZIC"
@@ -243,7 +243,7 @@ name = "TCC-Issuer"
 role = "vendor"
 blurb = "Issues Ted's Caribbean Credits"
 lat = 18.4405
-lon = -64.6205
+lon = -64.6205          # next to Ted in Tortola
 
 [agent.vendor]
 symbol = "TCC"
@@ -259,8 +259,8 @@ initial_float = 2000
 name = "Alice"
 role = "consumer"
 blurb = "Tourist at Sandy Ground — buys curry goat via Charlie"
-lat = 18.2030
-lon = -63.0885   # Sandy Ground beach (tourist)
+lat = 18.2008
+lon = -63.0905          # Sandy Ground beach
 
 [agent.consumer]
 buy_from = "Charlie"
@@ -273,8 +273,8 @@ interval_secs = 30
 name = "Eddie"
 role = "consumer"
 blurb = "Local investor — also buys BCG via Charlie"
-lat = 18.2050
-lon = -63.0870   # near Sandy Ground (local investor)
+lat = 18.2025
+lon = -63.0878          # Sandy Ground village road
 
 [agent.consumer]
 buy_from = "Charlie"
@@ -288,7 +288,7 @@ name = "Karen"
 role = "consumer"
 blurb = "Nurse at George Hill — buys mango futures via Charlie"
 lat = 18.2165
-lon = -63.0560   # near George Hill hospital
+lon = -63.0560          # near George Hill hospital
 
 [agent.consumer]
 buy_from = "Charlie"
@@ -302,7 +302,7 @@ name = "Luke"
 role = "consumer"
 blurb = "Tourist at Blowing Point — rents e-bikes via Ziggy (cheaper)"
 lat = 18.1760
-lon = -63.0920   # Blowing Point (tourist)
+lon = -63.0920          # Blowing Point
 
 [agent.consumer]
 buy_from = "Ziggy"
@@ -316,7 +316,7 @@ name = "Mona"
 role = "consumer"
 blurb = "Local in The Valley — uses Ziggy for cheaper curry goat"
 lat = 18.2100
-lon = -63.0500   # The Valley (local, uses Ziggy for cheaper BCG)
+lon = -63.0500          # The Valley
 
 [agent.consumer]
 buy_from = "Ziggy"

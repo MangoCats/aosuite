@@ -1,5 +1,6 @@
 import { useStore } from '../store';
 import type { TransactionEvent } from '../api';
+import { isErrorEvent } from './TransactionToasts';
 
 export function TransactionLog() {
   const { transactions, txSort, setTxSort, txFilter, setTxFilter, selectAgent, timeFilter } = useStore();
@@ -46,21 +47,26 @@ export function TransactionLog() {
           </tr>
         </thead>
         <tbody>
-          {sorted.map((t) => (
-            <tr key={t.id}>
-              <td style={{ ...tdStyle, color: '#999', fontSize: 12 }}>{t.id}</td>
-              <td style={{ ...tdStyle, fontSize: 12, fontFamily: 'monospace' }}>{formatTime(t.timestamp_ms)}</td>
-              <td style={tdStyle}><strong>{t.symbol}</strong></td>
-              <td style={tdStyle}>
-                <AgentLink name={t.from_agent} onClick={() => selectAgent(t.from_agent)} />
-              </td>
-              <td style={tdStyle}>
-                <AgentLink name={t.to_agent} onClick={() => selectAgent(t.to_agent)} />
-              </td>
-              <td style={{ ...tdStyle, textAlign: 'right' }}>{t.block_height || '-'}</td>
-              <td style={{ ...tdStyle, fontSize: 12, color: '#666' }}>{t.description}</td>
-            </tr>
-          ))}
+          {sorted.map((t) => {
+            const isErr = isErrorEvent(t);
+            const rowStyle = isErr ? { background: '#fff5f5' } : {};
+            const descColor = isErr ? '#c92a2a' : '#666';
+            return (
+              <tr key={t.id} style={rowStyle}>
+                <td style={{ ...tdStyle, color: '#999', fontSize: 12 }}>{t.id}</td>
+                <td style={{ ...tdStyle, fontSize: 12, fontFamily: 'monospace' }}>{formatTime(t.timestamp_ms)}</td>
+                <td style={tdStyle}><strong>{t.symbol}</strong></td>
+                <td style={tdStyle}>
+                  <AgentLink name={t.from_agent} onClick={() => selectAgent(t.from_agent)} />
+                </td>
+                <td style={tdStyle}>
+                  <AgentLink name={t.to_agent} onClick={() => selectAgent(t.to_agent)} />
+                </td>
+                <td style={{ ...tdStyle, textAlign: 'right' }}>{t.block_height || '-'}</td>
+                <td style={{ ...tdStyle, fontSize: 12, color: descColor }}>{t.description}</td>
+              </tr>
+            );
+          })}
           {sorted.length === 0 && (
             <tr><td colSpan={7} style={{ ...tdStyle, color: '#999', textAlign: 'center' }}>No transactions yet</td></tr>
           )}

@@ -24,7 +24,7 @@ what_to_watch = [
     "ErrorProbe sends malformed requests — error responses should be generic, not leak internals",
 ]
 recorder_port = 0
-speed = 1.0
+speed = 1.0             # real-time (1x)
 duration_secs = 120     # 2 minutes
 
 [simulation.recorder_security]
@@ -39,8 +39,8 @@ max_connections = 10        # max 10 concurrent SSE/WS
 name = "Bob"
 role = "vendor"
 blurb = "Curry goat vendor — provides a live chain for infrastructure tests"
-lat = 18.2027
-lon = -63.0490
+lat = 18.2003
+lon = -63.0908          # Sandy Ground beach
 
 [agent.vendor]
 symbol = "BCG"
@@ -63,8 +63,8 @@ blurb = "Recorder with N10 security hardening enabled"
 name = "FloodProbe"
 role = "infra_tester"
 blurb = "[WHITE-HAT] Sends 50 concurrent requests to test rate limiting and server responsiveness"
-lat = 18.2010
-lon = -63.0470
+lat = 18.1975
+lon = -63.0900          # Sandy Ground dock
 
 [agent.infra_tester]
 test = "flood"
@@ -79,8 +79,8 @@ api_key = "sim-test-key-alpha"
 name = "PayloadProbe"
 role = "infra_tester"
 blurb = "[WHITE-HAT] Submits 2MB payloads to test body size guards — should be rejected, not crash"
-lat = 18.2090
-lon = -63.0510
+lat = 18.2025
+lon = -63.0878          # Sandy Ground village road
 
 [agent.infra_tester]
 test = "oversized_payload"
@@ -94,8 +94,8 @@ api_key = "sim-test-key-alpha"
 name = "AuthProbe"
 role = "infra_tester"
 blurb = "[WHITE-HAT] Tests API key enforcement — missing/invalid keys should get 401"
-lat = 18.2070
-lon = -63.0545
+lat = 18.2030
+lon = -63.0872          # Sandy Ground village road
 
 [agent.infra_tester]
 test = "auth_bypass"
@@ -109,8 +109,8 @@ api_key = "sim-test-key-alpha"
 name = "ConnProbe"
 role = "infra_tester"
 blurb = "[WHITE-HAT] Opens 50 simultaneous SSE streams to test connection limits"
-lat = 18.2040
-lon = -63.0460
+lat = 18.2008
+lon = -63.0905          # Sandy Ground beach
 
 [agent.infra_tester]
 test = "connection_exhaustion"
@@ -125,8 +125,8 @@ api_key = "sim-test-key-alpha"
 name = "ErrorProbe"
 role = "infra_tester"
 blurb = "[WHITE-HAT] Sends malformed requests to verify error messages don't leak internal details"
-lat = 18.2055
-lon = -63.0530
+lat = 18.2018
+lon = -63.0882          # Sandy Ground village road
 
 [agent.infra_tester]
 test = "error_probe"

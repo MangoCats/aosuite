@@ -12,8 +12,8 @@ what_to_watch = [
     "Alice continues normal purchases throughout — legitimate commerce is unaffected",
 ]
 recorder_port = 0
-speed = 10.0
-duration_secs = 180     # 3 minutes real time
+speed = 1.0             # real-time (1x)
+duration_secs = 300     # 5 minutes
 
 # ── Bob: curry goat vendor ───────────────────────────────────────────
 
@@ -21,8 +21,8 @@ duration_secs = 180     # 3 minutes real time
 name = "Bob"
 role = "vendor"
 blurb = "Curry goat vendor — target of several attacks"
-lat = 18.2027
-lon = -63.0490
+lat = 18.2003
+lon = -63.0908          # Sandy Ground beach
 
 [agent.vendor]
 symbol = "BCG"
@@ -38,8 +38,8 @@ initial_float = 50
 name = "Carol"
 role = "vendor"
 blurb = "Coconut cream vendor — target of expired-UTXO attack"
-lat = 18.2070
-lon = -63.0460
+lat = 18.2012
+lon = -63.0903          # Sandy Ground beach, north of Bob
 
 [agent.vendor]
 symbol = "CCC"
@@ -62,8 +62,8 @@ blurb = "Recorder hosting all chains"
 name = "Charlie"
 role = "exchange"
 blurb = "Exchange agent — facilitates normal commerce"
-lat = 18.2060
-lon = -63.0519
+lat = 18.1975
+lon = -63.0900          # Sandy Ground dock
 
 [agent.exchange]
 buy_from = "Bob"
@@ -75,8 +75,8 @@ initial_buy = 50
 name = "Alice"
 role = "consumer"
 blurb = "Consumer — buying normally while attacks happen"
-lat = 18.2040
-lon = -63.0500
+lat = 18.2008
+lon = -63.0905          # Sandy Ground beach
 
 [agent.consumer]
 buy_from = "Charlie"
@@ -89,8 +89,8 @@ interval_secs = 30
 name = "Victor"
 role = "validator"
 blurb = "Validator — monitors chain integrity, detects tampering"
-lat = 18.2050
-lon = -63.0530
+lat = 18.2030
+lon = -63.0872          # Sandy Ground village road
 
 [agent.validator]
 poll_interval_secs = 5
@@ -102,8 +102,8 @@ batch_size = 50
 name = "Mallory"
 role = "attacker"
 blurb = "Double-spend attacker — tries to spend the same UTXO twice"
-lat = 18.2015
-lon = -63.0475
+lat = 18.2040
+lon = -63.0865          # Sandy Ground village, north
 
 [agent.attacker]
 attack = "double_spend"
@@ -116,8 +116,8 @@ attack_interval_secs = 15
 name = "Trudy"
 role = "attacker"
 blurb = "Key-reuse attacker — tries to receive on an already-used key"
-lat = 18.2080
-lon = -63.0510
+lat = 18.2035
+lon = -63.0868          # Sandy Ground village
 
 [agent.attacker]
 attack = "key_reuse"
@@ -130,8 +130,8 @@ attack_interval_secs = 15
 name = "Oscar"
 role = "attacker"
 blurb = "Expired-UTXO attacker — tries to use expired shares"
-lat = 18.2035
-lon = -63.0545
+lat = 18.2045
+lon = -63.0860          # Sandy Ground village, northeast
 
 [agent.attacker]
 attack = "expired_utxo"
@@ -144,8 +144,8 @@ attack_interval_secs = 15
 name = "Eve"
 role = "attacker"
 blurb = "Chain tamper attacker — directly modifies the database"
-lat = 18.2090
-lon = -63.0520
+lat = 18.2050
+lon = -63.0855          # Sandy Ground Road, north
 
 [agent.attacker]
 attack = "chain_tamper"
@@ -158,8 +158,8 @@ attack_interval_secs = 30
 name = "Fiona"
 role = "attacker"
 blurb = "Refutation attacker — refutes recorded agreements, then tries to re-spend"
-lat = 18.2025
-lon = -63.0555
+lat = 18.2022
+lon = -63.0880          # Sandy Ground village road
 
 [agent.attacker]
 attack = "refute"

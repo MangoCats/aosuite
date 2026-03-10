@@ -71,6 +71,26 @@ if [[ -z "$SIMS_BIN" ]]; then
     exit 1
 fi
 
+# ── Start viewer PWA if available ─────────────────────────────────────
+VIEWER_PID=""
+start_viewer_pwa() {
+    local viewer_dir="$SIMS_DIR/viewer"
+    if [[ -f "$viewer_dir/package.json" ]] && command -v npm &>/dev/null; then
+        cd "$viewer_dir"
+        npm run dev &>/dev/null &
+        VIEWER_PID=$!
+        cd "$SIMS_DIR"
+    fi
+}
+
+stop_viewer_pwa() {
+    if [[ -n "$VIEWER_PID" ]] && kill -0 "$VIEWER_PID" 2>/dev/null; then
+        kill "$VIEWER_PID" 2>/dev/null || true
+        wait "$VIEWER_PID" 2>/dev/null || true
+        VIEWER_PID=""
+    fi
+}
+
 # ── Run simulation(s) ─────────────────────────────────────────────────
 run_scenario() {
     local name="$1"
@@ -85,12 +105,18 @@ run_scenario() {
     echo ""
     echo "╔══════════════════════════════════════════════════════════════╗"
     echo "  Simulation: $name"
-    echo "  Viewer:     http://127.0.0.1:$VIEWER_PORT"
+    echo "  Viewer UI:  http://127.0.0.1:5174"
+    echo "  Viewer API: http://127.0.0.1:$VIEWER_PORT"
     echo "╚══════════════════════════════════════════════════════════════╝"
     echo ""
 
+    start_viewer_pwa
+    trap stop_viewer_pwa EXIT INT TERM
+
     cd "$SIMS_DIR"
     "$SIMS_BIN" "$toml" --viewer-port "$VIEWER_PORT"
+
+    stop_viewer_pwa
 
     echo ""
     echo "── $name complete ──"

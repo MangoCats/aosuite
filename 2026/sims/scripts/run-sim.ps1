@@ -70,14 +70,27 @@ function Run-Scenario {
     Write-Host ""
     Write-Host ("=" * 60) -ForegroundColor Cyan
     Write-Host "  Simulation: $Name" -ForegroundColor Cyan
-    Write-Host "  Viewer:     http://127.0.0.1:$ViewerPort" -ForegroundColor Cyan
+    Write-Host "  Viewer UI:  http://127.0.0.1:5174" -ForegroundColor Cyan
+    Write-Host "  Viewer API: http://127.0.0.1:$ViewerPort" -ForegroundColor Cyan
     Write-Host ("=" * 60) -ForegroundColor Cyan
     Write-Host ""
+
+    # Start viewer PWA dev server in background
+    $viewerDir = Join-Path $SimsDir "viewer"
+    $viewerProc = $null
+    if ((Test-Path (Join-Path $viewerDir "package.json")) -and (Get-Command npm -ErrorAction SilentlyContinue)) {
+        $viewerProc = Start-Process -FilePath "npm" -ArgumentList "run","dev" -WorkingDirectory $viewerDir -PassThru -WindowStyle Hidden
+    }
 
     Push-Location $SimsDir
     try {
         & $SimsBin $toml --viewer-port $ViewerPort
-    } finally { Pop-Location }
+    } finally {
+        Pop-Location
+        if ($viewerProc -and -not $viewerProc.HasExited) {
+            Stop-Process -Id $viewerProc.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
 
     Write-Host ""
     Write-Host "── $Name complete ──" -ForegroundColor Green

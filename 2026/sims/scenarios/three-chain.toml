@@ -1,11 +1,11 @@
-# Three-chain scenario: 3 vendors, 1 exchange, 2 consumers
+# Three-chain scenario: 3 vendors, 3 exchange agents, 2 consumers
 # Tests cross-vendor exchange behavior on a single recorder.
 
 [simulation]
 name = "three-chain"
 recorder_port = 0
-speed = 10.0
-duration_secs = 180
+speed = 1.0             # real-time (1x)
+duration_secs = 300     # 5 minutes
 
 # ── Gene: recorder operator ────────────────────────────────────────
 
@@ -13,101 +13,110 @@ duration_secs = 180
 name = "Gene"
 role = "recorder"
 
-# ── Bob: curry goat vendor ─────────────────────────────────────────
+# ── Bob: curry goat vendor (on the beach) ─────────────────────────
 
 [[agent]]
 name = "Bob"
 role = "vendor"
-lat = 18.2027
-lon = -63.0490
+lat = 18.2003
+lon = -63.0908          # Sandy Ground beach
 
 [agent.vendor]
 symbol = "BCG"
 description = "Bob's Curry Goat"
+coins = "1000000000"
+shares = "2^40"
 plate_price = 25
+initial_float = 50
 
-# ── Maria: empanada vendor ─────────────────────────────────────────
+# ── Maria: empanada vendor (beach, north of Bob) ─────────────────
 
 [[agent]]
 name = "Maria"
 role = "vendor"
-lat = 18.2045
-lon = -63.0510
+lat = 18.2012
+lon = -63.0903          # Sandy Ground beach, north of Bob
 
 [agent.vendor]
 symbol = "MEP"
 description = "Maria's Empanadas"
+coins = "500000000"
+shares = "2^38"
 plate_price = 10
+initial_float = 80
 
-# ── Kwame: jerk chicken vendor ─────────────────────────────────────
+# ── Kwame: jerk chicken vendor (beach, south of Bob) ─────────────
 
 [[agent]]
 name = "Kwame"
 role = "vendor"
-lat = 18.2060
-lon = -63.0480
+lat = 18.1993
+lon = -63.0910          # Sandy Ground beach, south of Bob
 
 [agent.vendor]
 symbol = "KJC"
 description = "Kwame's Jerk Chicken"
+coins = "1000000000"
+shares = "2^40"
 plate_price = 30
+initial_float = 40
 
-# ── Charlie: exchange agent (buys from all vendors) ────────────────
+# ── Charlie: exchange agent for Bob (on the dock) ──────────────────
 
 [[agent]]
 name = "Charlie"
 role = "exchange"
-lat = 18.2050
-lon = -63.0519
+lat = 18.1975
+lon = -63.0900          # Sandy Ground dock
 
 [agent.exchange]
 buy_from = "Bob"
-initial_buy = 30
+initial_buy = 50
 
-# ── Dave: exchange agent for Maria ─────────────────────────────────
+# ── Dave: exchange agent for Maria (The Valley) ─────────────────
 
 [[agent]]
 name = "Dave"
 role = "exchange"
-lat = 18.2055
-lon = -63.0505
+lat = 18.2170
+lon = -63.0505          # The Valley
 
 [agent.exchange]
 buy_from = "Maria"
-initial_buy = 50
+initial_buy = 80
 
-# ── Eli: exchange agent for Kwame ──────────────────────────────────
+# ── Eli: exchange agent for Kwame (The Valley) ──────────────────
 
 [[agent]]
 name = "Eli"
 role = "exchange"
-lat = 18.2062
-lon = -63.0495
+lat = 18.2160
+lon = -63.0495          # The Valley
 
 [agent.exchange]
 buy_from = "Kwame"
-initial_buy = 20
+initial_buy = 40
 
-# ── Alice: tourist (buys curry goat from Charlie) ──────────────────
+# ── Alice: tourist (buys curry goat from Charlie) ────────────────
 
 [[agent]]
 name = "Alice"
 role = "consumer"
-lat = 18.2040
-lon = -63.0500
+lat = 18.2008
+lon = -63.0905          # Sandy Ground beach
 
 [agent.consumer]
 buy_from = "Charlie"
 redeem_at = "Bob"
 interval_secs = 30
 
-# ── Fatima: local (buys empanadas from Dave) ───────────────────────
+# ── Fatima: local (buys empanadas from Dave) ─────────────────────
 
 [[agent]]
 name = "Fatima"
 role = "consumer"
-lat = 18.2048
-lon = -63.0515
+lat = 18.2015
+lon = -63.0898          # Sandy Ground beach, near Maria
 
 [agent.consumer]
 buy_from = "Dave"

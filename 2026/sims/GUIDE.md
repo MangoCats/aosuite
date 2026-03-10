@@ -18,7 +18,7 @@ Run all the AO simulations and components on your local machine. Works on Window
 ./scripts/run-sim.sh minimal
 
 # Open the viewer in your browser
-# → http://127.0.0.1:4200
+# → http://127.0.0.1:5174
 ```
 
 ```powershell
@@ -29,7 +29,7 @@ Run all the AO simulations and components on your local machine. Works on Window
 .\scripts\run-sim.ps1 minimal
 
 # Open the viewer in your browser
-# → http://127.0.0.1:4200
+# → http://127.0.0.1:5174
 ```
 
 ## Port Allocation
@@ -43,7 +43,8 @@ Each simulation starts its own embedded recorder, viewer API, and optional MQTT 
 | Embedded recorder  | auto  | Port 0 = OS-assigned (most sims)     |
 | Recorder A (Sim-G) | 4100  | Primary recorder for recorder-switch |
 | Recorder B (Sim-G) | 4101  | Secondary recorder for migration     |
-| Viewer API         | 4200  | Browser UI for all sims              |
+| Viewer UI (PWA)    | 5174  | Open this in your browser            |
+| Viewer API (JSON)  | 4200  | Backend API (proxied by PWA)         |
 | MQTT broker        | 1884  | Island-Life sims only                |
 
 ### Full Stack (manual testing)
@@ -221,7 +222,7 @@ Demonstrates the full lifecycle of moving a chain between recorders (TA3 feature
 .\scripts\run-sim.ps1 island-life
 ```
 
-Open http://127.0.0.1:4200 in your browser to see the viewer with map, agent panels, and transaction arcs.
+Open http://127.0.0.1:5174 in your browser to see the viewer with map, agent panels, and transaction arcs.
 
 ### All simulations sequentially
 
@@ -295,7 +296,7 @@ export AO_SEED_B="<64-char-hex>"
 
 ## Viewer Controls
 
-While a simulation is running, the viewer at http://127.0.0.1:4200 provides:
+While a simulation is running, the viewer at http://127.0.0.1:5174 provides:
 
 - **Scenario panel** — title, description, "what to watch" tips
 - **Agent list** — click any agent for wallet, inventory, rates

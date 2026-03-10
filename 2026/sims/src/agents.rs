@@ -717,7 +717,13 @@ pub async fn run_exchange(
                                             let _ = state_tx.send(ViewerEvent::State(Box::new(s))).await;
                                         }
                                     }
-                                    Err(e) => warn!("{}: Restock failed: {}", name, e),
+                                    Err(e) => {
+                                        warn!("{}: Restock failed: {}", name, e);
+                                        let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                                            &notif.chain_id, &sym, &vendor_name, &name, 0,
+                                            &format!("[ERROR] {}: restock failed: {}", name, e),
+                                        ))).await;
+                                    }
                                 }
                             }
                         }
@@ -1121,7 +1127,21 @@ async fn run_single_chain_consumer(
                     &format!("{} bought plate from {}", name, consumer_cfg.buy_from),
                 ))).await;
             }
-            Err(e) => { warn!("{}: Buy failed: {}", name, e); continue; }
+            Err(e) => {
+                let msg = e.to_string();
+                warn!("{}: Buy failed: {}", name, msg);
+                let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                    &chain_id, &symbol, name, &consumer_cfg.buy_from, 0,
+                    &format!("[ERROR] {}: buy failed: {}", name, msg),
+                ))).await;
+                if msg.contains("insufficient funds") {
+                    info!("{}: Out of funds — going idle", name);
+                    let _ = state_tx.send(ViewerEvent::State(Box::new(build_state(name, "consumer", "idle", lat, lon, wallet, &chain_id, &symbol, &chain_meta, None, paused, *tx_count, "out of funds")))).await;
+                    return Ok(());
+                }
+                let _ = state_tx.send(ViewerEvent::State(Box::new(build_state(name, "consumer", "active", lat, lon, wallet, &chain_id, &symbol, &chain_meta, None, paused, *tx_count, &format!("buy failed: {}", msg))))).await;
+                continue;
+            }
         }
 
         while wallet.find_unspent(&chain_id).is_some() {
@@ -1134,7 +1154,14 @@ async fn run_single_chain_consumer(
                         &format!("{} redeemed at {}", name, redeem_at_name),
                     ))).await;
                 }
-                Err(e) => { warn!("{}: Redeem failed: {}", name, e); break; }
+                Err(e) => {
+                    warn!("{}: Redeem failed: {}", name, e);
+                    let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                        &chain_id, &symbol, name, redeem_at_name, 0,
+                        &format!("[ERROR] {}: redeem failed: {}", name, e),
+                    ))).await;
+                    break;
+                }
             }
         }
 
@@ -1201,7 +1228,14 @@ async fn run_cross_chain_consumer(
         // Calculate how many pay_chain shares to send for 1 plate of want_chain
         let want_info = match client.chain_info(&want_chain_id).await {
             Ok(i) => i,
-            Err(e) => { warn!("{}: chain_info failed: {}", name, e); continue; }
+            Err(e) => {
+                warn!("{}: chain_info failed: {}", name, e);
+                let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                    &want_chain_id, want_sym, name, &consumer_cfg.buy_from, 0,
+                    &format!("[ERROR] {}: chain_info failed: {}", name, e),
+                ))).await;
+                continue;
+            }
         };
         let want_total_shares: BigInt = want_info.shares_out.parse()?;
         let want_total_coins: BigInt = want_info.coin_count.parse()?;
@@ -1210,7 +1244,18 @@ async fn run_cross_chain_consumer(
         // Leg 1: Send payment shares to exchange agent on pay_chain
         let pay_utxo = match wallet.find_unspent(&pay_chain_id) {
             Some(u) => u,
-            None => { warn!("{}: no pay_chain UTXOs left", name); continue; }
+            None => {
+                warn!("{}: no pay_chain UTXOs left", name);
+                let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                    &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
+                    &format!("[ERROR] {}: no {} UTXOs left", name, pay_sym),
+                ))).await;
+                info!("{}: Out of {} funds — going idle", name, pay_sym);
+                let _ = state_tx.send(ViewerEvent::State(Box::new(build_multi_state(
+                    name, "consumer", "idle", lat, lon, wallet, &my_chains, &chain_meta, paused, *tx_count, &format!("out of {} funds", pay_sym),
+                )))).await;
+                return Ok(());
+            }
         };
 
         // Calculate pay amount: assume exchange rate is embedded in the pair config
@@ -1219,7 +1264,15 @@ async fn run_cross_chain_consumer(
         let pay_amount = &pay_utxo.amount / BigInt::from(10); // ~10% per trade
         if pay_amount <= BigInt::from(0) {
             warn!("{}: pay amount too small", name);
-            continue;
+            let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
+                &format!("[ERROR] {}: pay amount too small on {}", name, pay_sym),
+            ))).await;
+            info!("{}: {} balance too small — going idle", name, pay_sym);
+            let _ = state_tx.send(ViewerEvent::State(Box::new(build_multi_state(
+                name, "consumer", "idle", lat, lon, wallet, &my_chains, &chain_meta, paused, *tx_count, &format!("{} balance exhausted", pay_sym),
+            )))).await;
+            return Ok(());
         }
 
         let dir = directory.read().await;
@@ -1262,7 +1315,14 @@ async fn run_cross_chain_consumer(
 
         let pay_result = match transfer::execute_transfer(client, &pay_chain_id, &[giver], &mut pay_receivers).await {
             Ok(r) => r,
-            Err(e) => { warn!("{}: Leg 1 failed: {}", name, e); continue; }
+            Err(e) => {
+                warn!("{}: Leg 1 failed: {}", name, e);
+                let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                    &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
+                    &format!("[ERROR] {}: payment failed: {}", name, e),
+                ))).await;
+                continue;
+            }
         };
         wallet.mark_spent(&giver_pubkey);
         wallet.register_utxo(&pay_change.pubkey, pay_result.first_seq + 1, pay_receivers[1].amount.clone());
@@ -1303,14 +1363,43 @@ async fn run_cross_chain_consumer(
                     &want_chain_id, want_sym, &consumer_cfg.buy_from, name, result.sell_block,
                     &format!("{}: cross-chain {} → {}", name, pay_sym, want_sym),
                 ))).await;
+
+                // Redeem at vendor if configured
+                if let Some(ref vendor_name) = consumer_cfg.redeem_at {
+                    while wallet.find_unspent(&want_chain_id).is_some() {
+                        match redeem_at(name, wallet, client, directory, vendor_name, &want_chain_id).await {
+                            Ok(h) => {
+                                *tx_count += 1;
+                                info!("{}: Redeemed {} at {} (block {})", name, want_sym, vendor_name, h);
+                                let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                                    &want_chain_id, want_sym, name, vendor_name, h,
+                                    &format!("{} redeemed {} at {}", name, want_sym, vendor_name),
+                                ))).await;
+                            }
+                            Err(e) => {
+                                warn!("{}: Redeem failed: {}", name, e);
+                                let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                                    &want_chain_id, want_sym, name, vendor_name, 0,
+                                    &format!("[ERROR] {}: redeem failed: {}", name, e),
+                                ))).await;
+                                break;
+                            }
+                        }
+                    }
+                }
             }
             Err(e) => {
                 warn!("{}: Leg 2 failed: {}", name, e);
+                let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                    &want_chain_id, want_sym, &consumer_cfg.buy_from, name, 0,
+                    &format!("[ERROR] {}: exchange delivery failed: {}", name, e),
+                ))).await;
             }
         }
 
+        let last_action = if consumer_cfg.redeem_at.is_some() { "traded + redeemed" } else { "cross-chain trade" };
         let _ = state_tx.send(ViewerEvent::State(Box::new(build_multi_state(
-            name, "consumer", "active", lat, lon, wallet, &my_chains, &chain_meta, paused, *tx_count, "cross-chain trade",
+            name, "consumer", "active", lat, lon, wallet, &my_chains, &chain_meta, paused, *tx_count, last_action,
         )))).await;
     }
 }
@@ -1373,13 +1462,31 @@ async fn run_atomic_consumer(
         // Find our unspent UTXO on pay_chain
         let pay_utxo = match wallet.find_unspent(&pay_chain_id) {
             Some(u) => u,
-            None => { warn!("{}: No unspent UTXO on {}", name, pay_sym); continue; }
+            None => {
+                warn!("{}: No unspent UTXO on {}", name, pay_sym);
+                let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                    &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
+                    &format!("[ERROR] {}: no {} UTXOs left", name, pay_sym),
+                ))).await;
+                info!("{}: Out of {} funds — going idle", name, pay_sym);
+                let _ = state_tx.send(ViewerEvent::State(Box::new(build_multi_state(
+                    name, "consumer", "idle", lat, lon, wallet, &my_chains, &chain_meta, paused, *tx_count, &format!("out of {} funds", pay_sym),
+                )))).await;
+                return Ok(());
+            }
         };
 
         // Calculate pay amount: 1 plate worth
         let info = match client.chain_info(&pay_chain_id).await {
             Ok(i) => i,
-            Err(e) => { warn!("{}: chain_info failed: {}", name, e); continue; }
+            Err(e) => {
+                warn!("{}: chain_info failed: {}", name, e);
+                let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                    &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
+                    &format!("[ERROR] {}: chain_info failed: {}", name, e),
+                ))).await;
+                continue;
+            }
         };
         let total_shares: BigInt = info.shares_out.parse().unwrap_or_default();
         let total_coins: BigInt = info.coin_count.parse().unwrap_or_default();
@@ -1388,7 +1495,15 @@ async fn run_atomic_consumer(
 
         if pay_amount > pay_utxo.amount {
             warn!("{}: Insufficient funds on {} ({} < {})", name, pay_sym, pay_utxo.amount, pay_amount);
-            continue;
+            let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
+                &format!("[ERROR] {}: insufficient funds on {}", name, pay_sym),
+            ))).await;
+            info!("{}: Insufficient {} funds — going idle", name, pay_sym);
+            let _ = state_tx.send(ViewerEvent::State(Box::new(build_multi_state(
+                name, "consumer", "idle", lat, lon, wallet, &my_chains, &chain_meta, paused, *tx_count, &format!("insufficient {} funds", pay_sym),
+            )))).await;
+            return Ok(());
         }
 
         // Generate receiver key on want_chain and change key on pay_chain
@@ -1421,6 +1536,10 @@ async fn run_atomic_consumer(
 
         if exchange_sender.send(AgentMessage::AtomicBuy { request, reply: reply_tx }).await.is_err() {
             warn!("{}: Failed to send AtomicBuy to {}", name, consumer_cfg.buy_from);
+            let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                &pay_chain_id, pay_sym, name, &consumer_cfg.buy_from, 0,
+                &format!("[ERROR] {}: failed to reach exchange {}", name, consumer_cfg.buy_from),
+            ))).await;
             continue;
         }
 
@@ -1439,9 +1558,17 @@ async fn run_atomic_consumer(
             }
             Ok(Err(e)) => {
                 warn!("{}: AtomicBuy failed: {}", name, e);
+                let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                    &want_chain_id, want_sym, name, &consumer_cfg.buy_from, 0,
+                    &format!("[ERROR] {}: atomic swap failed: {}", name, e),
+                ))).await;
             }
             Err(_) => {
                 warn!("{}: AtomicBuy reply channel dropped", name);
+                let _ = state_tx.send(ViewerEvent::Transaction(tx_event(
+                    &want_chain_id, want_sym, name, &consumer_cfg.buy_from, 0,
+                    &format!("[ERROR] {}: exchange connection lost", name),
+                ))).await;
             }
         }
 

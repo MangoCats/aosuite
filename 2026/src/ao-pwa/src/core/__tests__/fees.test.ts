@@ -29,4 +29,15 @@ describe('Recording fee', () => {
     // 11 / 5 = 2.2 → ceil = 3
     expect(recordingFee(11n, 1n, 5n, 1n)).toBe(3n);
   });
+
+  it('throws on negative numerator (regression: ceilDiv negative input)', () => {
+    // A negative numerator would produce incorrect ceiling — must throw.
+    // This happens if fee_rate_num * dataBytes * sharesOut overflows into negative
+    // due to a bug, or if inputs are malformed.
+    expect(() => recordingFee(-1n, 1n, 1n, 1n)).toThrow('negative numerator');
+  });
+
+  it('zero dataBytes yields zero fee', () => {
+    expect(recordingFee(0n, 1n, 1000000n, 1000n)).toBe(0n);
+  });
 });

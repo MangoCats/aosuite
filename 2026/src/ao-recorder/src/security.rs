@@ -197,6 +197,25 @@ mod tests {
     }
 
     #[test]
+    fn test_constant_time_eq_basics() {
+        assert!(constant_time_eq(b"", b""));
+        assert!(constant_time_eq(b"abc", b"abc"));
+        assert!(!constant_time_eq(b"abc", b"abd"));
+        assert!(!constant_time_eq(b"abc", b"ab"));   // different lengths
+        assert!(!constant_time_eq(b"ab", b"abc"));
+        assert!(!constant_time_eq(b"abc", b""));
+    }
+
+    #[test]
+    fn test_api_key_wrong_length_rejected() {
+        // Ensures keys of different lengths are rejected (even if prefix matches)
+        let keys = ApiKeys::new(vec!["secret123".into()]);
+        assert!(!keys.is_valid("secret12"));   // shorter
+        assert!(!keys.is_valid("secret1234")); // longer
+        assert!(!keys.is_valid(""));           // empty
+    }
+
+    #[test]
     fn test_rate_limiter_cleanup() {
         let limiter = RateLimiter::new(1.0);
         let ip = IpAddr::V4(std::net::Ipv4Addr::new(1, 1, 1, 1));

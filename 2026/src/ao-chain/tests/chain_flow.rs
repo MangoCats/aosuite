@@ -1804,3 +1804,290 @@ fn test_get_all_unspent_utxos_for_migration() {
     assert_eq!(utxos[0].seq_id, 1);
     assert_eq!(utxos[0].amount, BigInt::from(1u64 << 40));
 }
+
+// ── Debt Fix Regression Tests ──────────────────────────────────────
+
+#[test]
+fn test_frozen_chain_rejects_block_construction() {
+    let issuer_key = SigningKey::generate();
+    let blockmaker_key = SigningKey::from_seed(&[0x99; 32]);
+    let receiver_key = SigningKey::generate();
+
+    let genesis_item = build_genesis(&issuer_key);
+    let store = ChainStore::open_memory().unwrap();
+    let mut meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+    let total = store.get_utxo(1).unwrap().unwrap().amount.clone();
+
+    // Freeze the chain
+    store.set_chain_frozen().unwrap();
+    meta.frozen = true;
+
+    // Build a valid authorization
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    let deadline = Timestamp::from_unix_seconds(1_772_611_200 + 3600);
+    let (auth, _) = build_authorization(
+        &issuer_key, 1, &total, &receiver_key,
+        &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out,
+        deadline,
+        Timestamp::from_raw(genesis_ts.raw() + 1_000_000),
+        Timestamp::from_raw(genesis_ts.raw() + 2_000_000),
+    );
+    let block_ts = Timestamp::from_raw(genesis_ts.raw() + 3_000_000);
+
+    // validate_assignment should fail on frozen chain
+    let result = validate::validate_assignment(
+        &store, &meta, &auth, block_ts.raw(), &HashMap::new(),
+    );
+    assert!(result.is_err());
+    assert!(result.unwrap_err().to_string().contains("frozen"), "expected frozen error");
+
+    // construct_owner_key_block should also reject on frozen chain
+    let dummy_rotation = ao_chain::owner_keys::ValidatedRotation {
+        item: DataItem::container(ao_types::typecode::OWNER_KEY_ROTATION, vec![]),
+        new_pubkey: [0xAA; 32],
+        old_key_expires_at: None,
+        signer_pubkey: [0xBB; 32],
+    };
+    let result2 = block::construct_owner_key_block(
+        &store, &meta, &blockmaker_key,
+        block::OwnerKeyOp::Rotation(dummy_rotation),
+        block_ts.raw(),
+    );
+    let err2 = result2.unwrap_err().to_string();
+    assert!(err2.contains("frozen"), "expected frozen error, got: {}", err2);
+}
+
+#[test]
+fn test_duplicate_giver_seq_id_rejected() {
+    let issuer_key = SigningKey::generate();
+    let receiver_key = SigningKey::generate();
+
+    let genesis_item = build_genesis(&issuer_key);
+    let store = ChainStore::open_memory().unwrap();
+    let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+
+    let total = store.get_utxo(1).unwrap().unwrap().amount.clone();
+    let half = &total / BigInt::from(2);
+
+    // Build an ASSIGNMENT with the same giver SEQ_ID listed twice
+    let bid = num_rational::BigRational::new(BigInt::from(1), BigInt::from(1_000_000));
+    let mut bid_bytes = Vec::new();
+    bigint::encode_rational(&bid, &mut bid_bytes);
+    let mut half_bytes = Vec::new();
+    bigint::encode_bigint(&half, &mut half_bytes);
+    let mut receiver_bytes = Vec::new();
+    bigint::encode_bigint(&half, &mut receiver_bytes);
+
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    let deadline = Timestamp::from_unix_seconds(1_772_611_200 + 3600);
+
+    let assignment = DataItem::container(ASSIGNMENT, vec![
+        DataItem::vbc_value(LIST_SIZE, 3), // 2 givers + 1 receiver
+        DataItem::container(PARTICIPANT, vec![
+            DataItem::vbc_value(SEQ_ID, 1),
+            DataItem::bytes(AMOUNT, half_bytes.clone()),
+        ]),
+        DataItem::container(PARTICIPANT, vec![
+            DataItem::vbc_value(SEQ_ID, 1), // DUPLICATE
+            DataItem::bytes(AMOUNT, half_bytes.clone()),
+        ]),
+        DataItem::container(PARTICIPANT, vec![
+            DataItem::bytes(ED25519_PUB, receiver_key.public_key_bytes().to_vec()),
+            DataItem::bytes(AMOUNT, receiver_bytes),
+        ]),
+        DataItem::bytes(RECORDING_BID, bid_bytes),
+        DataItem::bytes(DEADLINE, deadline.to_bytes().to_vec()),
+    ]);
+
+    let giver_ts = Timestamp::from_raw(genesis_ts.raw() + 1_000_000);
+    let receiver_ts = Timestamp::from_raw(genesis_ts.raw() + 2_000_000);
+    let giver_sig = sign::sign_dataitem(&issuer_key, &assignment, giver_ts);
+    let receiver_sig = sign::sign_dataitem(&receiver_key, &assignment, receiver_ts);
+
+    let auth = DataItem::container(AUTHORIZATION, vec![
+        assignment,
+        DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, giver_sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, giver_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(PAGE_INDEX, 0),
+        ]),
+        DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, receiver_sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, receiver_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(PAGE_INDEX, 2),
+        ]),
+    ]);
+
+    let block_ts = Timestamp::from_raw(genesis_ts.raw() + 3_000_000);
+    let result = validate::validate_assignment(
+        &store, &meta, &auth, block_ts.raw(), &HashMap::new(),
+    );
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("duplicate giver"), "expected duplicate giver error, got: {}", err);
+}
+
+#[test]
+fn test_duplicate_receiver_pubkey_rejected() {
+    let issuer_key = SigningKey::generate();
+    let receiver_key = SigningKey::generate();
+
+    let genesis_item = build_genesis(&issuer_key);
+    let store = ChainStore::open_memory().unwrap();
+    let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+
+    let total = store.get_utxo(1).unwrap().unwrap().amount.clone();
+    let half = &total / BigInt::from(2);
+
+    let bid = num_rational::BigRational::new(BigInt::from(1), BigInt::from(1_000_000));
+    let mut bid_bytes = Vec::new();
+    bigint::encode_rational(&bid, &mut bid_bytes);
+    let mut total_bytes = Vec::new();
+    bigint::encode_bigint(&total, &mut total_bytes);
+    let mut half_bytes = Vec::new();
+    bigint::encode_bigint(&half, &mut half_bytes);
+
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    let deadline = Timestamp::from_unix_seconds(1_772_611_200 + 3600);
+
+    // Same receiver pubkey listed twice
+    let assignment = DataItem::container(ASSIGNMENT, vec![
+        DataItem::vbc_value(LIST_SIZE, 3), // 1 giver + 2 receivers
+        DataItem::container(PARTICIPANT, vec![
+            DataItem::vbc_value(SEQ_ID, 1),
+            DataItem::bytes(AMOUNT, total_bytes),
+        ]),
+        DataItem::container(PARTICIPANT, vec![
+            DataItem::bytes(ED25519_PUB, receiver_key.public_key_bytes().to_vec()),
+            DataItem::bytes(AMOUNT, half_bytes.clone()),
+        ]),
+        DataItem::container(PARTICIPANT, vec![
+            DataItem::bytes(ED25519_PUB, receiver_key.public_key_bytes().to_vec()), // DUPLICATE
+            DataItem::bytes(AMOUNT, half_bytes),
+        ]),
+        DataItem::bytes(RECORDING_BID, bid_bytes),
+        DataItem::bytes(DEADLINE, deadline.to_bytes().to_vec()),
+    ]);
+
+    let giver_ts = Timestamp::from_raw(genesis_ts.raw() + 1_000_000);
+    let receiver_ts = Timestamp::from_raw(genesis_ts.raw() + 2_000_000);
+    let giver_sig = sign::sign_dataitem(&issuer_key, &assignment, giver_ts);
+    let receiver_sig = sign::sign_dataitem(&receiver_key, &assignment, receiver_ts);
+
+    let auth = DataItem::container(AUTHORIZATION, vec![
+        assignment,
+        DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, giver_sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, giver_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(PAGE_INDEX, 0),
+        ]),
+        DataItem::container(AUTH_SIG, vec![
+            DataItem::bytes(ED25519_SIG, receiver_sig.to_vec()),
+            DataItem::bytes(TIMESTAMP, receiver_ts.to_bytes().to_vec()),
+            DataItem::vbc_value(PAGE_INDEX, 1),
+        ]),
+    ]);
+
+    let block_ts = Timestamp::from_raw(genesis_ts.raw() + 3_000_000);
+    let result = validate::validate_assignment(
+        &store, &meta, &auth, block_ts.raw(), &HashMap::new(),
+    );
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("duplicate receiver"), "expected duplicate receiver error, got: {}", err);
+}
+
+#[test]
+fn test_fee_rate_den_defaults_to_one_not_zero() {
+    // A store with fee_rate_den missing should default to 1, not 0.
+    let store = ChainStore::open_memory().unwrap();
+    store.init_schema().unwrap();
+
+    // Set all required metadata EXCEPT fee_rate_den
+    store.set_meta("chain_id", &[0xAAu8; 32]).unwrap();
+    store.set_meta("symbol", b"TST").unwrap();
+    store.set_meta("recorder_pubkey", &[0xBBu8; 32]).unwrap();
+    let one = {
+        let mut v = Vec::new();
+        bigint::encode_bigint(&BigInt::from(1), &mut v);
+        v
+    };
+    store.set_meta("shares_out", &one).unwrap();
+    store.set_meta("fee_rate_num", &one).unwrap();
+    // Deliberately skip fee_rate_den
+    store.set_meta("block_height", &0u64.to_be_bytes()).unwrap();
+    store.set_meta("last_block_timestamp", &0i64.to_be_bytes()).unwrap();
+    store.set_meta("next_seq_id", &2u64.to_be_bytes()).unwrap();
+    store.set_meta("prev_hash", &[0u8; 32]).unwrap();
+
+    let meta = store.load_chain_meta().unwrap().unwrap();
+    // fee_rate_den should be 1, not 0
+    assert_eq!(meta.fee_rate_den, BigInt::from(1));
+}
+
+#[test]
+fn test_reward_seed_persistence_roundtrip() {
+    let store = ChainStore::open_memory().unwrap();
+    store.init_schema().unwrap();
+
+    let seed = [0x42u8; 32];
+
+    // Initially no seed
+    assert!(store.get_reward_seed(100).unwrap().is_none());
+
+    // Save and retrieve
+    store.save_reward_seed(100, &seed).unwrap();
+    let retrieved = store.get_reward_seed(100).unwrap().unwrap();
+    assert_eq!(retrieved, seed);
+
+    // Different seq_id still returns None
+    assert!(store.get_reward_seed(101).unwrap().is_none());
+
+    // Overwrite
+    let seed2 = [0x77u8; 32];
+    store.save_reward_seed(100, &seed2).unwrap();
+    assert_eq!(store.get_reward_seed(100).unwrap().unwrap(), seed2);
+}
+
+#[test]
+fn test_reward_seq_id_in_constructed_block() {
+    // When reward > 0, ConstructedBlock.reward_seq_id should be Some.
+    // When reward == 0, it should be None.
+    let issuer_key = SigningKey::generate();
+    let blockmaker_key = SigningKey::from_seed(&[0x99; 32]);
+    let genesis_item = build_genesis(&issuer_key);
+    let store = ChainStore::open_memory().unwrap();
+    let meta = genesis::load_genesis(&store, &genesis_item).unwrap();
+
+    // Use a chain with zero reward rate (default from build_genesis) — no reward UTXO
+    let receiver_key = SigningKey::generate();
+    let genesis_ts = Timestamp::from_unix_seconds(1_772_611_200);
+    let deadline = Timestamp::from_unix_seconds(1_772_611_200 + 3600);
+    let total = store.get_utxo(1).unwrap().unwrap().amount.clone();
+
+    let (auth, _) = build_authorization(
+        &issuer_key, 1, &total, &receiver_key,
+        &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out,
+        deadline,
+        Timestamp::from_raw(genesis_ts.raw() + 1_000_000),
+        Timestamp::from_raw(genesis_ts.raw() + 2_000_000),
+    );
+    let block_ts = Timestamp::from_raw(genesis_ts.raw() + 3_000_000);
+
+    let validated = validate::validate_assignment(
+        &store, &meta, &auth, block_ts.raw(), &HashMap::new(),
+    ).unwrap();
+
+    // reward_shares should be zero (default genesis has no reward rate)
+    assert!(validated.reward_shares.is_zero());
+
+    let constructed = block::construct_block(
+        &store, &meta, &blockmaker_key,
+        vec![validated],
+        block_ts.raw(),
+        None,
+    ).unwrap();
+
+    // No reward UTXO created
+    assert!(constructed.reward_seq_id.is_none());
+}

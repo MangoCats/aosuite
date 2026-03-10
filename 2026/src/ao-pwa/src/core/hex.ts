@@ -19,8 +19,10 @@ export function bytesToHex(bytes: Uint8Array): string {
   return hex;
 }
 
-/** Cast Uint8Array to ArrayBuffer for Web Crypto APIs (TS 5.9 BufferSource compat). */
-export const buf = (data: Uint8Array): ArrayBuffer => data.buffer as ArrayBuffer;
+/** Cast Uint8Array to ArrayBuffer for Web Crypto APIs (TS 5.9 BufferSource compat).
+ *  Handles subarrays correctly by slicing to the view's bounds. */
+export const buf = (data: Uint8Array): ArrayBuffer =>
+  data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
 
 /** Concatenate multiple Uint8Arrays into one. */
 export function concatBytes(...arrays: Uint8Array[]): Uint8Array {

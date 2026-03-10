@@ -198,6 +198,8 @@ pub struct AppState {
     pub known_recorders: RwLock<HashMap<[u8; 32], [u8; 32]>>,
     /// Vendor profiles per chain: chain_id → VendorProfile.
     vendor_profiles: RwLock<HashMap<String, VendorProfile>>,
+    /// Cached BLOB_POLICY per chain: chain_id → BlobPolicy. Populated at startup and on chain add.
+    blob_policies: RwLock<HashMap<String, blob::BlobPolicy>>,
     /// Optional content-addressed blob storage.
     pub blob_store: Option<blob::BlobStore>,
     /// Semaphore limiting concurrent SSE/WebSocket connections. None = unlimited.
@@ -247,6 +249,7 @@ impl AppState {
             validator_cache: RwLock::new(HashMap::new()),
             known_recorders: RwLock::new(HashMap::new()),
             vendor_profiles: RwLock::new(HashMap::new()),
+            blob_policies: RwLock::new(HashMap::new()),
             blob_store: None,
             connection_semaphore: None,
             recorder_identity: None,
@@ -269,6 +272,7 @@ impl AppState {
             validator_cache: RwLock::new(HashMap::new()),
             known_recorders: RwLock::new(HashMap::new()),
             vendor_profiles: RwLock::new(HashMap::new()),
+            blob_policies: RwLock::new(HashMap::new()),
             blob_store: None,
             connection_semaphore: None,
             recorder_identity: None,
@@ -297,6 +301,28 @@ impl AppState {
         if let Ok(mut profiles) = self.vendor_profiles.write() {
             profiles.insert(chain_id, profile);
         }
+    }
+
+    /// Cache a chain's BLOB_POLICY (extracted from genesis). Call at chain load time.
+    /// Genesis BLOB_POLICY is immutable; cache never needs invalidation.
+    pub fn set_blob_policy(&self, chain_id: String, policy: blob::BlobPolicy) {
+        let mut policies = self.blob_policies.write()
+            .expect("blob_policies write lock poisoned");
+        policies.insert(chain_id, policy);
+    }
+
+    /// Get the cached BLOB_POLICY for a chain. Returns None if no policy or chain unknown.
+    pub fn get_blob_policy(&self, chain_id: &str) -> Option<blob::BlobPolicy> {
+        let policies = self.blob_policies.read()
+            .expect("blob_policies read lock poisoned");
+        policies.get(chain_id).cloned()
+    }
+
+    /// Get all cached blob policies (for pruning).
+    pub fn get_all_blob_policies(&self) -> HashMap<String, blob::BlobPolicy> {
+        let policies = self.blob_policies.read()
+            .expect("blob_policies read lock poisoned");
+        policies.clone()
     }
 
     /// Register a chain. Panics if the chains lock is poisoned (unrecoverable).
@@ -597,6 +623,22 @@ pub fn build_router_with_config(state: Arc<AppState>, cfg: &config::Config) -> R
         }));
     }
 
+    // CORS: allow PWA origins to call the recorder API
+    app = app.layer(
+        tower_http::cors::CorsLayer::new()
+            .allow_origin(tower_http::cors::Any)
+            .allow_methods([
+                axum::http::Method::GET,
+                axum::http::Method::POST,
+                axum::http::Method::HEAD,
+                axum::http::Method::OPTIONS,
+            ])
+            .allow_headers([
+                axum::http::header::CONTENT_TYPE,
+                axum::http::header::AUTHORIZATION,
+            ]),
+    );
+
     app
 }
 
@@ -716,6 +758,9 @@ async fn create_chain(
     recorder_pk.copy_from_slice(blockmaker_key.public_key_bytes());
     let blockmaker_seed = *blockmaker_key.seed();
 
+    // Extract blob policy from genesis before moving it into closure
+    let genesis_blob_policy = blob::BlobPolicy::from_genesis(&genesis_item);
+
     // SQLite work on the blocking pool
     let (store, info, chain_id_hex) = blocking(move || {
         let store = if let Some(dir) = &data_dir {
@@ -796,7 +841,13 @@ async fn create_chain(
     match chains.entry(chain_id_hex) {
         Entry::Occupied(_) => Err(RecorderError::ChainConflict),
         Entry::Vacant(e) => {
+            let chain_id_str = e.key().clone();
             e.insert(chain_state);
+            drop(chains);
+            // Cache blob policy for the new chain
+            if let Some(policy) = genesis_blob_policy {
+                state.set_blob_policy(chain_id_str, policy);
+            }
             Ok((StatusCode::CREATED, Json(info)))
         }
     }
@@ -997,22 +1048,31 @@ async fn submit_assignment(
                 ).map_err(|e| RecorderError::BadRequest(e.to_string()))?;
 
                 // Generate a fresh one-time key for recorder reward if needed
-                let reward_pubkey = if !validated.reward_shares.is_zero() {
+                let reward_seed = if !validated.reward_shares.is_zero() {
                     let reward_key = ao_crypto::sign::SigningKey::generate();
                     let pk_bytes = reward_key.public_key_bytes();
                     let mut pk = [0u8; 32];
                     pk.copy_from_slice(pk_bytes);
-                    Some(pk)
+                    Some((*reward_key.seed(), pk))
                 } else {
                     None
                 };
+                let reward_pubkey = reward_seed.map(|(_, pk)| pk);
 
-                block::construct_block(
+                let constructed = block::construct_block(
                     &store, &meta, &chain.blockmaker_key,
                     vec![validated],
                     current_ts,
                     reward_pubkey,
-                ).map_err(|e| RecorderError::Internal(e.to_string()))?
+                ).map_err(|e| RecorderError::Internal(e.to_string()))?;
+
+                // Persist reward seed so the recorder can spend the UTXO later
+                if let (Some((seed, _)), Some(seq_id)) = (&reward_seed, constructed.reward_seq_id) {
+                    store.save_reward_seed(seq_id, seed)
+                        .map_err(|e| RecorderError::Internal(e.to_string()))?;
+                }
+
+                constructed
             }
             ao_types::typecode::OWNER_KEY_ROTATION => {
                 let validated = ao_chain::owner_keys::validate_rotation(
@@ -1573,6 +1633,26 @@ async fn caa_submit(
                     .map_err(|e| RecorderError::Internal(e.to_string()))?;
                 next_seq += 1;
             }
+            // Create recorder reward UTXO if reward > 0
+            if !validated.reward_shares.is_zero() {
+                let reward_key = ao_crypto::sign::SigningKey::generate();
+                let mut reward_pk = [0u8; 32];
+                reward_pk.copy_from_slice(reward_key.public_key_bytes());
+                store.insert_utxo(&ao_chain::store::Utxo {
+                    seq_id: next_seq,
+                    pubkey: reward_pk,
+                    amount: validated.reward_shares.clone(),
+                    block_height: height,
+                    block_timestamp: current_ts,
+                    status: ao_chain::store::UtxoStatus::Escrowed,
+                }).map_err(|e| RecorderError::Internal(e.to_string()))?;
+                store.mark_key_used(&reward_pk)
+                    .map_err(|e| RecorderError::Internal(e.to_string()))?;
+                store.save_reward_seed(next_seq, reward_key.seed())
+                    .map_err(|e| RecorderError::Internal(e.to_string()))?;
+                next_seq += 1;
+            }
+
             let seq_count = next_seq - first_seq;
 
             // Record CAA escrow with total_chains and bond amount
@@ -1602,6 +1682,11 @@ async fn caa_submit(
                 store.insert_caa_utxo(&validated.caa_hash, recv_seq, "receiver")
                     .map_err(|e| RecorderError::Internal(e.to_string()))?;
                 recv_seq += 1;
+            }
+            // Record reward UTXO association if one was created
+            if !validated.reward_shares.is_zero() {
+                store.insert_caa_utxo(&validated.caa_hash, recv_seq, "reward")
+                    .map_err(|e| RecorderError::Internal(e.to_string()))?;
             }
 
             // Construct a real block containing the CAA assignment as a page

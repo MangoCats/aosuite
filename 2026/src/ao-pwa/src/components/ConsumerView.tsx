@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useStore } from '../store/useStore.ts';
-import { RecorderClient } from '../api/client.ts';
+import { RecorderClient, ssePool } from '../api/client.ts';
 import type { UtxoInfo } from '../api/client.ts';
 import { signingKeyFromSeed, generateSigningKey } from '../core/sign.ts';
 import type { SigningKey } from '../core/sign.ts';
@@ -155,19 +155,17 @@ export function ConsumerView() {
     // Initial validation
     runValidation();
 
-    // Subscribe to SSE block events — revalidate when new blocks arrive
-    let es: EventSource | null = null;
+    // Subscribe to SSE block events via shared pool — revalidate when new blocks arrive
+    let unsub: (() => void) | null = null;
     try {
-      es = client.subscribeBlocks(selectedChainId, (_blockInfo) => {
+      unsub = ssePool.subscribe(recorderUrl, selectedChainId, () => {
         runValidation();
       });
     } catch {
       // SSE unavailable — fall back to initial validation only
     }
 
-    return () => {
-      if (es) es.close();
-    };
+    return () => { if (unsub) unsub(); };
   }, [selectedChainId, recorderUrl]);
 
   // Helper: refresh wallet key counts in global store
@@ -461,12 +459,10 @@ export function ConsumerView() {
         msg += `Sent: ${receivers[0].amount} shares\n`;
         if (!recipientPubkey && recipientKey) {
           msg += `Receiver pubkey: ${bytesToHex(recipientKey.publicKey)}\n`;
-          msg += `Receiver seed: ${bytesToHex(recipientKey.seed)}\n`;
         }
         if (needsChange) {
           msg += `Change: ${receivers[receivers.length - 1].amount} shares\n`;
-          msg += `Change pubkey: ${bytesToHex(changeKey.publicKey)}\n`;
-          msg += `Change seed: ${bytesToHex(changeKey.seed)}`;
+          msg += `Change pubkey: ${bytesToHex(changeKey.publicKey)}`;
         }
         setStatus(msg);
       } catch (submitErr) {

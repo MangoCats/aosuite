@@ -28,8 +28,20 @@ impl ApiKeys {
     }
 
     pub fn is_valid(&self, key: &str) -> bool {
-        self.0.iter().any(|k| k == key)
+        self.0.iter().any(|k| constant_time_eq(k.as_bytes(), key.as_bytes()))
     }
+}
+
+/// Constant-time byte comparison to prevent timing attacks on API key validation.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
 }
 
 /// Middleware that checks `Authorization: Bearer <key>` header.

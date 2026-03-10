@@ -214,7 +214,11 @@ impl ChainStore {
                 revoked_at_height INTEGER,
                 status TEXT NOT NULL DEFAULT 'valid'
             );
-            CREATE INDEX IF NOT EXISTS idx_owner_keys_status ON owner_keys(status);"
+            CREATE INDEX IF NOT EXISTS idx_owner_keys_status ON owner_keys(status);
+            CREATE TABLE IF NOT EXISTS reward_seeds (
+                seq_id INTEGER PRIMARY KEY,
+                seed BLOB NOT NULL
+            );"
         )?;
         Ok(())
     }
@@ -330,7 +334,8 @@ impl ChainStore {
         let coin_count = self.get_meta_bigint("coin_count")?.unwrap_or_else(BigInt::zero);
         let shares_out = self.get_meta_bigint("shares_out")?.unwrap_or_else(BigInt::zero);
         let fee_rate_num = self.get_meta_bigint("fee_rate_num")?.unwrap_or_else(BigInt::zero);
-        let fee_rate_den = self.get_meta_bigint("fee_rate_den")?.unwrap_or_else(BigInt::zero);
+        let fee_rate_den = self.get_meta_bigint("fee_rate_den")?
+            .unwrap_or_else(|| BigInt::from(1));
         let expiry_period = self.get_meta_i64("expiry_period")?.unwrap_or(0);
         let expiry_mode = self.get_meta_u64("expiry_mode")?.unwrap_or(1);
         let tax_start_age = self.get_meta_i64("tax_start_age")?;
@@ -817,6 +822,37 @@ impl ChainStore {
         let mut rows = stmt.query([])?;
         match rows.next()? {
             Some(row) => Ok(Some(row.get(0)?)),
+            None => Ok(None),
+        }
+    }
+
+    // --- Reward seed persistence ---
+
+    /// Save the Ed25519 seed for a recorder reward UTXO so the recorder can spend it later.
+    pub fn save_reward_seed(&self, seq_id: u64, seed: &[u8; 32]) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO reward_seeds (seq_id, seed) VALUES (?1, ?2)",
+            params![seq_id as i64, &seed[..]],
+        )?;
+        Ok(())
+    }
+
+    /// Retrieve the seed for a reward UTXO.
+    pub fn get_reward_seed(&self, seq_id: u64) -> Result<Option<[u8; 32]>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT seed FROM reward_seeds WHERE seq_id = ?1"
+        )?;
+        let mut rows = stmt.query(params![seq_id as i64])?;
+        match rows.next()? {
+            Some(row) => {
+                let blob: Vec<u8> = row.get(0)?;
+                if blob.len() != 32 {
+                    return Err(ChainError::InvalidBlock("reward seed not 32 bytes".into()));
+                }
+                let mut seed = [0u8; 32];
+                seed.copy_from_slice(&blob);
+                Ok(Some(seed))
+            }
             None => Ok(None),
         }
     }

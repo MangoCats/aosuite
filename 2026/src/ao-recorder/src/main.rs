@@ -91,6 +91,16 @@ async fn main() -> Result<()> {
             let config_path = args.get(2).map(|s| s.as_str()).unwrap_or("recorder.toml");
             return run_bench(config_path).await;
         }
+        Some("prune") => {
+            tracing_subscriber::fmt::init();
+            let dry_run = args.iter().any(|a| a == "--dry-run");
+            let config_path = args.iter()
+                .skip(2)
+                .find(|a| !a.starts_with("--"))
+                .map(|s| s.as_str())
+                .unwrap_or("recorder.toml");
+            return run_prune(config_path, dry_run).await;
+        }
         _ => {}
     }
 
@@ -224,6 +234,22 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Load blob policies from genesis blocks into in-memory cache
+    {
+        let chains = state.chains.read().expect("chains lock");
+        for (chain_id, chain_state) in chains.iter() {
+            if let Ok(store) = chain_state.store.lock() {
+                if let Ok(Some(genesis_bytes)) = store.get_block(0) {
+                    if let Ok(genesis) = DataItem::from_bytes(&genesis_bytes) {
+                        if let Some(policy) = blob::BlobPolicy::from_genesis(&genesis) {
+                            state.set_blob_policy(chain_id.clone(), policy);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // Load known recorder keys from config
     if !cfg.known_recorders.is_empty() {
         let mut kr = state.known_recorders.write().expect("known_recorders lock");
@@ -312,7 +338,6 @@ async fn main() -> Result<()> {
 
 /// Periodically prune expired blobs based on per-chain BLOB_POLICY.
 async fn run_blob_pruning(state: Arc<ao_recorder::AppState>, interval_secs: u64) {
-    use std::collections::HashMap;
     let interval = tokio::time::Duration::from_secs(interval_secs);
 
     loop {
@@ -323,21 +348,8 @@ async fn run_blob_pruning(state: Arc<ao_recorder::AppState>, interval_secs: u64)
             None => continue,
         };
 
-        // Load policies from each chain's genesis block.
-        let mut policies: HashMap<String, blob::BlobPolicy> = HashMap::new();
-        {
-            let chains = state.chains.read().expect("chains lock");
-            for (chain_id, chain_state) in chains.iter() {
-                let store = chain_state.store.lock().expect("store lock");
-                if let Ok(Some(genesis_bytes)) = store.get_block(0) {
-                    if let Ok(genesis) = DataItem::from_bytes(&genesis_bytes) {
-                        if let Some(policy) = blob::BlobPolicy::from_genesis(&genesis) {
-                            policies.insert(chain_id.clone(), policy);
-                        }
-                    }
-                }
-            }
-        }
+        // Use cached blob policies instead of re-reading genesis blocks.
+        let policies = state.get_all_blob_policies();
 
         if policies.is_empty() {
             continue;
@@ -378,6 +390,71 @@ async fn shutdown_signal(state: Arc<ao_recorder::AppState>) {
 }
 
 // ── Subcommands ─────────────────────────────────────────────────────
+
+/// `ao-recorder prune [--dry-run] [config.toml]` — run blob pruning once.
+/// With `--dry-run`, lists blobs that would be pruned without deleting them.
+async fn run_prune(config_path: &str, dry_run: bool) -> Result<()> {
+    let cfg = config::load_config(config_path)?;
+    let default_key = load_blockmaker_key(&cfg.blockmaker_seed)?;
+
+    // Load chains and extract blob policies from genesis blocks.
+    let mut policies = std::collections::HashMap::new();
+    let mut chain_paths: Vec<(String, String)> = Vec::new();
+    if let (Some(db), Some(gp)) = (&cfg.db_path, &cfg.genesis_path) {
+        chain_paths.push((db.clone(), gp.clone()));
+    }
+    for c in &cfg.chains {
+        chain_paths.push((c.db_path.clone(), c.genesis_path.clone()));
+    }
+
+    for (db_path, genesis_path) in &chain_paths {
+        match load_chain(db_path, genesis_path, &default_key) {
+            Ok((chain_id, store)) => {
+                if let Ok(Some(genesis_bytes)) = store.get_block(0) {
+                    if let Ok(genesis) = DataItem::from_bytes(&genesis_bytes) {
+                        if let Some(policy) = blob::BlobPolicy::from_genesis(&genesis) {
+                            policies.insert(chain_id.clone(), policy);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Warning: failed to load chain from {}: {}", db_path, e);
+            }
+        }
+    }
+
+    if policies.is_empty() {
+        println!("No chains with BLOB_POLICY found. Nothing to prune.");
+        return Ok(());
+    }
+
+    // Open blob store
+    let blob_dir = cfg.data_dir.as_deref().unwrap_or(".");
+    let blob_path = std::path::PathBuf::from(blob_dir).join("blobs");
+    if !blob_path.exists() {
+        println!("Blob directory does not exist: {}", blob_path.display());
+        return Ok(());
+    }
+    let blob_store = blob::BlobStore::new(blob_path, cfg.max_blob_bytes)
+        .context("failed to open blob store")?;
+
+    let mode = if dry_run { "DRY RUN" } else { "LIVE" };
+    println!("Blob pruning ({}) with {} chain policies...", mode, policies.len());
+
+    let events = blob_store.prune(&policies, dry_run);
+    if events.is_empty() {
+        println!("No blobs eligible for pruning.");
+    } else {
+        for event in &events {
+            println!("  {} chain={} hash={} age={:.1}d rule={}",
+                if dry_run { "WOULD PRUNE" } else { "PRUNED" },
+                event.chain_id, event.hash, event.age_days, event.rule_pattern);
+        }
+        println!("{} blob(s) {}.", events.len(), if dry_run { "would be pruned" } else { "pruned" });
+    }
+    Ok(())
+}
 
 /// `ao-recorder doctor [config.toml]` — post-install diagnostic.
 fn run_doctor(config_path: &str) -> Result<()> {

@@ -29,6 +29,8 @@ pub struct ConstructedBlock {
     pub new_shares_out: BigInt,
     pub first_seq: u64,
     pub seq_count: u64,
+    /// Seq ID of the recorder reward UTXO, if one was created.
+    pub reward_seq_id: Option<u64>,
 }
 
 /// Build and record a block containing the given validated assignments.
@@ -54,6 +56,10 @@ pub fn construct_block(
 ) -> Result<ConstructedBlock> {
     if assignments.is_empty() {
         return Err(ChainError::InvalidBlock("no assignments to record".into()));
+    }
+
+    if meta.frozen {
+        return Err(ChainError::InvalidBlock("chain is frozen after migration".into()));
     }
 
     // Block timestamp must exceed previous block
@@ -95,10 +101,8 @@ fn construct_block_inner(
     shares_out -= &expired_shares;
 
     // Run escrow sweep — release expired CAA escrows back to unspent.
-    // Non-fatal: sweep failure should not prevent block production.
-    if let Ok((_, fee_restore)) = crate::caa::run_escrow_sweep(store, block_timestamp) {
-        shares_out += fee_restore;
-    }
+    let (_, fee_restore) = crate::caa::run_escrow_sweep(store, block_timestamp)?;
+    shares_out += fee_restore;
 
     // Totals across all assignments
     let mut total_fees = BigInt::zero();
@@ -137,13 +141,14 @@ fn construct_block_inner(
     }
 
     // Create recorder reward UTXO if reward > 0
-    if total_reward > BigInt::zero() {
+    let reward_seq_id = if total_reward > BigInt::zero() {
         let reward_pk = recorder_reward_pubkey.ok_or_else(|| {
             ChainError::InvalidBlock("reward > 0 but no recorder_reward_pubkey provided".into())
         })?;
         if store.is_key_used(&reward_pk)? {
             return Err(ChainError::KeyReuse);
         }
+        let rseq = next_seq;
         store.insert_utxo(&Utxo {
             seq_id: next_seq,
             pubkey: reward_pk,
@@ -154,7 +159,10 @@ fn construct_block_inner(
         })?;
         store.mark_key_used(&reward_pk)?;
         next_seq += 1;
-    }
+        Some(rseq)
+    } else {
+        None
+    };
 
     // Only the burn fee reduces shares_out; reward is a transfer, not a burn.
     shares_out -= &total_fees;
@@ -222,6 +230,7 @@ fn construct_block_inner(
         new_shares_out: shares_out,
         first_seq,
         seq_count,
+        reward_seq_id,
     })
 }
 
@@ -243,6 +252,9 @@ pub fn construct_owner_key_block(
     op: OwnerKeyOp,
     block_timestamp: i64,
 ) -> Result<ConstructedBlock> {
+    if meta.frozen {
+        return Err(ChainError::InvalidBlock("chain is frozen after migration".into()));
+    }
     if block_timestamp <= meta.last_block_timestamp {
         return Err(ChainError::TimestampOrder(
             format!("block timestamp {} <= previous {}",
@@ -340,6 +352,7 @@ fn construct_owner_key_block_inner(
         new_shares_out: shares_out,
         first_seq: meta.next_seq_id,
         seq_count: 0,
+        reward_seq_id: None,
     })
 }
 
@@ -354,6 +367,9 @@ pub fn construct_reward_rate_change_block(
     vrc: ValidatedRateChange,
     block_timestamp: i64,
 ) -> Result<ConstructedBlock> {
+    if meta.frozen {
+        return Err(ChainError::InvalidBlock("chain is frozen after migration".into()));
+    }
     if block_timestamp <= meta.last_block_timestamp {
         return Err(ChainError::TimestampOrder(
             format!("block timestamp {} <= previous {}",
@@ -423,6 +439,7 @@ pub fn construct_reward_rate_change_block(
             new_shares_out: shares_out,
             first_seq: meta.next_seq_id,
             seq_count: 0,
+            reward_seq_id: None,
         })
     })();
     match &result {
@@ -452,6 +469,9 @@ pub fn construct_recorder_switch_block(
     op: RecorderSwitchOp,
     block_timestamp: i64,
 ) -> Result<ConstructedBlock> {
+    if meta.frozen {
+        return Err(ChainError::InvalidBlock("chain is frozen after migration".into()));
+    }
     if block_timestamp <= meta.last_block_timestamp {
         return Err(ChainError::TimestampOrder(
             format!("block timestamp {} <= previous {}",
@@ -548,6 +568,7 @@ fn construct_recorder_switch_inner(
         new_shares_out: shares_out,
         first_seq: meta.next_seq_id,
         seq_count: 0,
+        reward_seq_id: None,
     })
 }
 
@@ -632,6 +653,7 @@ pub fn construct_migration_block(
             new_shares_out: shares_out,
             first_seq: meta.next_seq_id,
             seq_count: 0,
+            reward_seq_id: None,
         })
     })();
     match &result {

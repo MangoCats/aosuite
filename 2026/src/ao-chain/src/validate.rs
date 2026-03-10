@@ -48,6 +48,10 @@ pub fn validate_assignment(
     current_timestamp: i64,
     blob_sizes: &HashMap<String, u64>,
 ) -> Result<ValidatedAssignment> {
+    if meta.frozen {
+        return Err(ChainError::InvalidAssignment("chain is frozen after migration".into()));
+    }
+
     if authorization.type_code != AUTHORIZATION {
         return Err(ChainError::InvalidAssignment(
             format!("expected AUTHORIZATION ({}), got {}", AUTHORIZATION, authorization.type_code)));
@@ -95,6 +99,8 @@ fn parse_participants(assignment: &DataItem) -> Result<(GiverList, ReceiverList)
 
     let mut givers: GiverList = Vec::new();
     let mut receivers: ReceiverList = Vec::new();
+    let mut seen_seq_ids = std::collections::HashSet::new();
+    let mut seen_receiver_pks = std::collections::HashSet::new();
 
     for p in &participants {
         let has_seq = p.find_child(SEQ_ID).is_some();
@@ -104,6 +110,10 @@ fn parse_participants(assignment: &DataItem) -> Result<(GiverList, ReceiverList)
             let seq_id = p.find_child(SEQ_ID)
                 .and_then(|c| c.as_vbc_value())
                 .ok_or_else(|| ChainError::InvalidAssignment("giver missing SEQ_ID".into()))?;
+            if !seen_seq_ids.insert(seq_id) {
+                return Err(ChainError::InvalidAssignment(
+                    format!("duplicate giver SEQ_ID {}", seq_id)));
+            }
             let amount = parse_amount(p)?;
             givers.push((seq_id, amount));
         } else if has_pub {
@@ -115,6 +125,10 @@ fn parse_participants(assignment: &DataItem) -> Result<(GiverList, ReceiverList)
             }
             let mut pk = [0u8; 32];
             pk.copy_from_slice(pub_bytes);
+            if !seen_receiver_pks.insert(pk) {
+                return Err(ChainError::InvalidAssignment(
+                    "duplicate receiver pubkey".into()));
+            }
             let amount = parse_amount(p)?;
             receivers.push((pk, amount));
         } else {

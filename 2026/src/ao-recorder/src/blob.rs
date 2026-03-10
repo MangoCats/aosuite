@@ -195,7 +195,9 @@ impl BlobStore {
             return Ok(hash_hex);
         }
 
-        // Enforce per-chain quota before writing.
+        // Enforce per-chain quota and reserve the metadata row atomically.
+        // Holding the db lock through quota check + insert prevents TOCTOU races
+        // where concurrent uploads both pass the check.
         {
             let db = self.db.lock().expect("db lock");
             let current = chain_usage_from_db(&db, chain_id);
@@ -207,11 +209,22 @@ impl BlobStore {
                     quota: self.quota_per_chain,
                 });
             }
+            // Reserve the metadata row before writing the file.
+            db.execute(
+                "INSERT OR REPLACE INTO blob_meta (hash, chain_id, mime, size, uploaded_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![hash_hex, chain_id, mime, data.len() as i64, unix_now()],
+            ).map_err(|e| BlobError::DbError(format!("insert meta: {}", e)))?;
         }
 
         // Atomic write: write to temp file then rename.
         let tmp_path = self.dir.join(format!(".tmp_{}", hash_hex));
-        std::fs::write(&tmp_path, data)?;
+        if let Err(e) = std::fs::write(&tmp_path, data) {
+            // Roll back metadata on file write failure
+            let db = self.db.lock().expect("db lock");
+            let _ = db.execute("DELETE FROM blob_meta WHERE hash = ?1", params![hash_hex]);
+            return Err(BlobError::IoError(e));
+        }
         match std::fs::rename(&tmp_path, &target) {
             Ok(()) => {}
             Err(_) if target.exists() => {
@@ -219,18 +232,11 @@ impl BlobStore {
             }
             Err(e) => {
                 let _ = std::fs::remove_file(&tmp_path);
+                // Roll back metadata on rename failure
+                let db = self.db.lock().expect("db lock");
+                let _ = db.execute("DELETE FROM blob_meta WHERE hash = ?1", params![hash_hex]);
                 return Err(BlobError::IoError(e));
             }
-        }
-
-        // Record metadata
-        {
-            let db = self.db.lock().expect("db lock");
-            db.execute(
-                "INSERT OR REPLACE INTO blob_meta (hash, chain_id, mime, size, uploaded_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
-                params![hash_hex, chain_id, mime, data.len() as i64, unix_now()],
-            ).map_err(|e| BlobError::DbError(format!("insert meta: {}", e)))?;
         }
 
         Ok(hash_hex)
@@ -621,29 +627,22 @@ pub async fn upload_blob(
         return Err(BlobError::MimeNotAllowed(mime.to_string()));
     }
 
-    // If chain has a BLOB_POLICY, enforce per-rule MAX_BLOB_SIZE.
-    let chain = state.get_chain_or_err(&chain_id).map_err(|_| BlobError::ChainNotFound)?;
+    // Verify chain exists (return value unused — policy comes from cache).
+    state.get_chain_or_err(&chain_id).map_err(|_| BlobError::ChainNotFound)?;
     let content_size = data.len() - (mime.len() + 1); // content bytes after MIME NUL
-    {
-        let store = chain.store.lock().expect("store lock");
-        if let Ok(Some(genesis_bytes)) = store.get_block(0) {
-            if let Ok(genesis) = DataItem::from_bytes(&genesis_bytes) {
-                if let Some(policy) = BlobPolicy::from_genesis(&genesis) {
-                    if let Some(rule) = policy.find_rule(mime) {
-                        if let Some(max) = rule.max_blob_size {
-                            if content_size as u64 > max {
-                                return Err(BlobError::TooLarge {
-                                    size: content_size,
-                                    max: max as usize,
-                                });
-                            }
-                        }
-                    }
-                    // If no rule matches, the blob's MIME type isn't covered by policy.
-                    // Default behavior: allow (the global MIME allowlist already filtered).
+    if let Some(policy) = state.get_blob_policy(&chain_id) {
+        if let Some(rule) = policy.find_rule(mime) {
+            if let Some(max) = rule.max_blob_size {
+                if content_size as u64 > max {
+                    return Err(BlobError::TooLarge {
+                        size: content_size,
+                        max: max as usize,
+                    });
                 }
             }
         }
+        // If no rule matches, the blob's MIME type isn't covered by policy.
+        // Default behavior: allow (the global MIME allowlist already filtered).
     }
 
     let hash_hex = match blob_store.store(data, &chain_id) {

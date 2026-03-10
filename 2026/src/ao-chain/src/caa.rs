@@ -61,6 +61,8 @@ pub struct ValidatedCaaComponent {
     pub receivers: Vec<([u8; 32], BigInt)>,
     /// Recording fee in shares.
     pub fee_shares: BigInt,
+    /// Recorder reward in shares.
+    pub reward_shares: BigInt,
     /// Page size in bytes.
     pub page_bytes: u64,
     /// Recording proofs from prior chains (verified).
@@ -279,13 +281,15 @@ pub fn validate_caa_submit(
     let fee_shares = fees::recording_fee(
         page_bytes, &meta.fee_rate_num, &meta.fee_rate_den, &meta.shares_out);
 
-    // Balance equation: givers = receivers + fee
+    // Balance equation: givers = receivers + fee + reward
     let receiver_total: BigInt = receivers.iter().map(|(_, a)| a).sum();
-    if giver_total != &receiver_total + &fee_shares {
+    let reward_shares = fees::share_reward(
+        &giver_total, &meta.reward_rate_num, &meta.reward_rate_den);
+    if giver_total != &receiver_total + &fee_shares + &reward_shares {
         return Err(ChainError::BalanceMismatch {
             givers: giver_total.to_string(),
             receivers: receiver_total.to_string(),
-            fee: fee_shares.to_string(),
+            fee: format!("fee={}, reward={}", fee_shares, reward_shares),
         });
     }
 
@@ -351,6 +355,7 @@ pub fn validate_caa_submit(
         givers,
         receivers,
         fee_shares,
+        reward_shares,
         page_bytes,
         prior_proofs,
         bond_amount,

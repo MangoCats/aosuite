@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useStore } from '../store/useStore.ts';
-import { RecorderClient } from '../api/client.ts';
+import { RecorderClient, ssePool } from '../api/client.ts';
 import type { BlockInfo } from '../api/client.ts';
 import { playChime, isInQuietHours, isQuickMuted } from '../core/chime.ts';
 import { PrintableQr } from './PrintableQr.tsx';
@@ -138,35 +138,26 @@ interface MonitorProps {
 function IncomingMonitor({ recorderUrl, chainId, symbol }: MonitorProps) {
   const [events, setEvents] = useState<BlockInfo[]>([]);
   const [connected, setConnected] = useState(false);
-  const esRef = useRef<EventSource | null>(null);
   const notification = useStore(s => s.notification);
   // Ref avoids SSE reconnection when notification settings change
   const notifRef = useRef(notification);
   notifRef.current = notification;
 
+  const handleBlock = useCallback((block: BlockInfo) => {
+    setEvents(prev => [block, ...prev].slice(0, 50));
+    const n = notifRef.current;
+    if (block.seq_count > 0
+      && n.enabled
+      && !isInQuietHours(n.quietStart, n.quietEnd)
+      && !isQuickMuted(n.quickMuteUntil)
+    ) {
+      playChime(n.chimeStyle, n.volume);
+    }
+  }, []);
+
   useEffect(() => {
-    const client = new RecorderClient(recorderUrl);
-    const es = client.subscribeBlocks(chainId, (block) => {
-      setEvents(prev => [block, ...prev].slice(0, 50));
-      const n = notifRef.current;
-      if (block.seq_count > 0
-        && n.enabled
-        && !isInQuietHours(n.quietStart, n.quietEnd)
-        && !isQuickMuted(n.quickMuteUntil)
-      ) {
-        playChime(n.chimeStyle, n.volume);
-      }
-    });
-
-    es.onopen = () => setConnected(true);
-    es.onerror = () => setConnected(false);
-    esRef.current = es;
-
-    return () => {
-      es.close();
-      esRef.current = null;
-    };
-  }, [recorderUrl, chainId]);
+    return ssePool.subscribe(recorderUrl, chainId, handleBlock, setConnected);
+  }, [recorderUrl, chainId, handleBlock]);
 
   return (
     <div style={{ marginBottom: 16, padding: 12, background: '#f9f9f9', borderRadius: 4 }}>
@@ -381,7 +372,6 @@ function GenesisCreator({ recorderUrl }: { recorderUrl: string }) {
 
       setStatus(
         `Chain created! ${info.symbol} (${info.chain_id.slice(0, 16)}...)\n` +
-        `Issuer seed: ${bytesToHex(seed)}\n` +
         `Public key: ${bytesToHex(issuerKey.publicKey)}\n` +
         `Block height: ${info.block_height}, Shares: ${info.shares_out}`
       );

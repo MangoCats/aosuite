@@ -1,6 +1,7 @@
 #include <QDateTime>
 #include <QList>
 #include <QDebug>
+#include <QIODevice>
 
 #include "qamqptable.h"
 #include "qamqpglobal.h"

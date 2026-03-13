@@ -1,0 +1,182 @@
+<!--
+ MIT License
+
+ Copyright (c) 2021 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+    /* border-bottom: 1px dotted black; If you want dots under the hoverable text */
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    /* Position the tooltip text */
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    /* Fade in tooltip */
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+
+<meta charset="UTF-8"/>
+<title>Bao Format</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+<img src="AO.png" alt="Ⓐ" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Bao Format</h1>
+
+<span itemprop="articleBody">
+
+<h2>What is bao?</h2>
+
+The basic format Assign Onward uses to communicate<div class="tooltip"><sup>*</sup><span class="tooltiptext">Bao is also well suited for compact data storage, but the specifics of data storage and retrieval implementations are outside the Ⓐ protocol scope, at the discretion of the application architects.</span></div> messages is called bao.<div class="tooltip"><sup>*</sup><span class="tooltiptext">Could stand for "Binary Assign Onward" format, or "Basic Assign Onward" format, or "<a href="https://redhousespice.com/steamed-bao-buns/">Tasty, juicy filling with soft, fluffy wrappers</a>."  Take your pick, although I'd say the bao wrappers used in Ⓐ protocol are more thin than fluffy.  Also, probably best represented as 包 in Chinese.</a></span></div>  It is a strongly typed binary encoding which can be easily translated to and from json,<div class="tooltip"><sup>*</sup><span class="tooltiptext">Although bao can be translated to json, and back again, not all json can be represented in bao - due first to the strong type definition, and also to dictionary references required for keys and key codes.</span></div> and to <a href="https://graphviz.org/doc/info/lang.html">dot</a> representation.
+
+<h2>What is in bao?</h2>
+
+The actual data stored in bao is in one of the defined types:<div class="tooltip"><sup>*</sup><span class="tooltiptext">While some types are redundant, they are specified separately to ease implementation (for instance: int64 is much easier to access than arbitrary length integer) as well as preventing common problems such as confusion between arbitrary binary data and strings which are intended to be human readable.  Types like floating point are specifically excluded to discourage their use in protocols which are meant to be easily 100% reproducable on varying hardware and software.</span></div>
+
+<ul>
+<li>signed int64</li>
+<li>arbitrary length integer<div class="tooltip"><sup>*</sup><span class="tooltiptext">such as is implemented by arbitrary precision math libraries like <a href="https://gmplib.org/">GMP</a>.  Other libraries implementing the same functions may be used, as long as they produce correct results.</span></div></li>
+<li>ratio of two arbitrary length integers</li>
+<li>key <a href="VariableByteCoding.html">code</a></li>
+<li>UTF-8 string</li>
+<li>octet stream</li>
+<li>bao object</li>
+<li>an array of any of the above types</li>
+</ul>
+
+Like json, bao wraps data in objects or arrays which may be nested.  In bao data items, objects and arrays are always paired with keys.
+
+<h2>Bao keys</h2>
+
+Bao keys are defined in a dictionary.  Each defined key has a unique human readable name which is used in json translations of bao objects and code references to the key.  The key also has a unique integer representation, and that integer is <a href="VariableByteCoding.html">encoded</a> to a compact binary representation in bao byte streams.  The lower bits of bao keys specify the type of the data which follows, as well as whether the data is a single item, or an array of items all of the same type as specified in the key.<br/><br/>
+
+The meaning of keys is often context specific, depending on what wrappers they are contained in.  The first key, on the outermost wrapper of a bao message, defines the type of the message and what protocol rules apply to everything within the message's wrappers.
+
+<h2>Bao objects</h2>
+
+A bao object contains zero or more key value pair elements.  Each element in a bao object has a key which is unique within the object, followed by either an "atomic" data item (listed above), an array of data items or objects, or a single object - the key defines both the type of data in the element and how that data is to be handled by the operating protocol.
+
+<h2>Bao arrays</h2>
+
+Bao arrays are a single key followed by an integer size zero or larger which specifies how many data elements (of the type specified by the key) follow.  Bao arrays may contain objects,<div class="tooltip"><sup>*</sup><span class="tooltiptext">Any object may contain zero or more key value pairs where the value is an array, but... if the desire is to implement a multi-dimensional structure like a table or volume description, I would rather suggest that the data be laid into a one-dimensional array type and include the dimensions of the table / volume / whatever in a wrapper object which includes the array.</span></div> but may not directly contain arrays.<div class="tooltip"><sup>*</sup><span class="tooltiptext">In a sense, bao key codes specify an array of dimension zero or one.  With the addition of a single bit to the array dimension encoding, two and three dimensional arrays could be specified in the array, enabling more json like arrays of arrays where each element in the outer array could contain an inner array of a different length.  While academically interesting, the complexity of implementation seems a poor tradeoff for the value of having such encoding options available.</span></div>
+
+<h2>Bao encoding</h2>
+
+Bao encoding is a fairly straightforward system where the outermost key is followed by the binary encode of the value belonging to that key.  Object values start with a coded integer telling how many key-value elements are in the following object, then each key + value of the key in the object follows.  Arrays similarly start with a coded integer telling how many value elements follow and then each value follows.  Remember that values may themselves be objects which then nest further...  The atomic types are encoded as follows:
+
+<ul>
+<li>signed int64 - 8 bytes lsb first.</li>
+<li>arbitrary length integer - bcd digits, terminated by hex E for a positive and F for a negative number.  If the terminator is the first nybble of a byte, it is followed by hex D.</li>
+<li>ratio of two arbitrary length integers - two arbitrary length integers as above, numerator first.</li>
+<li>key <a href="VariableByteCoding.html">code</a> - a string of one to nine bytes, most significant bits first, where the seven lsb of each byte are part of the value, and the first byte with a 0 in the most significant bit is the final byte of the string.</li>
+<li>octet stream - an <a href="VariableByteCoding.html">encoded</a> length followed by that number of bytes.</li>
+<li>UTF-8 string - exactly as the octet stream, but the contents are required to be valid UTF-8.</li>
+</ul>
+
+When bao objects are stored, the elements are sorted by<div class="tooltip"><sup>*</sup><span class="tooltiptext">the <i>RiceyInt</i> <a href="VariableByteCoding.html">representation of</a> the</span></div> key value.  Order of bao arrays is preserved, not sorted.  This means that a the bao binary representation of an object is specific, and will always be the same for a valid representation of the object.  Json representations of bao are often in a very different order, sorted by the key name instead of its code value, but when they are translated back to bao, the original bao order is restored due to sorting by key value instead of name.
+
+</span><!-- end of articleBody -->
+</div><!-- end of zoom -->
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2021-10-12"><div class="tooltip">12 October 2021<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2021 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+</div>
+
+</body></html>
+

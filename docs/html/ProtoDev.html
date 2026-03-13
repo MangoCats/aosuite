@@ -1,0 +1,170 @@
+<!--
+ MIT License
+
+ Copyright (c) 2021 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+    /* border-bottom: 1px dotted black; If you want dots under the hoverable text */
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    /* Position the tooltip text */
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    /* Fade in tooltip */
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+
+<meta charset="UTF-8"/>
+<title>ProtoDev</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+<img src="AO.png" alt="Ⓐ" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">ProtoDev</h1>
+
+ProtoDev is an application that can be built from <a href="https://github.com/assignonward/aosuite">the source repository</a> using <a href="https://www.qt.io/download-open-source">Qt</a> libraries 6.2 or later.  It has several functions, implemented in tabs, which assist in the development and early demonstration of <a href="dProtocols.html">DⒶ</a> protocols.
+
+<h2>Dictionary</h2>
+
+The lowest level of protocol development is served in the dictionary.  The dictionary defines compact binary codes which are associated with short names and longer descriptions.  Each code has a defined data type such as signed int64, arbitrary precision integer, ratio of arbitrary precision integers, UTF-8 string, byte array, unsigned int63, object and array containers, and a data type which contains codes defined in the dictionary.  Space is reserved in the encoding for up to 16 data types.  Most complex structures should not be defined as data types but rather as blocks.
+
+<h2>Block Assembly Tool</h2>
+
+<h3>Block Rules</h3>
+
+Blocks are structures similar to json objects, but strongly typed.  Every block is at its outermost layer a key-value pair or a one dimensional key-value array<div class="tooltip"><sup>*</sup><span class="tooltiptext">Included in every key definition is specification of that key's type, whether in <a href="Bao.html">bao</a> or json format.</span></div>.  Values may be of any type, including array and object types.  Objects contain zero or more key-value items which may be of any type including objects and arrays.  All keys within a single object must be unique, but sub-objects may duplicate keys of their parents.  Values within an array<div class="tooltip"><sup>*</sup><span class="tooltiptext">Similar to objects, arrays contain zero or more values.</span></div> do not have their own keys<div class="tooltip"><sup>*</sup><span class="tooltiptext">All values within an array are associated with the array's single key, though each has a unique index in the array.</span></div>, but they must be of the type specified in the array's key.<br/><br/>
+
+<h3>Assembling Blocks</h3>
+
+The Block Assembly Tool in ProtoDev is a simple quasi-register based utility which allows loading, assembling, editing and saving block definitions from/to <a href="Bao.html">.bao</a> and .json files.  The block "registers" are designated X, Y and A and are visualized in scrollable areas on the right side of the window.  Either the X or Y register is designated the "Make" register and the block in it is visualized in green tones.  Either of the remaining two registers is designated the "Build" register and is shown in blue.  Load and clear operations are only happen to the green Make register, while only the blue Build register may be saved.  The contents of Make/Build may be swapped in a single step, and re-designation of any register as Build, or X or Y as Make, is a single click operation.<br/><br/>  
+
+The "Navigator" selects a single value element, which is visualized in red tones, and may be operated on with operations like insert, set and remove.  Navigation may take place on either the currently designated Make or Build registers.  When Navigated to a container (object or array) in the Build register, insert will insert the contents of the Make register in the navigation designated container.  Any key in the dictionary may be inserted into an empty Make register<div class="tooltip"><sup>*</sup><span class="tooltiptext">At the moment, to add a key-value to an empty build register, first insert it in an empty make register then do a swap operation.  This may be improved in the future.</span></div>, allowing building of arbitrary blocks "from scratch."<br/><br/>
+
+Blocks saved as .bao files in the apps/BlockTool folder may be added to the blockTool.qrc /files resource and from there they will be included in the combo-box selectable files to read into the Make register at the next build of ProtoDev.
+
+<h3>Future BAT Plans</h3>
+
+At the moment, the Block Assembly Tool is very rudimentary.  If it proves to be valuable enough, a more drag-drop oriented free-form tool might be written, either continuing to leverage the <a href="https://graphviz.org/download/">graphviz</a> .dot visualization of the block(s) under construction, or possibly with its own visualization.  Addition of visualization of protocol value calculation and comparison requirement flows would be a deeper use of the power of the .dot visualizations.
+
+<h2>DⒶ Protocol Demonstration</h2>
+
+Simple development protocols, the <a href="dProtocols.html">DⒶ</a> series, are demonstrated / tested in the DⒶ tab.  The window is divided into writer/reader and client/server quadrants.  Any protocol found in the ProtocolDemo/protocolDemo.qrc /protocols resource files will be available for selection as the protocol in use by all four demo elements.  Then, the clients may be configured to send requests to the servers and client and server activity will be shown in the respective transaction log windows.  Be sure to check the Application Output for any warning messages that may be output, usually indicating some problem during processing of the requested operations.
+
+<h2>Tests Tab</h2>
+
+Basic bao and json serialization / deserialization operations may be tested in the Tests tab.  Like almost all testing this is a work in progress<div class="tooltip"><sup>*</sup><span class="tooltiptext">For instance, at the moment there is some problem in .json deserialization which makes reading the chain.json file crash, while writing chain.json works fine and read/write of chain.bao works fine, but all current tests including json deserialization are passing.  Clearly, more coverage is called for.</span></div>, but it serves as a good sanity check when making changes which might impact serialization / deserialization or block nesting operations.   
+
+<h2>About Tab</h2>
+
+The About tab contains a (very) little description of the program, includes some "credits" and a readout of the active library versions included.
+
+</span>
+
+</div>
+
+</span>
+<hr/>
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2021-11-07"><div class="tooltip">7 November 2021<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2021 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+</div>
+
+</body></html>
+

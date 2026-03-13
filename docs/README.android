@@ -1,0 +1,5 @@
+Android development for Qt 6.2 setup notes:
+
+https://doc-snapshots.qt.io/qt6-dev/android-getting-started.html
+sudo apt install openjdk-11-jdk
+

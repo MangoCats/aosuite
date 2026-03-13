@@ -1,0 +1,50 @@
+Simple Protocol AO0
+
+Actor: 
+ Requestor of Recording
+    
+Actor:
+ Recording Service Provider - Intermediate
+          
+Actor:
+ Recording Backend
+   
+Actor:   
+ Requestor of Record Retrieval
+  Outgoing Messages:
+   Request Recording (my id + database name + uid of record)
+   
+  Responses Understood: 
+   Record Retrieval Result
+    Denied: Reason
+    Success: Database name + Record uid + Record data
+
+Actor:
+ Record Retrieval Service Provider
+  Record Retrieval Requestor Interface:
+   Outgoing Messages: 
+    Retrieval Results
+     Failure: Reason
+     Success: Database name + Record uid + Record data
+    Request Not Supported: Reason (only sent when Requestor successfully identifies themselves)
+    
+   Incoming Messages Understood:
+    Request Record Retrieval
+    
+  Record Retrieval Backend Interface:
+   Outgoing Messages:
+     Retreive This (includes an identifier + database name + uid)
+    
+   Responses Understood:
+    Success: identifier + database name + record uid + record data
+    Failure: reason
+      
+Actor:
+ Recording Backend
+  Outgoing Messages:
+   Success: request identifier plus recorded uid
+   Failure: request identifier plus reason (only when a well formed request is received)
+   
+  Incoming Messages Understood: 
+    Retrieve This (includes an identifier + database name + uid)
+   

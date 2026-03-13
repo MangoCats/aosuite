@@ -85,6 +85,7 @@
 
 <meta charset="UTF-8"/>
 <title>Roadmap</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
 </head>
 
 <body>
@@ -92,9 +93,79 @@
 <div class="zoom">
 <img src="AO.png" alt="Ⓐ" width="64" height="64" style="float:right">
 
-<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Roadmap</h1>
 
-<span itemprop="articleBody">The following items are in rough order of maturity.</span></span>
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Roadmap</h1>
+<span itemprop="articleBody">Where Assign Onward development is planned to go.</span></span><p/>
+
+The goal is a system of blockchains created maintained and used by individuals and smaller entities.  Rather than a massive centralized system embodying billions of trillions of dollars of value, each chain would be a more human scale from a few tens of thousands up to a few tens of millions of dollars, but the interoperable system of smaller blockchains has tremendous potential to serve a large number of people without a central point of control or failure.<p/>
+
+<ul>
+<li>First step is definition of a container format<div class="tooltip"><sup>*</sup><span class="tooltiptext">This container format can be seen at work in the <a href="ProtoDev.html">ProtoDev</a> <a href="https://github.com/assignonward/aosuite/tree/main/apps/ProtoDev">application</a>.</span></div> like strongly typed json, translatable to json to take advantage of json manipulation tools and increase visibility into the data but also translatable to a compact binary format for communication, storage, hashing and signatures.  This same format should also support graphviz .dot visualization of containers and their data to facilitate visual understanding of the data structures and their interrelationships.</li>
+
+<li>Visual / user friendly tools<div class="tooltip"><sup>*</sup><span class="tooltiptext">The <a href="ProtoDev.html">ProtoDev</a> is a somewhat visual/friendly <a href="https://github.com/assignonward/aosuite/tree/main/apps/ProtoDev">application</a> that assists in the development of Ⓐ protocols using <a href="Bao.html">bao</a> formatted blocks.</span></div> to build, save, restore and visualize data structures in the above formats are a stepping stone to the development of a protocol definition language.</li>
+
+<li>Define communication and storage <a href="Protocols.html">protocols</a> using the same container format.  While it is possible to implement software that properly executes various actor roles in the developed protocols, I believe it will be much more powerful to define the protocols in a machine readable format and implement software which can interoperate across multiple<div class="tooltip"><sup>*</sup><span class="tooltiptext">Protocol proliferation is already a problem in the broader cryptocurrency space.  Assign Onward intends to tame this somewhat with standard protocol building blocks enabling the assembly of various functionality without having to "reinvent the wheel" as often as might otherwise be necessary.  Hopefully, a small handful of dominant Ⓐ protocols emerge and become the standard (and interoperable) choices for most users.</span></div> protocols.</li>
+
+<li>Given a protocol definition language, start implementing with the simplest of protocols with limited functionality (and limited applicability/value), building up from a well tested base with example/demo implementations to higher and higher functionality until the protocols are ready to start user simulation testing with adversarial user agents.  A rough list of the DⒶ protocol development steps might be:</li>
+</ul>
+
+<ol>
+<li>Record / retrieve data - a super simple protocol</li>
+<li>Add requestor identity ( enables MQTT topic exchange use )</li>
+<li>Block chain storage / audit - first demo of blockchain functionality</li>
+<li>Share allocation / assignment - tracking something akin to value in/control of the chain</li>
+<li>Proof of stake multiple chain recorders - increased assurance for users, eliminiating single point of failure</li>
+<li>Share incentives for recorders - recruiting strangers to participate in the network</li>
+<li>Share expiry for inactivity - preventing loss of value/control due to abandonment/loss of secrets.</li>
+<li>Coin calculation for transactions and incentives - stabilizing relative value of coins as a percentage of active shares</li>
+<li>Offer and acceptance for share assignments - disallow assignment to non-actors, unwilling actors, etc.</li>
+<li>Record of offer expiry - concrete proof of contract expiration without execution, allowing free reassignment of offered shares in future contracts.</li>
+<li>Secure cross chain exchange - this is how Assign Onward conquers the world, from the ground up without massive concentration of value at the top</li>
+<li>Escrow assignment of shares for proof of stake - allowing shareholders to conditionally trust others to act on their behalf.</li>
+<li>Revocation of escrow assignment for proof of fault - trust, but verify - when a stranger defaults the escrowed shares control returns to the owner.</li>
+</ol>
+
+Demonstration applications on various platforms along the way should help inform development of tools, protocol details, and user facing fully featured applications (as described in the 2018 roadmap, below).</p>
+
+By the time proof of stake, escrow and revocation are working, gaming simulation of actual protocols with reward levels, fraud penalties, real world costs of operation, etc. should be performed to determine theoretically stable starting points for chain recording reward structures.  Testing can be performed with actual messaging servers to determine transaction throughput capability - always bearing in mind that the goal of the Assign Onward protocol is not one chain to rule them all, but a mob of millions cooperating locally and globally to the benefit of their owners and users.
+
+</div><!-- end of zoom -->
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2021-10-04"><div class="tooltip">4 October 2021<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2021 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+
+<hr/>
+<font size=-2>
+<h2>2018 thinking</h2>
+
+There's nothing really <i>wrong</i> with the 2018 roadmap, except that it skipped some foundational work that's envisioned in the 2021 thinking.  The development tools will be somewhat different, and the protocol somewhat more flexible, but the basic elements are unchanged.
+
+
+The following items are in rough order of maturity.
 
 <ul>
 <li>Design</li>
@@ -153,11 +224,9 @@
 </ul>
 </ul>
 
-</div>
 
-<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
-<span itemprop="name">Assign Onward</span></span></a><br/>
-<span itemprop="datePublished" content="2018-05-04"><div class="tooltip">4 May 2018<span class="tooltiptext">
+<br/><a href="index.html">Assign Onward</a><br/>
+<div class="tooltip">4 May 2018<span class="tooltiptext">
 MIT License
 <br/>
 Copyright (c) 2018 Assign Onward
@@ -179,8 +248,10 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-</span></div></span>
+</span></div>
 
 </div>
+
+</font>
 
 </body></html>

@@ -1,0 +1,167 @@
+<!--
+ MIT License
+
+ Copyright (c) 2021 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+    /* border-bottom: 1px dotted black; If you want dots under the hoverable text */
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    /* Position the tooltip text */
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    /* Fade in tooltip */
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+<meta charset="UTF-8"/>
+<title>DⒶ Protocols</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+<img src="AO.png" alt="Ⓐ" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">DⒶ Protocols</h1>
+
+<h2>The Development Protocol Series</h2>
+
+The DⒶ protocols are the first, and simplest, <a href="Protocols.html">protocols</a> made to demonstrate the Ⓐ protocol language and routines that implment it for applications and test suites.  They are NOT meant for live use on the open internet.  Especially at the simpler levels they lack robust precautions against attackers.  Before a protocol is released as an Ⓐ "live" protocol, it should undergo documented testing as a TⒶ protocol<div class="tooltip"><sup>*</sup><span class="tooltiptext">the point of documenting testing is to provide a baseline for future testers to expand on.  The testing documentation should be linked as a parent block for the protocol definition.  DⒶ might be linked as parent to a TⒶ protocol, but more often the parent of the TⒶ protocol would be another, somewhat less developed protocol that the TⒶ protocol was developed from.</span></div>.<br/><br/>
+
+<img src="Dhow0.jpg" alt="Simplest Dhow" width="25%" style="float:left">
+DⒶ0 defines four roles: writer client, writer server, reader server and reader client.  There are four message types that can be exchanged: write request, write response, read request and read response.  The write request merely contains data to be written.  The write response tells the time at which the data was written, which becomes a unique key with which to retrieve the record.  The read request sends a unique key, and the read response sends back the data associated with that key, or no data if there was any kind of problem.  There is no defined error reporting.  Any application which intends to interpret and implement generalized Ⓐ protocols can start out by trying out DⒶ0.<br/><br/>
+
+DⒶ1 adds identification of the clients.  This enables implementation on message passing exchanges like AMQP and MQTT as implemented by RabbitMQ and similar exchanges.  Servers listen to all messages on an exchange, and clients can subscribe to a topic that matches their I.D. so they only receive messages of interest to themselves.<br/><br/>
+
+DⒶ2 adds identification of a database<div class="tooltip"><sup>*</sup><span class="tooltiptext">Many Ⓐ servers will handle transactions for multiple blockchains.</span></div> to write the record into / read it from, segregating records by database id and laying some groundwork for selective service of chosen databases.  DⒶ2 also starts adding error and error type reporting<div class="tooltip"><sup>*</sup><span class="tooltiptext">As of <a href="https://github.com/assignonward/aosuite/commit/386dfb46c6884ddc59c73197c8a3f3193c5bf5d6">commit 386dfb</a> both the <a href="ProtoDev.html">ProtoDev</a> app and the Demo Clients/Server apps implement and demonstrate DⒶ0 through DⒶ2.</span></div>.<br/><br/>
+
+<img src="Dhow3.jpg" alt="Simple Dhow" width="25%" style="float:right">
+DⒶ3 adds identification of the protocol in use within each message.  While a short name would be sufficient in a "friendly" environment, DⒶ3 adds a hash of the entire protocol definition to prevent confusion in the case of short name collisions between diverse protocol developers.<br/><br/>
+ 
+DⒶ4 adds a query/response for protocols supported by servers.  Rather than define optional elements of a given protocol, it is preferred to fully implement a given protocol and define a new protocol lacking any optional element not supported.  This way, full protocol definitions can be independently tested / approved and if there are serious problems identified with any protocol, it can be deactivated without complications.  Clients wanting to implement a "lite" version of a protocol can define that lite version, and hope they find servers willing to speak that protocol with them<div class="tooltip"><sup>*</sup><span class="tooltiptext">Removing some elements from a protocol can make it less secure, or outright incompatible with blockchain records that require more information.  For the most part, the blockchain will define which protocols are acceptable for transactions on that chain.</span></div>.<br/><br/>
+
+DⒶ5 adds a requirement for read response payload contents to be timestamped and hashed.<br/><br/>
+
+DⒶ6 adds a requirement for recorded payloads to include the hash of parent block(s), marking the start of actual "blockchain" operation.<br/><br/>
+
+DⒶ7 adds definition of how to include <a href="SeparableItems.html">separable items</a> and their hashes.<br/><br/>
+
+DⒶ8 adds client id cryptographic signatures to the block to be recorded.<br/><br/>
+
+<a id="DⒶ9">DⒶ9</a> adds server cryptographic signatures to the blocks retrieved, making communications more traceable / secure. <a href="hProtocols.html">Hobbyist protocols</a> branch off from here.<br/><br/>
+
+DⒶ10 adds definition of shares in the blockchain, marking the start of value store operations.<br/><br/>
+
+<img src="Dhow12.jpg" alt="Value carrying Dhow" width="25%" style="float:left">
+DⒶ11 adds expiration of share value over time - preventing infinitely extending chain records.<br/><br/>
+
+DⒶ12 adds definition of a fixed number of "coins" or "tokens" expressing relative ownership of the chain that increases as un-maintained shares expire.<br/><br/>
+
+Many more to come.
+
+<hr/>
+
+</span>
+
+</div>
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2021-11-14"><div class="tooltip">14 November 2021<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2021 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+</div>
+
+</body></html>
+

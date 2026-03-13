@@ -39,29 +39,43 @@ public:
             ~Tests();
        void  liveDelay( int t );
        bool  testDict( QString &, qint32 & );
-       bool  testInt32( QString &, qint32 & );
-       bool  testInt32( BlockValueInt32 &, qint32, qint32 &, QString & );
+       bool  testGmp( QString &, qint32 & );
        bool  testInt64( QString &, qint32 & );
        bool  testInt64( BlockValueInt64 &, qint64, qint32 &, QString & );
+       bool  testMPZ( QString &, qint32 & );
+       bool  testMPZ( BlockValueMPZ &, const MP_INT &, qint32 &, QString & );
+       bool  testMPQ( QString &, qint32 & );
+       bool  testMPQ( BlockValueMPQ &, const MP_RAT &, qint32 &, QString & );
        bool  testRicey( QString &, qint32 & );
        bool  testRicey( BlockValueRiceyCode &, RiceyInt, qint32 &, QString & );
+       bool  testRiceyInt( QString &, qint32 & );
+       bool  testRiceyInt( BlockValueRiceyInt &, RiceyInt, qint32 &, QString & );
        bool  testString( QString &, qint32 & );
        bool  testString( BlockValueString &, const Utf8String &, qint32 &, QString & );
        bool  testByteArray( QString &, qint32 & );
        bool  testByteArray( BlockValueByteArray &, const QByteArray &, qint32 &, QString & );
-       bool  testInt32A( QString &, qint32 & );
-       bool  testInt32A( BlockArrayInt32 &, const QList<qint32> &, qint32 &, QString & );
+       bool  testObjectA( QString &, qint32 & );
+       bool  testObjectA( BlockValueObjectArray &, const QList<BlockObjectMap> &, qint32 &, QString & );
        bool  testInt64A( QString &, qint32 & );
-       bool  testInt64A( BlockArrayInt64 &, const QList<qint64> &, qint32 &, QString & );
+       bool  testInt64A( BlockValueInt64Array &, const QList<qint64> &, qint32 &, QString & );
+       bool  testMPZA( QString &, qint32 & );
+       bool  testMPZA( BlockValueMPZArray &, const QList<MP_INT> &, qint32 &, QString & );
+       bool  testMPQA( QString &, qint32 & );
+       bool  testMPQA( BlockValueMPQArray &, const QList<MP_RAT> &, qint32 &, QString & );
+       bool  testRiceyIntA( QString &, qint32 & );
+       bool  testRiceyIntA( BlockValueRiceyIntArray &, const QList<RiceyInt>  &, qint32 &, QString & );
        bool  testRiceyA( QString &, qint32 & );
-       bool  testRiceyA( BlockArrayRicey &, const QList<RiceyCode> &, qint32 &, QString & );
-       bool  testRiceyA( BlockArrayRicey &, const QList<RiceyInt>  &, qint32 &, QString & );
+       bool  testRiceyA( BlockValueRiceyCodeArray &, const QList<RiceyCode> &, qint32 &, QString & );
+       bool  testRiceyA( BlockValueRiceyCodeArray &, const QList<RiceyInt>  &, qint32 &, QString & );
        bool  testStringA( QString &, qint32 & );
-       bool  testStringA( BlockArrayString &, const QList<Utf8String> &, qint32 &, QString & );
+       bool  testStringA( BlockValueStringArray &, const QList<Utf8String> &, qint32 &, QString & );
        bool  testByteArrayA( QString &, qint32 & );
-       bool  testByteArrayA( BlockArrayByteArray &, const QList<QByteArray> &, qint32 &, QString & );
+       bool  testByteArrayA( BlockValueByteArrayArray &, const QList<QByteArray> &, qint32 &, QString & );
        bool  testObject( QString &, qint32 & );
        bool  testObject( BlockValueObject &, const BlockObjectMap &, qint32 &, QString & );
+
+signals:
+       void  newDot( QByteArray );
 
 public slots:
        void  on_start_clicked();

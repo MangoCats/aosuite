@@ -52,7 +52,7 @@ bool  validRicey( const RiceyCode &r )
  * @return v converted to rice code, MSB first in the byte array
  */
 RiceyCode intToRice( const RiceyInt &v )
-{ RiceyCode r;
+{ RiceyCode r; r.reserve(10);
      quint8 c = 0;
   if ( v == 0 )
     r.prepend( c );

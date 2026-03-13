@@ -1,0 +1,150 @@
+<!--
+ MIT License
+
+ Copyright (c) 2021 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+    /* border-bottom: 1px dotted black; If you want dots under the hoverable text */
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    /* Position the tooltip text */
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    /* Fade in tooltip */
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+
+<meta charset="UTF-8"/>
+<title>Design Rationales</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+<img src="AO.png" alt="Ⓐ" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article">
+<h1 id="_name1" itemprop="name">Design Rationales</h1>
+<span itemprop="articleBody">Choices were made... some of them were good.</span></span><p/>
+
+<h2>Data Structure</h2>
+
+The data structure is the syntax and grammar of all inter-agent communication in the system.  The choice to be strongly typed should be obvious: different implementations should come up with exactly the same results with minimal room for misinterpretation.  Json objects and arrays are powerfully flexible containers, the addition of strong typing to the concepts makes them a great base for all of the data that needs to be organized and communicated.
+
+<h3>Structure Key Dictionary</h3>
+
+The keys in the key-value pairs of the data are encoded as numbers which both provides an unambiguous sort order for object collections, and a compact form for encoding.  A dictionary establishes translation between the numerical encoding for compact forms and the human readable names that show in json-like representations.
+
+<h2>Protocol Definitions</h2>
+
+Communication, and optionally data storage, formats are defined in protocol definitions, which are themselves defined in the same type of data structures.  Although actors in the system could implement one or more protocols directly, being able to read them from a standard protocol definition gives greater flexibility - better serving the goals of interoperability between chains.
+
+<h3>Block Assembly Tool</h3>
+
+Protocol definitions are necessarily large and complex.  Defining the protocol through hand coded structure creations is remarkably cumbersome.  A graphic assembly tool facilitates easier comprehension of the structures.  Investment in the tool should enable faster and less error prone protocol and application development.
+
+<h3>Protocol baby steps implementation</h3>
+
+Taking protocol development one simple step at a time ensures that the tools and protocol definition format itself are up to snuff to handle things as they develop.  When the language to express a data structure for the simplest protocol definition is too cumbersome, clearly it will be inadequate to take the protocol to "level 14." Test and demo applications along the way also should inform better decision making as the protocol complexity increases.
+
+</div><!-- end of zoom -->
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+
+<span itemprop="datePublished" content="2021-10-05"><div class="tooltip">5 October 2021<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2021 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span><!-- end of tooltiptext -->
+</span><!-- end of itemprop -->
+</div><!-- end of page -->
+</body></html>

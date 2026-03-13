@@ -40,10 +40,14 @@ public:
                      bool  codesContainCode( RiceyInt c )   { return ciByNum  .contains(c); }
                Utf8String  nameFromCode( RiceyCode );
                Utf8String  nameFromCode( RiceyInt );
+               Utf8String  nameOrHexFromCode( RiceyCode );
+               Utf8String  nameOrHexFromCode( RiceyInt );
                 RiceyCode  riceyFromCodeName( Utf8String );
                  RiceyInt  codeFromCodeName( Utf8String );
+         QList<Utf8String> names() { return ciByName.keys(); }
 
                QJsonArray  codes;
+   QMap<qint32,Utf8String> diNames;
   QHash<Utf8String,qint32> ciByName;
   QHash<RiceyCode ,qint32> ciByRicey;
   QHash<RiceyInt  ,qint32> ciByNum;

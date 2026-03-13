@@ -1,7 +1,7 @@
 <!--
  MIT License
 
- Copyright (c) 2018 Assign Onward
+ Copyright (c) 2021 Assign Onward
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -85,6 +85,7 @@
 
 <meta charset="UTF-8"/>
 <title>Variable Byte Coding</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
 </head>
 
 <body>
@@ -94,17 +95,23 @@
 
 <span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Variable Byte Coding</h1>
 
-<span itemprop="articleBody">Assign Onward uses a variable byte encoding scheme<div class="tooltip"><sup>*</sup><span class="tooltiptext">vaguely related to <a href="https://en.wikipedia.org/wiki/Golomb_coding#Rice_coding">Rice Coding</a></span></div> to represent data type codes, sizes of variable length data and integers which will not exceed 63 bits in magnitude.  The scheme represents 64 bit signed integers using one to 10 bytes.  The least significant bit of the first byte is the sign bit, set indicates negative.  In the range 0-63, the coding scheme is the same as a single unsigned byte multiplied by 2.  When a byte has the most significant bit set, that indicates that the following byte is also included in the code, and that seven more significant bits are stored in it.<div class="tooltip"><sup>*</sup><span class="tooltiptext">Currently, Assign Onward only recognizes variable byte codes up to 10 bytes in length, so a 1 in the most significant bit of the 10th byte is an error, unrecognized code.  Also, 64 bit signed integers are used to hold the VBC values, so most of the bits in a 10th byte (if present) are ignored.</span></div>  Each byte encodes 7 bits, with the least significant bits coming in the first byte.<br/><br/>
+<span itemprop="articleBody">Assign Onward uses a variable length byte encoding scheme called <i>Ricey Codes</i><div class="tooltip"><sup>*</sup><span class="tooltiptext">vaguely related to <a href="https://en.wikipedia.org/wiki/Golomb_coding#Rice_coding">Rice Coding</a></span></div> to represent words in the dictionary, the number of elements in arrays and other unsigned integer quantities.<div class="tooltip"><sup>*</sup><span class="tooltiptext">2018 Assign Onward implementation (unfinished) used variable byte codes slightly differently.  Consult the repository history of this document and the source code if interested.</span></div>  A <i>RiceyInt</i> is an unsigned integer up to 2<sup>63</sup>-1. Programatically, <i>RiceyInt</i>s are typically stored in unsigned int_64 variables, though regular signed int_64 can also work.<br/><br/>
+
+A <i>RiceyCode</i> stores a <i>RiceyInt</i> as a string of one to nine bytes, with 7 bits of value per byte, most significant bits first, and the most significant bit of each byte indicating more bytes to follow in this code when it is a 1, or this is the final byte when it is a 0.  While leading bytes of 0x80 could be interpreted as leading zeroes on the binary representation, they are considered invalid<div class="tooltip"><sup>*</sup><span class="tooltiptext">Leading 0x80 bytes not only waste space, but they create an ambiguity of representation with multiple codes representing the same value.  As such, only the most compact representation of a given number is the valid one.</span></div> and should not be used.  0x80 appearing in the middle of <i>RiceyCode</i>s of three bytes or more are valid and simply represent seven binary zeroes in the middle of the value.<br/><br/>
+
+When used to represent the number of children in an object, or the number of elements in an array, or other numerical values, any positive value from 0 up to 2<sup>63</sup>-1 is "valid Ricey."<br/><br/>
+
+When used to represent dictionary words, only those codes specifically defined in the dictionary (or the subset of the dictionary used in the applicable protocol context) are permissible.  In part, this is because the json<div class="tooltip"><sup>*</sup><span class="tooltiptext">and graphviz .dot</span></div> representation of <i>RiceyCode</i>s as keys or <i>RiceyCode</i> values is not the binary or hex string, but the human readable<div class="tooltip"><sup>*</sup><span class="tooltiptext">Generally, English word(s) and/or abbreviations are used as dictionary "words" for json and dot representations; however, localization of dictionaries is possible without altering the <a href="Bao.html">bao</a> representation and since protocols interact in bao, protocols with different localization should interoperate seamlessly - just their json and dot representations will change.</span></div> UTF-8 string that corresponds to the <i>RiceyCode</i> - while the bao representation is the binary form of the <i>RiceyCode</i>.
 
 </span>
 </div>
 
 <br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
 <span itemprop="name">Assign Onward</span></span></a><br/>
-<span itemprop="datePublished" content="2018-06-03"><div class="tooltip">3 June 2018<span class="tooltiptext">
+<span itemprop="datePublished" content="2021-10-09"><div class="tooltip">9 October 2021<span class="tooltiptext">
 MIT License
 <br/>
-Copyright (c) 2018 Assign Onward
+Copyright (c) 2021 Assign Onward
 <br/><br/>
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

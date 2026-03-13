@@ -1,0 +1,28 @@
+digraph D {
+rankdir=LR;
+
+  subgraph cluster_p {
+    label = "Parent";
+
+    subgraph cluster_c1 {
+      label = "Child one";
+      ant;
+
+      subgraph cluster_gc1 {
+        label = "Grand-Child one";
+         bat;
+      }
+      subgraph cluster_gc2 {
+        label = "Grand-Child two";
+          cat;
+          dog;
+      }
+
+    }
+
+    subgraph cluster_c2 {
+      label = "Child two";
+      egg;
+    }
+  }
+} 

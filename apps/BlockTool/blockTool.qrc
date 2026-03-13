@@ -1,0 +1,12 @@
+<RCC>
+    <qresource prefix="/icons">
+        <file>AOBlockTool.png</file>
+    </qresource>
+    <qresource prefix="/files">
+        <file>x.dot</file>
+        <file>chain.bao</file>
+        <file>DⒶ0.bao</file>
+        <file>DⒶ1.bao</file>
+        <file>DⒶ2.bao</file>
+    </qresource>
+</RCC>

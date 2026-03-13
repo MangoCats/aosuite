@@ -58,9 +58,9 @@ void QAmqpClientPrivate::initSocket()
     QObject::connect(socket, SIGNAL(connected()), q, SLOT(_q_socketConnected()));
     QObject::connect(socket, SIGNAL(disconnected()), q, SLOT(_q_socketDisconnected()));
     QObject::connect(socket, SIGNAL(readyRead()), q, SLOT(_q_readyRead()));
-    QObject::connect(socket, SIGNAL(error(QAbstractSocket::SocketError)),
+    QObject::connect(socket, SIGNAL(errorOccurred(QAbstractSocket::SocketError)),
                           q, SLOT(_q_socketError(QAbstractSocket::SocketError)));
-    QObject::connect(socket, SIGNAL(error(QAbstractSocket::SocketError)),
+    QObject::connect(socket, SIGNAL(errorOccurred(QAbstractSocket::SocketError)),
                           q, SIGNAL(socketError(QAbstractSocket::SocketError)));
     QObject::connect(socket, SIGNAL(stateChanged(QAbstractSocket::SocketState)),
                           q, SIGNAL(socketStateChanged(QAbstractSocket::SocketState)));
@@ -504,7 +504,8 @@ void QAmqpClientPrivate::startOk()
     clientProperties["version"] = QString(QAMQP_VERSION);
     clientProperties["platform"] = QString("Qt %1").arg(qVersion());
     clientProperties["product"] = QString("QAMQP");
-    clientProperties.unite(customProperties);
+ // clientProperties.unite(customProperties);  Possible behavior change since duplicates are not overwritten by unite
+    clientProperties.insert(customProperties);
     stream << clientProperties;
 
     authenticator->write(stream);

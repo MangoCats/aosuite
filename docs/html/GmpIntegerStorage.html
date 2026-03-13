@@ -85,6 +85,7 @@
 
 <meta charset="UTF-8"/>
 <title>GMP Integer Storage</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
 </head>
 
 <body>
@@ -94,13 +95,20 @@
 
 <span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">GMP Integer Storage</h1>
 
-GMP integers are stored in compact form, starting with a <a href="VariableByteCoding.html">variable byte code</a><div class="tooltip"><sup>*</sup><span class="tooltiptext" style="zoom:0.9">Reality check: a single byte VBC represents numbers up to 63, 63 bytes of storage represents over 500 bits, or numbers ranging up to ±10<sup style="zoom:0.6">150</sup>, aka sufficient.</span></div> indicating the number of bytes used to represent the integer, followed by the value with most significant byte first.  The most significant bit<div class="tooltip"><sup>*</sup><span class="tooltiptext">of the first, most significant, byte</span></div> indicates the sign of the stored integer: set is negative.  The sign bit is not included in the value of the integer.  When necessary, a zero value most significant byte is prepended to achieve the required sign bit.<br/><br/>
+GMP integers are stored in BCD<div class="tooltip"><sup>*</sup><span class="tooltiptext" style="zoom:0.9">Binary Coded Decimal, where each 4 bits represents one number 0-9.  When viewed in a hex editor, BCD numbers may be read as base 10 numbers directly.</span></div>, most significant digit first, with a terminating nybble of 0xE for a positive number and 0xF for a negative number.<div class="tooltip"><sup>*</sup><span class="tooltiptext" style="zoom:0.9">Nybbles with value 0xA, 0xB and 0xC indicate corrupted or otherwise erroneously recorded data.</span></div> The ratio type is stored as two GMP integers back-to-back, but both integers are padded<div class="tooltip"><sup>*</sup><span class="tooltiptext" style="zoom:0.9">If 0xD appears immediately behind 0-9 values that is also an error, 0xD is used to pad the unused nybble in the final byte of a GMP encoding when the number has an even number of digits, plus the sign/terminator nybble, plus the 0xD padding nybble.</span></div>, if needed, to end on byte boundaries.<br/><br/>
 
-Rational fractions are stored as two integers, with two variable length byte encoded sizes: the first telling the size of the remaining size code plus the size of both integers<div class="tooltip"><sup>*</sup><span class="tooltiptext">aka total bytes remaining in the object, as is standard for all variable sized data items</span></div> followed by a variable byte encoded size of the numerator storage, followed by the numerator and denominator.
-
+GMP integers (and the <a href="https://gmplib.org/">library</a> used to work with them) can store and calculate with arbitrarily large numbers.  For purposes of Assign Onward, only integers and ratios of integers are used, to explicitly avoid the ambiguity that can come from floating point arithmetic.<br/><br/>
 
 </span>
 </div>
+
+<font color="grey">
+Deprecated, 2018 ideas:<br/><br/>
+
+GMP integers are stored in compact form, starting with a <a href="VariableByteCoding.html">variable byte code</a><div class="tooltip"><sup>*</sup><span class="tooltiptext" style="zoom:0.9">Reality check: a single byte VBC represents numbers up to 63, 63 bytes of storage represents over 500 bits, or numbers ranging up to ±10<sup style="zoom:0.6">150</sup>, aka sufficient.</span></div> indicating the number of bytes used to represent the integer, followed by the value with most significant byte first.  The most significant bit<div class="tooltip"><sup>*</sup><span class="tooltiptext">of the first, most significant, byte</span></div> indicates the sign of the stored integer: set is negative.  The sign bit is not included in the value of the integer.  When necessary, a zero value most significant byte is prepended to achieve the required sign bit.<br/><br/>
+
+Rational fractions are stored as two integers, with two variable length byte encoded sizes: the first telling the size of the remaining size code plus the size of both integers<div class="tooltip"><sup>*</sup><span class="tooltiptext">aka total bytes remaining in the object, as is standard for all variable sized data items</span></div> followed by a variable byte encoded size of the numerator storage, followed by the numerator and denominator.<br/><br/>
+</font>
 
 <br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
 <span itemprop="name">Assign Onward</span></span></a><br/>

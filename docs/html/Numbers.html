@@ -1,7 +1,7 @@
 <!--
  MIT License
 
- Copyright (c) 2018 Assign Onward
+ Copyright (c) 2021 Assign Onward
 
  Permission is hereby granted, free of charge, to any person obtaining a copy
  of this software and associated documentation files (the "Software"), to deal
@@ -85,6 +85,7 @@
 
 <meta charset="UTF-8"/>
 <title>Numbers</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
 </head>
 
 <body>
@@ -104,11 +105,11 @@ Floating point numbers may be used in user interface representations of rational
 
 <h2>Storage</h2>
 
-Both 64 bit integers and GMP integers are stored in key-value form where a 64 bit key<div class="tooltip"><sup>*</sup><span class="tooltiptext">stored as variable byte code</span></div> preceeds the data, with the data format indicated by the key value: 64 bit integers are stored as <a href="VariableByteCoding.html">variable byte code</a>, GMP integers and fractions use <a href="GmpIntegerStorage.html">a different</a><div class="tooltip"><sup>*</sup><span class="tooltiptext">more compact for larger numbers</span></div> encoding.<br/><br/>
+Both 64 bit integers and GMP integers are stored in key-value form where a 63 bit key<div class="tooltip"><sup>*</sup><span class="tooltiptext">stored as variable byte code</span></div> preceeds the data<div class="tooltip"><sup>*</sup><span class="tooltiptext">In arrays, a single key preceeds a count of how many values are in the array followed by all the values in the array.</span></div>, with the data format indicated by the key value: 64 bit integers are stored as 8 byte signed quantities, while 63 bit unsigned integers are stored using <a href="VariableByteCoding.html">variable byte code</a>, GMP integers and fractions use <a href="GmpIntegerStorage.html">a different</a><div class="tooltip"><sup>*</sup><span class="tooltiptext">Binary Coded Decimal</span></div> encoding.<br/><br/>
 
 <h1><a name="Time">Time</a></h1>
 
-Time is expressed in <a href="https://en.wikipedia.org/wiki/Unix_time#Encoding_time_as_a_number">Unix Time</a> encoded in a signed 64 bit integer, with the seconds multiplied by 189,000,000.<div class="tooltip"><sup>*</sup><span class="tooltiptext">this encoding places the storage value rollover event approximately 1,500 years in the future.</span></div>  The 189,000,000<div class="tooltip"><sup>*</sup><span class="tooltiptext">Why 189?  189 is 3x3x3x7, enabling even division by any number up to 10, and many more common larger numbers.</span></div> divisions are used to ensure that events generated on a single server are given a strictly increasing sequence in time - while events coming from multiple sources may be recorded as simultaneous, no two events recorded by a single actor may be marked as simultaneous.<div class="tooltip"><sup>*</sup><span class="tooltiptext">Regarding <a href="https://en.wikipedia.org/wiki/Network_Time_Protocol#Leap_seconds">leap second concerns</a> the only rule for AO protocol is that events must be sequential in represented time.  One might condsider a leap second to be a brief trading halt, or if one must trade during the leap second, the software must simply assure monotonically increasing time numbers for all time records.</span></div>  It is expected that actual clock times accurate to the millisecond will be used, and for events which are generated in the same millisecond of clock time, their timestamps will be adjusted to place them in proper sequence when considering the smaller divisions of time.  When time values are stored, they are stored as straight 8 byte big endian storage of the integer.
+Time is expressed in <a href="https://en.wikipedia.org/wiki/Unix_time#Encoding_time_as_a_number">Unix Time</a> encoded in a signed 64 bit integer, with the milliseconds multiplied by 1,000.<div class="tooltip"><sup>*</sup><span class="tooltiptext">this encoding places the storage value rollover event approximately 280,000 years in the future.</span></div>  The millisecond divisions are used to ensure that events generated on a single server are given a strictly increasing sequence in time - while events coming from multiple sources may be recorded as simultaneous, no two events recorded by a single actor may be marked as simultaneous.<div class="tooltip"><sup>*</sup><span class="tooltiptext">Regarding <a href="https://en.wikipedia.org/wiki/Network_Time_Protocol#Leap_seconds">leap second concerns</a> the only rule for AO protocol is that events must be sequential in represented time.  One might condsider a leap second to be a brief trading halt, or if one must trade during the leap second, the software must simply assure monotonically increasing time numbers for all time records.</span></div>  It is expected that actual clock times accurate to the millisecond will be used, and for events which are generated in the same millisecond of clock time, their timestamps will be adjusted to place them in proper sequence when considering the smaller divisions of time.  When time values are stored, they are stored as straight 8 byte big endian storage of the integer.
 
 </span>
 
@@ -116,10 +117,10 @@ Time is expressed in <a href="https://en.wikipedia.org/wiki/Unix_time#Encoding_t
 
 <br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
 <span itemprop="name">Assign Onward</span></span></a><br/>
-<span itemprop="datePublished" content="2018-07-28"><div class="tooltip">28 July 2018<span class="tooltiptext">
+<span itemprop="datePublished" content="2018-07-28"><div class="tooltip">28 July 2018, updated 14 November 2021<span class="tooltiptext">
 MIT License
 <br/>
-Copyright (c) 2018 Assign Onward
+Copyright (c) 2021 Assign Onward
 <br/><br/>
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

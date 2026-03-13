@@ -1,0 +1,148 @@
+<!--
+ MIT License
+
+ Copyright (c) 2021 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+    /* border-bottom: 1px dotted black; If you want dots under the hoverable text */
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    /* Position the tooltip text */
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    /* Fade in tooltip */
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+<meta charset="UTF-8"/>
+<title>Stone Soup</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+<img src="AO.png" alt="Ⓐ" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Stone Soup</h1>
+
+If you are not familiar, you should read about the <a href="https://en.wikipedia.org/wiki/Stone_Soup">Stone Soup</a> folk story.  At the risk of overuse of metaphor, Assign Onward is a system where everybody has their own pot that they control.  By itself, it's not appealing or valuable, but... if you trade a bit of the meat you have for a bit of the roots, vegetables and spices that others have, you can all have a better and more valuable stew.  An individual's Assign Onward<div class="tooltip"><sup>*</sup><span class="tooltiptext">public, open, value store</span></div> blockchain provides a record of promises made, and a trading post for additional promises to exchange for promises made by others.<br/><br/>
+
+Continuing on in the folk story theme, among other things Alice grows asparagus, Bob brews beer, Charlie grows carrots, Dave digs potatoes, Eddie earns a living fixing engines, Faythe is a trusted mediator who helps people settle disputes, Gene grows garbonzo beans and ginger, Hans has a herd of Jersey Heifers, Irene's inn includes a restaurant, etc.  Each of these people have various markets for their goods and services, but they also can benefit from dealing directly with their neighbors.  Irene can always trade credits for cooked meals with Alice, Bob, Charlie, Dave, Gene and Hans in exchange for credits for their products as available and when she needs them.  Alice's asparagus doesn't start harvesting until April and the harvest only runs about a month, but during that month Irene wants to be sure she can get all the asparagus she needs for her restaurant fresh from Alice.  So, Irene exchanges meal credits to Alice for right of first choice in Alice's upcoming harvest.  This works out to more meal credits than Alice will use during the year, but that's O.K. because Bob gives a great rate on his beer in exchange for Irene's meal credits, and Alice's husband Charlie loves Bob's beer.  Charlie sells carrot credits to Irene, Dave sells potatoes, and everyone exchanges a bit of what they've got to Eddie who keeps their machines running.<br/><br/>
+
+Nobody is 100% dependent on barter in this story, they still have the same external markets they did before Assign Onward, but they also have "smaller world" markets where they exchange credits with people they know for things they use more directly.  The world of taxes, regulations, safety inspections, recalls, stop sale orders, etc. doesn't go away, it's just supplemented with a more transparent trade system where buyers have the opportunity to know more about their sellers; deal preferentially with sellers who provide things they value.  Whether that's more flavorful fruit, certified organic growing methods, local and/or minority owned or staffed buisnesses, or just the best price on a bushel of barley delivered to Bob's doorstep.  Through information exposed on Assign Onward blockchains, Bob can shop barley suppliers, query their shipping rates per bushel to his address, and filter by criteria that matter to him.  Some barley suppliers may advertise little more than price, but others will give more insight into their operations and Bob can filter his supplier list by whatever factors the barley suppliers choose to share.  If Bob's customers care about "free trade barley" grown on farms that pay fair wages to their workers, Bob can pay a premium to get his barley from suppliers that meet those criteria, and provide an auditable evidence trail to his customers showing that.<br/><br/>
+
+Back in the more modern world, accountants, bartenders, computer programmers, doormen, etc. may or may not have commodity goods or services they wish to individually promise on a futures market, but they almost all will consume goods and services offered by others who could be offering them in exchange for credits on an Assign Onward blockchain.  While all kinds of currency, especially highly liquid digital currency like Assign Onward shares, represent a better than zero-sum game due to the <a href="https://www.pwc.com/gx/en/news-room/press-releases/2020/blockchain-boost-global-economy-track-trace-trust.html">efficiencies of exchange they enable</a>, beyond that value can be realized (and lost) giving credit to individuals and businesses you know better than the banks.  While I wouldn't suggest that full-time employees start accepting 100% of their salary in company scrip, I will point out that the 10% of salary I have diverted to <a href="https://www.investopedia.com/terms/e/espp.asp">ESPP</a>s over the years has been a very good deal for me, working out to a 5% or better boost in compensation immediately on issuance of the stock, and also growing at a rate much better than bank interest.<br/><br/>
+
+<h2>Worse than the Wild West</h2>
+
+Unfortunately, while blockchain promises enjoy almost none of the protections of standard contracts, they will be facing local regulations in most jurisdictions around the world.  When your trading partners are spread across the globe, very few mechanisms to remedy breach of contract exist across multiple international boundaries - particularly for small transactions.  However, your local jurisdiction is likely more than eager to tax your transactions and regulate your offerings - and that's not all bad.  If you sell a food product via blockchain shares, it should meet all the same health and safety standards as if you were selling it at a local market for cash.  Your customers should also be demanding proof<div class="tooltip"><sup>*</sup><span class="tooltiptext">or at least something that resembles verifiable proof as much as the current regulatory system provides</span></div> of the safety of your goods and services.  The immutable nature of blockchain transactions means that "under the table" transactions won't remain "under the table" for long if they're recorded on an open blockchain, and businesses which make false claims won't be able to establish long histories of 100% ethical dealing.<br/><br/>
+
+<h2>Web 3.0</h2>
+
+Sounds scary, why would individuals or small businesses want to play in such an arena?  Mostly, they shouldn't be "all in" with 100% of their assets leveraged on the blockchain.  It's risky, particularly on the regulatory front, but it is at a stage where partial investment makes a lot of sense.  First movers in the space will have advantages over entrenched businesses that don't get in the game until later.  Web 3.0 is definitely used to evoke the "get rich quick" lust left around from the first dot com market boom, but I feel it is also an appropriate milestone mark for the broad application of cryptographic security to the direct exchange of value among individuals without relying on intermediaries that both tax and slow the transactions in exchange for the security they bring to the transactions.
+
+<hr/>
+
+</span>
+
+</div>
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2021-11-14"><div class="tooltip">14 November 2021<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2021 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+</div>
+
+</body></html>
+

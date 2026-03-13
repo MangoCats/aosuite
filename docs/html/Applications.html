@@ -85,6 +85,7 @@
 
 <meta charset="UTF-8"/>
 <title>Applications</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
 </head>
 
 <body>
@@ -114,9 +115,23 @@ The same small world network which processes recording transactions could serve-
 
 Users could vote with shares which stories to keep open for active discussion, which to store, and which to cycle out of archive storage after a period of months or years.
 
+<h2>Mutual cloud storage</h2>
+
+We all keep data that we would rather not lose.  Financial records, family photos, old e-mails, etc.  Organization / management of all this data quickly becomes a domain specific exercise, but universally: we'd rather not lose our important digital files, and the way to prevent this loss is backups.  Preferably multi-site, and even multi-system backups so that data loss due to all kinds of failures is not permanent.  Assign Onward can provide a foundational system for shared storage of encrypted records.  An operator might have two or more local backups, then also keep their data offsite with other operators, forming a mutual backup system.  If everyone in a group of six operates a pair of local backup systems and also keeps their data spread on five other systems, that's a seven way backup - unlikely in the extreme to fail completely.  This group of six could mix and match with other groups, keeping diversity in the system.  Cost sharing could be tracked on a blockchain, with most costs being a wash but heavy users might  compensate lighter users for their equipment / power costs.  Operation of a reliable data backup system could be one way to establish an identity as trustworthy / reliable.
+
+With data records stored under <a href="KeyReuse.html">individual keys</a> sharing applications like a family / friends photo sharing and similar applications could be developed on top of the distributed file sharing system.  While many commercial providers have tried provisioning this kind of service for free, or supported by advertising, or personal data mining, ultimately they all seem to fall back to charging subscription fees.  If you are participating equitably in a mutual data backup service, then you are paying the other members for backing up your data by backing up their data.  There is still a cost, but it's a controlled cost, and if you don't like the fees your partners are charging, you can shop for other partners, or fall back to running all your own backup equipment.  The service is built on a flexible base, with you in as much control as you want.  You might choose to run no backup server at all and simply pay others for the service, or you might run far more backup capacity than you need and charge others to share your capacity.
+
 <h2>Flexible demand auction</h2>
 
 Say you are an "in-demand" speaker like an ex-president or some such.  You might set up a marketplace where you sell "speaking shares" to the open market.  You tell the world that you will go to speaking engagements at least twice a year, and you will be selling up to 200 speaking shares per year.  After each speaking engagement, whatever venue is offering you the most speaking shares to come to them next is the one you will book next.  When you book the engagement, that venue's speaking shares comes back to the speaker who is free to offer them back out to the market for "valuable consideration," whenever and however the speaker chooses to.  You might donate a few shares to your alma-mater every year, a few more to your city government, and put the rest out for auction, after each share sells at auction, the next share demands twice the price of the previous one.  Your alma mater and city government can use their gifted shares to compete (unfairly?) with paying bidders, or they can sell their shares on the open market as a source of income.  Venues which miss out on one speaking engagement might accumulate shares over time when they are at low price points, or they might sell their shares off - possibly for a profit.  Of course, speculators can play the market.
+
+<h2>Inflation Hedge</h2>
+
+O.K., as of 2021 this one sounds a little silly.  Appreciation of some crypto-assets, and the spectacular flame-outs of so many others, are certainly due to an influx of new investment that won't continue indefinitely.  However, in the more distant future, being able to invest in proven liquid assets based on the commodities you need would be an inherent inflation hedge.  Instead of your retirement savings tracking a national currency, or the broad stock markets, a significant portion might be invested in the things you will be using in retirement.  Like food, entertainment, personal services, etc.  If the dollar inflates at 10% per year for 10 years, your dollar based investments will lose 62% of their value.  But, if you are holding shares in food, home repair service, transportation, etc. those shares should retain their relative value in number of meals, years of maintenance work, miles traveled, etc.  It will take time for the markets to be exposed via blockchain shares, settle into the emerging regulatory framework, and stabilize, but once that has been established it could radically democratize the equity markets - possibly shifting power from the largest corporations into the hands of smaller businesses and individuals.
+
+<h2>Never lose a receipt</h2>
+
+Amazon provides a great service in keeping records of all purchases you make, for years.  What if everything you ever bought, anywhere that accepted your credit card, came with a full invoice and receipt including warranty information?  It's not the whole answer to bogus warranty claims, but it's a start.
 
 <h2>Many more</h2>
 
@@ -126,6 +141,15 @@ Say you are an "in-demand" speaker like an ex-president or some such.  You might
         <li>Current professional license status</li>
         <li>Whatever might apply to services being provided</li>
     </ul>
+    <li>Notary Public - witness signatures on documents, even if the crypto-signer is unknown
+          the notary would be a well known signature vouching for the timing of the signature
+          and possibly providing public record thereof.</li>
+    <li>Timestamp invalidation / validation - trusted time keepers could vouch that a 
+          timestamp comes from too far in the future, thus invalidating it (and whatever 
+          that means in the protocol the timestamp was applied in.)  Conversely a trusted
+          timestamper could sign a transaction, providing more assurance of timestamp correctness
+          than a signature from an unknown private key.</li>
+    <li>a HAM radio digital <a href="https://en.wikipedia.org/wiki/QSL_card">QSL</a> card exchange system</li>  
     <li>Credibility weighted customer satisfaction ratings</li>
     <li>Anything a service provider might want to share with a potential customer, verifiable by trusted outside sources</li>
     <li>Potentially, anything required by law for a service provider to share with a potential customer</li>

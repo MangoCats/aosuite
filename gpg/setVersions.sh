@@ -1,6 +1,10 @@
 #!/bin/bash
 
 set -e
+echo ""
+echo "setVersions.sh"
+echo ""
+set -x
 
 pushd npth
 git checkout npth-1.6
@@ -27,5 +31,8 @@ git checkout gnupg-2.2.29
 popd
 
 pushd gpgme
-git checkout gpgme-1.16.0
+git checkout master
 popd
+
+set +x
+echo "setVersions.sh complete."

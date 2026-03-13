@@ -23,15 +23,23 @@
 
 INCLUDEPATH += $${PWD}
 
-HEADERS += \
-    $$PWD/blockOb.h \
+HEADERS +=          \
+    $$PWD/blockOb.h  \
+    $$PWD/codeDef.h   \
     $$PWD/dictionary.h \
     $$PWD/riceyCodes.h
 
-SOURCES += \
-    $$PWD/blockOb.cpp \
-    $$PWD/dictionary.cpp \
+SOURCES +=             \
+    $$PWD/blockOb.cpp   \
+    $$PWD/blockObDot.cpp \
+    $$PWD/blockObJson.cpp \
+    $$PWD/dictionary.cpp   \
     $$PWD/riceyCodes.cpp
 
-RESOURCES += \
-    $$PWD/blockDef.qrc
+RESOURCES += $$PWD/blockDef.qrc
+
+LIBS           += -lgpgme -lgcrypt -ldl -lgpg-error
+LIBS           += -L/usr/local/lib/ -lgmp
+INCLUDEPATH    += /usr/local/include
+DEPENDPATH     += /usr/local/include
+PRE_TARGETDEPS += /usr/local/lib/libgmp.a

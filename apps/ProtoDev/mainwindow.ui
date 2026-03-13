@@ -1,0 +1,285 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Ⓐ Protocol Development Tool</string>
+  </property>
+  <property name="windowIcon">
+   <iconset resource="ProtoDev.qrc">
+    <normaloff>:/icons/ProtoDev.png</normaloff>:/icons/ProtoDev.png</iconset>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QGridLayout" name="gridLayout">
+    <property name="leftMargin">
+     <number>0</number>
+    </property>
+    <property name="topMargin">
+     <number>0</number>
+    </property>
+    <property name="rightMargin">
+     <number>0</number>
+    </property>
+    <property name="bottomMargin">
+     <number>0</number>
+    </property>
+    <item row="0" column="0">
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex">
+       <number>2</number>
+      </property>
+      <widget class="QWidget" name="blockToolTab">
+       <attribute name="title">
+        <string>Block Assembly Tool</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="tab">
+       <attribute name="title">
+        <string>Dictionary</string>
+       </attribute>
+       <layout class="QGridLayout" name="gridLayout_2">
+        <item row="3" column="5" colspan="3">
+         <widget class="QTextEdit" name="json">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>280</height>
+           </size>
+          </property>
+          <property name="font">
+           <font>
+            <family>Andale Mono</family>
+            <pointsize>10</pointsize>
+           </font>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="5" colspan="3">
+         <widget class="QTextEdit" name="translations">
+          <property name="font">
+           <font>
+            <family>Andale Mono</family>
+            <pointsize>10</pointsize>
+           </font>
+          </property>
+          <property name="lineWrapMode">
+           <enum>QTextEdit::NoWrap</enum>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="1">
+         <widget class="QLabel" name="notesPrefix">
+          <property name="text">
+           <string>RDT_</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="4">
+         <widget class="QPushButton" name="save">
+          <property name="text">
+           <string>Save</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="5">
+         <widget class="QLabel" name="label_2">
+          <property name="text">
+           <string>C++ code translations</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="7">
+         <widget class="QPushButton" name="update">
+          <property name="text">
+           <string>Update</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="6">
+         <widget class="QLineEdit" name="codeDefPath">
+          <property name="text">
+           <string>../../../aosuite/apps/BlockDef/codeDef.h</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="0">
+         <widget class="QLabel" name="label">
+          <property name="text">
+           <string>Ricey Code Definitions</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLabel" name="riceyPrefix">
+          <property name="text">
+           <string>RCD_</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="3">
+         <spacer name="horizontalSpacer_3">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item row="3" column="0" colspan="5">
+         <widget class="QTextEdit" name="notes">
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>280</height>
+           </size>
+          </property>
+          <property name="font">
+           <font>
+            <family>Andale Mono</family>
+            <pointsize>10</pointsize>
+           </font>
+          </property>
+          <property name="lineWrapMode">
+           <enum>QTextEdit::NoWrap</enum>
+          </property>
+          <property name="html">
+           <string>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;
+&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;style type=&quot;text/css&quot;&gt;
+p, li { white-space: pre-wrap; }
+&lt;/style&gt;&lt;/head&gt;&lt;body style=&quot; font-family:'Andale Mono'; font-size:10pt; font-weight:400; font-style:normal;&quot;&gt;
+&lt;p style=&quot; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; color:#000000;&quot;&gt;OBJECT         &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0x0 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// o - in json: a comma separated list of zero or more key-value pairs json encases each pair in {}, all keys unique within the object, in bao there are no separators, a key of Obterm ends the current object&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;INT64          &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0x1 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// i - 64 bit signed integer - json in an unquoted ASCII decimal string, bao as 8 bytes using void qToLittleEndian(qint64 src, uchar *dest)&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;INT32          &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0x2 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// l - 32 bit signed integer - json in an unquoted ASCII decimal string, bao as 4 bytes using void qToLittleEndian(qint32 src, uchar *dest)&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;MPZ            &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0x3 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// n - libGMP signed integer - json as a quoted ASCII decimal string, bao as an object carrying the native GMP values&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;MPQ            &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0x4 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// r - libGMP rational fraction - json as a quoted ASCII decimal string/ASCII decimal string, bao as an object carrying the native GMP&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;RCODE          &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0x5 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// y - Ricey code - json as the table defined name, bao as a list of bytes: last byte has 0 in most significant bit.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;STRING         &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0x6 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// s - UTF8 encoded string - json as UTF8 string, bao as int32_t length (includes terminator) followed by UTF8 string plus null terminator&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;BYTEARRAY      &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0x7 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// b - ByteArray (aka octet stream) - json as hex string, bao as int32_t length followed by length octets&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;OBJECT_ARRAY   &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0x8 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// O - array of zero or more objects encased in []&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;INT64_ARRAY    &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0x9 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// I - array of zero or more 64 bit signed integers stored as above, comma separated in json, rice code size followed by the array in bao&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;INT32_ARRAY    &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0xA &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// L - array of zero or more 32 bit signed integers stored as above, comma separated in json, rice code size followed by the array in bao&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;MPZ_ARRAY      &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0xB &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// N - array of zero or more libGMP signed integers stored as described above&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;MPQ_ARRAY      &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0xC &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// R - array of zero or more libGMP rational fractions stored as described above&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;RCODE_ARRAY    &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0xD &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Y - array of zero or more Ricey codes, quoted hexadecimal and comma separated in json, starts with a rice code size followed by the array in bao&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;STRING_ARRAY   &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0xE &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// S - array of zero or more UTF-8 encoded strings - json as quoted, escaped UTF-8 string, bao as int32_t length followed by UTF-8 string, no null terminator&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;BYTEARRAY_ARRAY&lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt; 0xF &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// B - ByteArray (aka octet stream) - json as hex string, bao as int32_t length followed by length octets&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0" colspan="5">
+         <widget class="QTextEdit" name="ricey">
+          <property name="font">
+           <font>
+            <family>Andale Mono</family>
+            <pointsize>10</pointsize>
+           </font>
+          </property>
+          <property name="lineWrapMode">
+           <enum>QTextEdit::NoWrap</enum>
+          </property>
+          <property name="html">
+           <string>&lt;!DOCTYPE HTML PUBLIC &quot;-//W3C//DTD HTML 4.0//EN&quot; &quot;http://www.w3.org/TR/REC-html40/strict.dtd&quot;&gt;
+&lt;html&gt;&lt;head&gt;&lt;meta name=&quot;qrichtext&quot; content=&quot;1&quot; /&gt;&lt;style type=&quot;text/css&quot;&gt;
+p, li { white-space: pre-wrap; }
+&lt;/style&gt;&lt;/head&gt;&lt;body style=&quot; font-family:'Andale Mono'; font-size:10pt; font-weight:400; font-style:normal;&quot;&gt;
+&lt;p style=&quot; margin-top:0px; margin-bottom:0px; margin-left:0px; margin-right:0px; -qt-block-indent:0; text-indent:0px;&quot;&gt;&lt;span style=&quot; color:#000000;&quot;&gt;ObTerm_o             &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x00 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Object terminator, indicates no more items in the object in bao lists&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;int64_i              &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x01 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Generic signed int64, use depends on context.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;int32_l              &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x02 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Generic signed int32, use depends on context.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;mpz_n                &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x03 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Generic MPZ large integer, use depends on context.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;mpq_r                &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x04 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Generic MPQ large integer fraction, use depends on context.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;type_c               &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x05 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Identifies an algorithm type for hash or crypto key, or other types depending on context&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;text_s               &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x06 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Generic string, use depends on context, for instance in an image object this would be the alt text&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;name_s               &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x16 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Name as a string, use depends on context, often a key name&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;code_s               &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x76 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Code as a string, use depends on context, often a key type&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;data_b               &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x07 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Generic data block, use determined by the object which contains it.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;chainBlock_o         &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x10 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A Chain Block always contains a signedBlock_O which includes a time_i, and a signature_O that signs the whole signedBlock_O.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;signedBlock_o        &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x20 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A Signed Block in the chain always contains a parentSignature_O a time_i of when the block was signed, the signature_O is found in the object which contains the signedBlock_O.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;parentSignature_o    &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x30 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Contains a copy of the signature_O of one or more (more in the case of merging forked chains) parent blocks.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;signature_o          &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x40 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Hash object, only found in chainBlock_O and similar objects which contain a signedBlock_O, contains an algorithm id (type_c) and the hash by that algorithm of the binary representation of the objects in the signedBlock_O (data_b) and a timestamp (time_i) matching the time_i in the signedBlock_O and which must not be as old or older than any parent timestamp and also should not be in the future, these time_i are unique identifiers for chainBlock_O objects.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;time_i               &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x11 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// UTC time of block creation (microseconds since epoch x 189). May never be less than or equal to the timei of any parent block. Serves as a unique id for AOBO blocks.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;AOShares_n           &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x13 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A quantity of shares - meaning depends on context&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;SHA256_c             &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x15 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// algorithm ID (algor) for SHA2 - 256&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;ECB256_c             &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x25 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// algorithm ID (algor) for Elliptic Curve ECDSA curve BrainpoolP256r1&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;RSA3072_c          &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x8025 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// algorithm ID (algor) for 3072 bit RSA - less commonly used algorithms get longer ricey codes&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;SHA3b512_c         &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x8015 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// algorithm ID (algor) for SHA3 - 512&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;jpg_c              &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x9015 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Found in image objects, tells what format the data_b is to be interpreted as&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;png_c              &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0x9025 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Found in image objects, tells what format the data_b is to be interpreted as&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;riceyTypes_O       &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xD008 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// An array object which contains the description, name and ricey code 4 LSB for each defined ricey code type in the system.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;riceyCodes_O       &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xD018 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// An array object which contains the description, name and ricey code for each defined ricey code in the system.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;PcolTA01_c       &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA4D005 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Test protocol, symbol: TⒶ2021.9.7&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;PcolTA02_c       &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA4D015 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Test protocol, symbol: TⒶ2021.10.13&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;PcolA00_c        &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA5D005 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Live protocol, symbol: Ⓐ2021.11.15 Blockchain signing only, no shares or coin&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;PcolA01_c        &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA5D015 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Live protocol, symbol: Ⓐ2021.12.15 Blockchain plus simple shares and coin, no fees&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;AOProtocolId_c   &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0A555 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// An Assign Onward Protocol identifier.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;AOPcolDefBlock_o &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0A550 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// An Assign Onward Protocol Definition Block. &lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;AOGenesisBlock_o &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0B000 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// An Assign Onward Genesis Block. With a signature_o which includes a timei, and other definitions for the chain.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;AOChainDesc_o    &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0CD00 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Chain Description, generally only found in the Genesis Block - descriptive items like name, symbol, number of coins represented by all shares, etc.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;AOChainFunc_o    &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0CF00 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Chain Functional items description, generally only found in the Genesis Block - functional items like number of shares, expiration rates, recording fees, etc.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;AOEndChain_o     &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0EC00 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// Used when reporting the last blocks in a chain, this block is a signal that all known blocks are received. Has a pzzzO and zzzO and timei of when it was reported, but contains no transaction information and will (usually) be discarded when appending new transaction blocks to its parent.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;Symbol_s         &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0CD06 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A short string like ITC representing the chain.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;CdName_s         &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0CD16 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A longer string like Itcoin representing the chain.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;Tagline_s        &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0CD26 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A brief sentence like &amp;quot;The greatest blockchain ever&amp;quot; describing the chain.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;Description_s    &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0CD36 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A paragraph (say 1000-ish characters) describing the chain.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;Icon_o           &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0CD10 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A square-ish image that looks good small, representing the chain.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;Banner_o         &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0CD20 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A wide image that might be displayed near the top of a page, representing the chain.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;Image_o          &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0CD30 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A more detailed image representing the chain.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;CfShares_n       &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0CF03 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// The number of shares recorded in the Genesis block.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;CfCoins_n        &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0CF13 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// The number of &amp;quot;coins&amp;quot; all the shares in this chain represent.&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;CfRecFee_r       &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA0CF04 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// The number of coins per byte charged to record data on this chain (usually 1/a very large number).&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;ExchAdvert_o     &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xAAA000 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// An exchange advertisement for cross chain exchange swaps&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;Proposal_o       &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xAAA010 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A share swap proposal&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;Offer_o          &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xAAA020 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A share swap offer&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;Acceptance_o     &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xAAA030 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A share swap acceptance of offer&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;Cancellation_o   &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xAAAF00 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A share swap notice of cancellation (for cause, usually time expiration)&lt;/span&gt;&lt;br /&gt;&lt;span style=&quot; color:#000000;&quot;&gt;Identity_o         &lt;/span&gt;&lt;span style=&quot; color:#000080;&quot;&gt;0xA110 &lt;/span&gt;&lt;span style=&quot; color:#008000;&quot;&gt;// A cross chain identity, may be tied to share ownership but carries its own key pair&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="5" colspan="3">
+         <layout class="QHBoxLayout" name="horizontalLayout">
+          <item>
+           <widget class="QLabel" name="label_4">
+            <property name="text">
+             <string>json</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QLineEdit" name="jsonPath">
+            <property name="text">
+             <string>../../../aosuite/apps/BlockDef/dictionary.json</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="write">
+            <property name="text">
+             <string>Write</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+        <item row="2" column="0">
+         <widget class="QLabel" name="label_3">
+          <property name="text">
+           <string>Ricey Type Definitions</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="2">
+         <widget class="QPushButton" name="importJson">
+          <property name="text">
+           <string>Import</string>
+          </property>
+         </widget>
+        </item>
+        <item row="2" column="2" colspan="3">
+         <layout class="QHBoxLayout" name="horizontalLayout_2">
+          <item>
+           <widget class="QPushButton" name="reformat">
+            <property name="text">
+             <string>Reformat</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <spacer name="horizontalSpacer_2">
+            <property name="orientation">
+             <enum>Qt::Horizontal</enum>
+            </property>
+            <property name="sizeHint" stdset="0">
+             <size>
+              <width>40</width>
+              <height>20</height>
+             </size>
+            </property>
+           </spacer>
+          </item>
+          <item>
+           <widget class="QPushButton" name="readJson">
+            <property name="toolTip">
+             <string>read the resource file and populate the definition windows from it.</string>
+            </property>
+            <property name="text">
+             <string>Read json</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="demoTab">
+       <attribute name="title">
+        <string>DⒶ</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="testsTab">
+       <attribute name="title">
+        <string>Tests</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="aboutTab">
+       <attribute name="title">
+        <string>About</string>
+       </attribute>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources>
+  <include location="ProtoDev.qrc"/>
+ </resources>
+ <connections/>
+</ui>

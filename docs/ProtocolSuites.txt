@@ -1,0 +1,30 @@
+Protocol Suites
+
+A protocol suite encompasses all messages employed by all roles in a given protocol.
+
+An actor may implement one or more roles in a protocol, and some roles may be entirely optional or uninvolved in the functions of other roles.
+
+While cross-chain exchanges would certainly be simpler within a single/simple protocol suite, a merging of two protocol suites would enable cross chain exchanges between two chains that use otherwise unique protocols.  This would mean that a given blockchain using the merged protocol suite could/would identify which pieces of the larger protocol are applicable to the blockchain, including cross chain exchanges.
+
+A chain might extend its protocol by inclusion of an extended protocol suite (superset of its original protocol), though there is little distinction between a protocol extension and a new genesis block/new chain that acknowledges/values records from previous chain(s).
+
+A few sample functions / roles that could be implemented in a simple protocol suite include:
+
+1) Request to record data (chain id(s), data to record)
+2) Acknowledge recording of data, including recording address (timestamp)
+3) Decline recording of data (+reason: chain(s) not recognized, problem with data, ...)
+
+4) Request retrieval of data (chain id(s), recording address(es))
+5) Retrieved data
+6) Decline retrieval of data (+reason: chain(s) not recognized, address(es) not recognized, ...)
+
+7) Request alternate addresses of chain servers (chain id(s), function(s))
+8) List of addresses for chain(s) and function(s)
+9) Decline retrieval of addresses (+reason: chain(s) not recognized, function(s) not recognized, ...)
+10) Audit functions to enable chain validity checking.
+
+The idea of data defined protocol implementation is that the implementation can start small/simple and test driven, fully proving correctness / robustness of the implementation for simple cases with a few simple primitive functions, then advancing the protocol using the same proven primitives.  Actor/agent software that can implement the primitives of a given protocol (from a protocol defined in data structures) should be able to read the data of a new protocol and implement it directly without new code.
+
+Automated testing can certify implementations, "signing off" on correct implementation of a given suite of protocols.  A server operator can identify themselves, the version of software they are running, and the test suites they have performed.  These test suites could/would be performed by independent operators who provide a signature certifying correct performance by a given server operator, for the version of software they said they were running, at the time of the test performance.  It's less than 100% assurance (hardware failures, performance variations under various stress loads, etc.) but when combined with some form of personal trust of good intent, it is a strong assurance that the operator with good intent is running a good installation of the server software.
+
+

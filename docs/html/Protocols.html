@@ -85,6 +85,7 @@
 
 <meta charset="UTF-8"/>
 <title>Protocols</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
 </head>
 
 <body>
@@ -94,22 +95,61 @@
 
 <span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Protocols</h1>
 
-<h2>Note:</h2>
+<h2>Update 2021</h2>
 
-I'm leaning toward a re-vamp of the protocol description scheme away from strict levels and more toward a bit-field support / no support for various protocol features.<br/><br/>
+All applications which interact with other Ⓐ applications do so through a defined Ⓐ protocol.   <a href="ProtoDev.html">ProtoDev</a> is an application which assists in the development, testing and demonstration of <a href="dProtocols.html">DⒶ</a> protocols.<br/><br/>
+
+A protocol definition block describes valid data blocks which are communicated between defined actors for the possible functions (roles) defined in the protocol, like:
+
+<ul>
+<li>Recording data</li>
+<li>Retrieving recorded data</li>
+<li>Querying available protocols / supported functions under those protocols</li>
+<li>Querying known contact addresses for other servers</li>
+</ul>
+
+as more functions are developed, their data block formats, including:
+
+<ul>
+<li>Required elements</li>
+<li>Optional elements</li>
+<li>Required relationships among elements</li>
+</ul>
+
+will be added to the protocol definition.<br/><br/>
+
+The first series of protocols are designated DⒶx, for "Development."  DⒶ0 defines a minimal protocol for the roles of data writer client and server, and data reader client and server.  <a href="ProtoDev.html">ProtoDev</a> includes a demonstration of modules which implement DⒶ0, DⒶ1 and DⒶ2; the latter add fields for communication of the the client unique identifier and a chain unique identifier.<br/><br/>
+
+Current thinking is to develop from these ultra simple protocols, defined as above, implementing in a way that builds from the protocol definition as much as possible for implementation so that when additions and modifications are made to the protocol for more complex functions, the implemenation of those functions can reuse the existing code wherever possible - being data driven from the protocol definition instead of copy-paste or similar.<br/><br/>
+
+Automated testing should also be possible based on protocol definitions, maybe not all testing, but at least the basics should be testable based on the definitions.<br/><br/>
+
+Blockchain implementations will treat protocol definitions as a kind of Genesis block, defining the rules for all blocks which follow in the chain.  However, a protocol block might make reference to a parent block and definitions within the protocol block might reference the previous blockchain as a basis for value and other things active in the post-protocol definition blockchain.<br/><br/>
+
+The thinking now is to leave the protocol definition very flexible, but eventually settle on one good protocol that can serve a large number of use cases<div class="tooltip"><sup>*</sup><span class="tooltiptext">and an even larger number of independent blockchains serving the various use cases</span></div>, with a focus on open public blockchains which support the exchange of value.  Cross-chain exchanges within a single protocol will be simpler, but if multiple protocols gain wide adoption, they can be expanded to recognize each other and perform secure cross-protocol cross-chain exchanges.<br/><br/>
+
+Another direction for protocol development would be toward HAM radio and similar hobbies.  Instead of open public chains for exchange of value, HAM chains could be closed<div class="tooltip"><sup>*</sup><span class="tooltiptext">Closed meaning: served, recorded and controlled by a select group or individual, while remaining publicly accessible.</span></div> public services, possibly for the exchange and publication of <a href="https://en.wikipedia.org/wiki/QSL_card">QSL</a> cards, HOWTO guides, and similar data signed by the licensee who provides it.<br/><br/>
+
+Existing protocol definition languages like <a href="https://en.wikipedia.org/wiki/Apache_Thrift">Apache Thrift</a> and <a href="https://capnproto.org/">Cap'n Proto</a> or maybe <a href="https://cozy.uwplse.org/">Cozy</a> might be thought of as inspirational, but still falling somewhat short of the descriptives that tell, for instance, how to calculate a hash or sequentiality requirements for successive timestamps.
+
+<hr/>
+
+<font size=-2><span style="background-color:lightgrey;">
 
 <h2>Early thoughts</h2>
 
 
-<span itemprop="articleBody">Just as the basic Assign Onward protocol supports multiple types of cryptographic methods, demonstrating the ability to include new methods as needed<div class="tooltip"><sup>1</sup><span class="tooltiptext">For instance: to transition to quantum ready cryptography.</span></div> the protocol handler itself supports multiple protocols, demonstrating the path toward interoperability with future protocols.  Some sense of the protocol development plan is found in the <a href="Roadmap.html">roadmap</a>.
+(now deprecated)<br/><br/>
+
+<span itemprop="articleBody">Just as the basic Assign Onward protocol supports multiple types of cryptographic methods, demonstrating the ability to include new methods as needed<div class="tooltip"><sup>*</sup><span class="tooltiptext">For instance: to transition to quantum ready cryptography.</span></div> the protocol handler itself supports multiple protocols, demonstrating the path toward interoperability with future protocols.  Some sense of the protocol development plan is found in the <a href="Roadmap.html">roadmap</a>.
 
 <h2><a href="ProtocolAO1.html">Ⓐ¹</a></h2>
 
-The Ⓐ¹ protocol is a basic, single recorder protocol.  Many optimizations are possible in a single recorder scenario, such as assumption that the chain never forks because there is a single entity responsible for maintaining it.  This means that the block chain is guaranteed sequential, non-forking and non-merging - and that transactions recorded thereon can also be reliably sequenced, so that once recorded information like public key identities and shares received amounts can be referred to in the future by just a sequence number in a particular blockchain.<div class="tooltip"><sup>2</sup><span class="tooltiptext">as identified by the hash of the <a href="BlockchainBasics.html#GenesisBlock">genesis block</a></span></div>
+The Ⓐ¹ protocol is a basic, single recorder protocol.  Many optimizations are possible in a single recorder scenario, such as assumption that the chain never forks because there is a single entity responsible for maintaining it.  This means that the block chain is guaranteed sequential, non-forking and non-merging - and that transactions recorded thereon can also be reliably sequenced, so that once recorded information like public key identities and shares received amounts can be referred to in the future by just a sequence number in a particular blockchain.<div class="tooltip"><sup>*</sup><span class="tooltiptext">as identified by the hash of the <a href="BlockchainBasics.html#GenesisBlock">genesis block</a></span></div>
 
 <h2>Ⓐ²</h2>
 
-Ⓐ² protocol expands to support multiple, possibly competing, block chain recorders.  Temporary forks and later re-merges of the blockchain are anticipated, and as such many of the optimizations in Ⓐ¹ which assume no forking become invalid.  No matter, when software supports both Ⓐ¹ and Ⓐ² protocols, all they need to do is determine which protocol applies<div class="tooltip"><sup>3</sup><span class="tooltiptext">as identified by declaration in the <a href="BlockchainBasics.html#GenesisBlock">genesis block</a></span></div> and handle accordingly.
+Ⓐ² protocol expands to support multiple, possibly competing, block chain recorders.  Temporary forks and later re-merges of the blockchain are anticipated, and as such many of the optimizations in Ⓐ¹ which assume no forking become invalid.  No matter, when software supports both Ⓐ¹ and Ⓐ² protocols, all they need to do is determine which protocol applies<div class="tooltip"><sup>*</sup><span class="tooltiptext">as identified by declaration in the <a href="BlockchainBasics.html#GenesisBlock">genesis block</a></span></div> and handle accordingly.
 
 <ul><li><a href="MultichainExchange.html">Multichain Exchange</a></li>
     <li><a href="ShareOwnerTracking.html">Share Owner Tracking</a></li>
@@ -117,12 +157,14 @@ The Ⓐ¹ protocol is a basic, single recorder protocol.  Many optimizations are
 
 <h3>and many more</h3>
 
-On the one hand, it would be nice to develop a single protocol to serve most use cases.  On the other, it would be naïve to assume that a single protocol will set forth and optimally address all the myriad of presently unknown uses for lightweight blockchain impmementations.  While it is entirely possible<div class="tooltip"><sup>4</sup><span class="tooltiptext">as demonstrated by <a href="https://bitcoin.org/">Bitcoin</a></span></div> to develop a single blockchain and endlessly modify an develop it over the years, I believe it is also practical to develop replacement protocols which can start fresh and take over for existing protocols,<div class="tooltip"><sup>5</sup><span class="tooltiptext">takeover to happen on the merits of the new protocol, if it is a truly superior protocol then it should be able to overcome the inertia of the existing implementations and replace them.</span></div> particularly in an ecosystem where no single blockchain is attempting to rule the entire world.
+On the one hand, it would be nice to develop a single protocol to serve most use cases.  On the other, it would be naïve to assume that a single protocol will set forth and optimally address all the myriad of presently unknown uses for lightweight blockchain impmementations.  While it is entirely possible<div class="tooltip"><sup>*</sup><span class="tooltiptext">as demonstrated by <a href="https://bitcoin.org/">Bitcoin</a></span></div> to develop a single blockchain and endlessly modify an develop it over the years, I believe it is also practical to develop replacement protocols which can start fresh and take over for existing protocols,<div class="tooltip"><sup>*</sup><span class="tooltiptext">takeover to happen on the merits of the new protocol, if it is a truly superior protocol then it should be able to overcome the inertia of the existing implementations and replace them.</span></div> particularly in an ecosystem where no single blockchain is attempting to rule the entire world.
 
 
 </span>
 
 </div>
+
+</span></font>
 
 <br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
 <span itemprop="name">Assign Onward</span></span></a><br/>

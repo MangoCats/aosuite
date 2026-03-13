@@ -1,0 +1,190 @@
+<!--
+ MIT License
+
+ Copyright (c) 2021 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+    /* border-bottom: 1px dotted black; If you want dots under the hoverable text */
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    /* Position the tooltip text */
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    /* Fade in tooltip */
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+
+<meta charset="UTF-8"/>
+<title>Blockonomics</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+<img src="AO.png" alt="Ⓐ" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Blockonomics</h1>
+
+
+<span itemprop="articleBody">
+<h2>Hobby, Global Scale, or a Global Scale Hobby?</h2>
+
+The costs involved in running a single<div class="tooltip"><sup>*</sup><span class="tooltiptext">proof of stake</span></div> blockchain are tiny - easily absorbed by many people as a fraction of their fixed cost internet access subscription, a tiny fraction of their electric bill, a trivial amount of space in a closet to hold the hardware, and an investment of less than $100 in the hardware needed to run it on a dedicated<div class="tooltip"><sup>*</sup><span class="tooltiptext">while a secure server image might be run in a container on a multi-purpose computer, there are still practical problems with multi-purpose computers needing to be restarted for other reasons, capacity loaded by other applications, etc.  Far simpler to analyze the dedicated use case and let the hobbyists play with time-share setups.</span></div> machine.  However, when this scales up to billions of blockchains each transacting dozens of exchanges per week, the costs do become significant and are unlikely to be happily borne by cloud service providers on teaser "free trial" deals.<br/><br/>
+
+To provide reliable / robust / rapid service to users, blockchains need to be served from a significant<div class="tooltip"><sup>*</sup><span class="tooltiptext">say 5 to 50, depending on application</span></div> number of diverse servers, preferably with diverse operators that the blockchain operator may not necessarily know.  Being able to compensate these redundant service providers, whether in cash, shares of the chain, cooperative hosting of their chains, or a combination of all three should incentivize providers to competitively strive to provide reliably rapid service to blockchain users.
+
+<h3>Basic Units</h3>
+
+Serving a blockchain requires:
+
+<ul><li>Server processing hardware</li>
+    <li>Server storage space</li>
+    <li>Network connectivity</li>
+    <li>Hosting space<div class="tooltip"><sup>*</sup><span class="tooltiptext">clean, dry, appropriate temperature environment with electric and network connectivity suitable to host the server(s)</span></div></li>
+    <li>Electricity to run all of the above</li>
+</ul>
+
+<h4>Processing Hardware</h4>
+
+Conceivably, blockchains could be hosted on smartphones, but the nature of smartphone connectivity is unreliable, and phone users mostly won't care for the negative impact on their battery life or data usage fees<div class="tooltip"><sup>*</sup><span class="tooltiptext">and server software developers and operators won't care for the constantly shifting OS API/security landscape which obsoletes applications like blockchain servers every year or so.</span></div>.  Minimal hardware like a <a href="https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/">Raspberry Pi Zero 2 W</a> could serve a surprising number of transactions for a tiny cost, but more likely something in an Intel NUC form factor would be more efficient in the case where a lot of transactions are being served on a regular basis.  In any event, the processing hardware has a purchase price, average service life, and a sustained transaction per minute throughput capacity.<br/><br/>
+
+For example numbers, consider a fanless industrial NUC for $1000 as the server processor of choice, with an expected 5 year service life and an average of 100 transactions per minute served<div class="tooltip"><sup>*</sup><span class="tooltiptext">server operators who are in it "for the money" would do well to serve multiple blockchains, up to the point that their hardware is significantly utilized at normal peak loading.  If they go over-capacity from time to time, that's why the chain operators are supposed to utilize a significant number of redundant services to serve their chain operations.</span></div>, that works out to 0.00038 cents per transaction, for the server processing hardware.  For a medium traffic chain that is hosted on 10 servers distributed around the planet, that comes to 0.0038 cents per transaction.
+
+<h4>Server storage space</h4>
+
+Blockchains are immutable records, and as currently implemented many blockchains will grow infinitely large over infinite time.  While I appreciate that many businesses transaction volume is small enough that a "standard" 2TB drive can serve all their blockchain storage needs for decades to come<div class="tooltip"><sup>*</sup><span class="tooltiptext">and, of course, during that time the capacity and price of storage is expected to continue falling.  We may be in a situation where essentially infinite long term storage is a practical reality, or not.  It doesn't hurt to plan for the "not" case, and it also doesn't hurt processing time to reduce the relevant chain history.</span></div>, that infinity in the numerator still bothers me.  With billions of people utilizing a system of blockchains, the total record size across all chains will be significantly more than 2TB.  All this is a(nother) long winded justification for protocol based planned <a href="Expiration.html">expiration</a> of neglected blockchain records.<br/><br/>
+
+Once the infinity is gone from the storage time, a cost of storage can be calculated for blockchain records.  Realize that, before they expire, every blockchain record is stored on every active processor, as well as additional archival copies.  If 2TB of storage costs $200 with an average service life of 5 years, that's $20 per TB per year.  If an "average" blockchain transaction weighs in at 10KB in long term storage (this is generous, optimal transactions might squeak in at 1KB or less, but never underestimate protocol bloat), replicate this across 10 active servers for 7 years and 3 archival servers<div class="tooltip"><sup>*</sup><span class="tooltiptext">in this very rough estimate, the cost of the archival server processors is neglected - assume the archives are kept on removable drives attached to some of the active processors.</span></div> for 10 years, that's 100 storage-years, or the equivalent of 1MB stored for a year.  So, the total archival costs incurred by one transaction (on a seven year storage protocol) are 0.002 cents.  If you prefer longer storage horizons, say 99 years, the cost scales linearly: 0.002 * 99 / 7 = 0.028, or about 7x the cost of processing<div class="tooltip"><sup>*</sup><span class="tooltiptext">there are other increased costs of long life blockchain records, particularly in the performance of a full audit of all active records, but long term storage is probably the biggest one.</span></div>.  When the proceeds of a value transfer are "fully spent" that record can be ignored in many types of chain analysis, but the record will still be expected to be present in a "full audit."
+
+<h4>Network connectivity</h4>
+
+Of course, this varies greatly by location, types of service available, and even volume of transactions processed.  While some service providers advertise "unlimited data" for low rates like <a href="https://www.xfinity.com/learn/internet-service/data#xFiHalfImage">$30 per month</a>, historical experience has shown that unlimited plan users quickly hit a virtual ceiling, bandwidth throttling, etc. when they stray too far outside the normal usage patterns.  So, a normal bandwidth provided is in the range of 1TB per month, and in the unfortunate US markets this is billed at something like $76.  In our home, we use an average of 500GB per month, so you could say that we have another 500GB per month that we would get "for free" if we just utilized it, and indeed, many low volume chain processors will do just that.<br/><br/>
+
+Still, to put something approaching a realistic number on the cost of bandwidth when it is provided to high volume transaction processors, we can start with $76 per TB.  I have seen similar numbers for cloud service providers, with a 2x premium for some common hosting plans.  When a transaction is processed, we might assume that the exchange is negotiated between the primary contact processor 7x before execution, and communication to 9 other processing nodes might require 2x communication of the transaction data, for a total of 25x communication for each transaction recorded.  But wait, there's more.  To establish and maintain <a href="Multitudinous.html">value</a> blockchain records will be subject to independent audit.  How much independent auditing is hard to guess, but over a seven year lifetime a transaction might be read another 25x from the various processors by auditors<div class="tooltip"><sup>*</sup><span class="tooltiptext">Some amount of auditing is required to establish trust and value in a blockchain, but SPAM audit requests can quickly become excessive.  If the auditors are deriving value from their research, they can pay for their bandwidth and transaction lookup processing themselves - effectively a wash for the blockchain operators and users, or potentially a profit center.</span></div>.  So, now, each transaction recorded on a blockchain might need to be communicated 50x among various nodes.  50x 10kB is 500kB of bandwidth per transaction, at a cost of 0.0038 cents per transaction - coincidentally identical to the estimated server processing costs.
+
+<h4>Hosting space</h4>
+
+Hosting space will undoubtedly be borne at zero marginal cost by most hobbyists, but the fact remains, server hardware does occupy some part of their dwelling space, and the dwelling space costs money to rent or purchase and maintain.  Some of the premiums charged by cloud<div class="tooltip"><sup>*</sup><span class="tooltiptext">This whole analysis deserves to be re-performed using cloud service provider costs as a comparison, but perhaps only after prototype software can be exercised on the servers for more realistic cost estimates.</span></div> service providers goes toward maintenance of their physical facilities.  Climate controlled industrial space rents at rates of $10 to $20 per square foot per year, and while the servers themselves take minimal space, a considerable amount of space must be provisioned around the servers for access.  If we assume that a square foot of space can support 250 transactions per minute (2.5x the rate for a single PC assumed above), at a rental rate of $15/sf/year, that's 0.00114 cents per transaction.
+
+<h4>Electricity</h4>
+
+If a server, serving 100 transaction per minute on average, draws 60 watts<div class="tooltip"><sup>*</sup><span class="tooltiptext">Consider that the power drawn is not just that drawn by the processor, but also the networking equipment and the HVAC keeping all this equipment happy.</span></div> on average, that's 6000 transactions per 60 watt hours, or 100 transactions per watt hour.  At a cost of 14 cents per kilowatt watt hour, that's 0.014 cents per transaction on a single server.  With 10 servers hosting a chain, that comes to 0.14 cents per transaction.  While low power processing equipment is a good start, the more important factor is going to be keeping that processing equipment optimally loaded, so it is performing the most transactions per watt.  Cooperating servers may be most advantageously located in areas where electricity and network connectivity are cheap, and the use of renewable energy may also build customer goodwill.  A system in which servers serve more chains than chains use multiple servers will increase efficiency<div class="tooltip"><sup>*</sup><span class="tooltiptext">Not to mention: sharing the capital equipment costs, which are probably the biggest barrier to entry for most people who might get involved in their own blockchain operation.</span></div>, up to the point at which the servers become fully loaded.<br/<br/>
+
+<h4>Some summary</h4>
+
+Using all the above assumptions: 100 transactions per minute on a server, $1000 with 5 year service life for a server, 10 cooperating servers per chain, 7 years expiration time on stored records, 10kB per transaction record, $100/TB w/ 5 year service life for storage, $76 per TB data communication fees, $15/square foot/year hosting space rent, $0.14/kWh electricity costs... the rough total cost per transaction is 0.15 cents, or ~650 transactions per dollar.  Of course, this is a rough estimate which can be off by at least a factor of 10 compared to an optimized service delivery model, and can be many orders of magnitude low for a mismanaged case.<br/><br/>
+
+An extreme bad example, where one chain is served by 10 dedicated servers drawing a total of 600 watts, but only processing one transaction per month, would result in a cost of approximately $60 per transaction<div class="tooltip"><sup>*</sup><span class="tooltiptext">For some high value business record transactions, for instance in supply chain management, $60 per transaction might be a tremendously good value.  Most applications can, and should, do better.</span></div> just for the electricity, not quite as expensive as Bitcoin or Ethereum, but not good either.  A more typical "shared chain hosting agreement" might ask for a fixed rate of $1 per month (or $10 per year) per chain per server - covering the first 500 transactions per month, with additional transactaions charged at $0.002 each, per server.  A chain operator who just buys service from 10 providers would be paying $100 per year for their first 5,000 transactions.  If they chose, instead, to make a ~$1000 capital investment and go into shared hosting for their own chain plus ~50 others<div class="tooltip"><sup>*</sup><span class="tooltiptext">Note that 50 chains, processing 500 transactions per month, only comes up to 0.6 transactions per minute.  If a server can attract 8000 customers transacting an average of 500 transactions per month, that would put them closer to 100 transactions per minute.  Managing 8000 relationships is definitely work, but it would be work that pays a profit of several thousand dollars per month.</span></div>, they should be breaking even<div class="tooltip"><sup>*</sup><span class="tooltiptext">Again: assuming a 5 year service life on their capital equipment, plus the added assumption that the other chains mostly operate below the 5000 transactions per year threshold.</span></div> with income balancing expenses<div class="tooltip"><sup>*</sup><span class="tooltiptext">That's $500 per year income, $90 per year outflow to other hosting providers for service of the locally managed blockchain.  ~$200 per year goes to capital equipment and ~$210 to data charges, electricity, hosting space, etc.</span></div> per year.  Compared with managing 50 relationships, I am guessing most "blockchain explorers" will opt to pay $10 per year to 10 other providers, particularly if they can do it automatically via shares of their blockchain<div class="tooltip"><sup>*</sup><span class="tooltiptext">The chunky upfront payment monthly or annual billing model is one that providers and subscribers would be familiar with.  A better "fit" for blockchain hosting agreements could be where the host accepts a new subscriber for free or a nominal "signup fee," and each transaction recorded gives each recording host $0.002 on the transaction.  The hosts are then free to "cash in" accumulated shares in their subscriber chains whenever they feel the need.</span></div>.<br/><br/>
+
+0.2 cents per transaction, all in, is a highly efficient starting point for a value exchange service.  Due to the highly attractive perception of "free," most blockchain operators will probably find that offering their value adding trading partners "free transactions"<div class="tooltip"><sup>*</sup><span class="tooltiptext">or even offering some kind of "cash back" incentive per trade</span></div> will drive the value of their currency higher overall than the transaction costs they are absorbing.  
+
+Trading partners can "square up" using accepted rates of exchange for the chain-shares they are processing, and particular activities like auditing and research data retrieival can be charged out in accordance with their true impacts on operations.
+
+<h4>Hobby Startups</h4>
+
+All of the above analysis assumes operation of an at least semi-serious cryptocurrency, with the 10x redundant-diverse servers etc.  Of course, people just trying out the technology can get started with a <a href="https://github.com/docker/docker-ce/blob/master/README.md">Docker CE</a> container, or similar, and host their chain on their existing PC using their existing network connection, maybe opening a port in their home router firewall, and they're good to go.  If their currency starts seeing any serious use, they should have a plan to ramp up their hosting partners<div class="tooltip"><sup>*</sup><span class="tooltiptext">either using trusted friends, or open market providers with established reliable reputations, or more likely a mix of both.</span></div> - this could be developed into a nearly automated process, only requiring the operator to approve credit sharing with hosts<div class="tooltip"><sup>*</sup><span class="tooltiptext">In effect, the chain onwer/managers would be giving temporary proxy control of some of their shares to the cooperating hosts to allow them to satisfy proof of share approvals.  If a cooperating host "flakes out" in any way, they can be replaced as soon as the proxy assigned shares revert to the owner's control.</span></div> who are willing to accept their chain shares as payment for services, or if they prefer, simple cash for services providers.
+
+</span>
+
+</div>
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2018-12-04"><div class="tooltip">4 December 2021<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2021 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+</div>
+
+</body></html>
+

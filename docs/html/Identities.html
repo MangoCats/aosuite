@@ -1,0 +1,173 @@
+<!--
+ MIT License
+
+ Copyright (c) 2018 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+    /* border-bottom: 1px dotted black; If you want dots under the hoverable text */
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    /* Position the tooltip text */
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    /* Fade in tooltip */
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+
+<meta charset="UTF-8"/>
+<title>Identities</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+<img src="AO.png" alt="Ⓐ" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Identities</h1>
+
+
+<span itemprop="articleBody">
+<h2>Unique Identities</h2>
+
+Not just <a href="ValuableIdentities.html">valuable identites</a>, but all kinds which establish unique identifiers for transactions, whole blockchains, protocols, indidivual people, or businesses, or agencies, etc.  All of these things have a need to uniquely identify themselves vs many thousands to billions or even trillions of similar things.  Identities need to be unique for computers to be certain they are dealing with the same thing, and they need to be recognizable to human users as well.  These same basic needs are shared among all things that need unique identities, so it makes sense<div class="tooltip"><sup>*</sup><span class="tooltiptext">to me, at least</span></div> for all unique identifiers to share the same basic low level structure - only diverging in implementation when getting to the levels<div class="tooltip"><sup>*</sup><span class="tooltiptext">especially human user facing information</span></div> where the different kinds of entities have different needs.
+
+<h3>Collisions</h3>
+
+The first requirement for unique identifiers is to avoid collisions.  Just like you don't want any two addresses to be identical<div class="tooltip"><sup>*</sup><span class="tooltiptext">because if two houses have the same address, where will mail for that address be delivered?</span></div> no two identities should ever be identical.  A cryptographic hash can compress a long form identity with human-friendly elements like images, sounds, and any amount of text into a relatively short string of ones and zeroes that are for all intents and purposes random, but still verifiable as the hash of the long form data.  These short hashes can be very useful for computer storage and retrieval of items using their hash as an index, but by design collisions should be vanishingly rare.
+
+<h4>Addressing</h4>
+
+Many collision avoidance schemes break down the world, or universe, into divisions like: country, state, city, street and number - so a relatively short number can uniquely identify a house on a street, the street name itself is (hopefully) unique within the city, etc.  In a chaotic environment like millions or billions of independently run blockchains, agreement on addressing divisions can be expensive to achieve.  Best to avoid divisions in establishing the lowest level unique identifiers, if at all possible.
+
+<h4>The <a href="https://en.wikipedia.org/wiki/Birthday_problem">Birthday Problem</a></h4>
+
+In a randomly selected group of people, their birthdays are - more or less - randomly distributed.  But, you don't need a very large group of people before it is statistically a better chance for two of them to have the same birthday than not.  The first pair has a 365.24:1 chance of a collision, but add a third person to the group and now there are two more such chances for collisions.  The fourth person represents three more chances for a collision and so on: N*(N-1) / 2.  Of course, by the time you reach 367 people in the group, there is 100% certainty that at least two share a birthday, but the nature of the problem is such that you reach 50% chance of a collision by the time there are 23 people in the group, and 99% chance of a collision by the time there are 60.
+
+<h4>Collision Avoidance</h4>
+
+Fortunately, while the probability of collision grows with the square of the number items in a group, the number space grows exponentially with the number of digits.  So, a 256 bit hash, instead of ~365 possible numbers, represents 10^77 possible numbers.  If we wish to be 99.9999999999% certain<div class="tooltip"><sup>*</sup><span class="tooltiptext">one chance in a trillion</span></div> of no collisions, that 256 bit number space can hold 4.8×10^32 randomly selected 256 bit identifiers.  A 128 bit space can hold 2.6×10^13 identifiers with the same low chance of collision.<br/><br/>
+
+To put this in perspective, if 100 billion (10^11) entities are transacting with each other once a second, each, generating 100 billion hashes per second, then the 128 bit hash will have a one in a trillion chance of collision in just over four minutes, however, the 256 bit hash will take 152 billion years to reach the same probability of collision.  For purposes of human-use blockchains recording human scale events, a 256 bit hash<div class="tooltip"><sup>*</sup><span class="tooltiptext">using a competent cryptographic algorithm</span></div> alone is sufficient to banish all reasonable chances of a random hash collision.  For slow moving events, like blockchain identities, 128 bits is more than enough and might be preferred to "keep it short" for faster processing, lower storage costs, etc.
+ 
+<img src="separableItems.png" alt="Block Illustration" width="20%" style="float:right"/>
+
+<h2>Human Readability</h2>
+
+While a 256 bit hash by itself may be all that a computer needs to uniquely identify any element of any blockchain made by humans in the next million years, the random string of bits is not very debug-friendly.  The hash_o on the right depicts a somewhat more human-friendly form of identity.  It includes a timestamp of when the hash was calculated, useful in all kinds of auditing and debugging.  It includes a notation of the algorithm used to compute the hash, and it contains the hash itself - which is actually a hash of the hashedOb_o in binary form, with the hashInfo_o appended.  In some cases, like protocol identifiers, a very short human readable string is also included in the hashInfo_o, making it easier to identify and refer to the item - although collisions in those strings are probably and the actual hash in the data_b is the "final word" on unique identification.<br/><br/>
+
+<h3>Developers are Human too</h3>
+
+Wherever a human might possibly be "digging in the datastream" to debug or otherwise work with identifiers, use of the full hash_o instead of just the data_b is preferred to support that ease and speed of human understanding of the identifiers.  
+
+<h3>User side readability</h3>
+
+The hashedOb_o would contain "long form" information for identifiers like personal identifiers, blockchain identifiers, etc.  Even transactions may include human readable notes in the hashedOb_o.  This is the information that makes its way to the user interface in the form of icons, photos, labels, even entire documents.  The hash_o data_b is a guarantee that the hashedOb_o contents are uncorrupted - it serves as a strong checksum of all the data.  separableItems are, as the name implies, separable.  You don't have to have the item itself to check if the data_b hash of the hashedOb_o is correct, but if you do have the item you can verify that it is uncorrupted by checking its corresponding hash in the separableItemsHashes.
+
+<h2>Universal Applicability</h2>
+
+This identity scheme should be re-used wherever unique identifiers are needed, or wanted.  Protocols can define nested structures in which multiple unique ids are embedded multiple layers deep inside objects which are themselves uniquely identified.  Whenever an algorithm needs to find a unique item, it can look it up by its unique hash, regardless of what type of item it is.  As such, if the hash_o hashInfo_o includes the type identifier of the object being hashed, high level handlers can easily hand-off items to their appropriate lower level handlers just by looking at the type identifier, and ignore items with unknown type identifiers.  Or, the high level handlers could just look at the wrapper that the hashedOb and hash come in... maybe better that way, actually.
+
+</span>
+
+</div>
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2021-12-25"><div class="tooltip">25 December 2021<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2021 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+</div>
+
+</body></html>
+

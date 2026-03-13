@@ -85,6 +85,7 @@
 
 <meta charset="UTF-8"/>
 <title>Separable Items</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
 </head>
 
 <body>
@@ -94,38 +95,20 @@
 
 <span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Separable Items</h1>
 
+<img src="separableItems.png" alt="Separable Items Illustration" width="20%" style="float:left">
 
-<span itemprop="articleBody">In an ideal, rational world, there would be no need for separable items.  No combination of bits on a computer is inherently dangerous, but... there are parts of the world governed by people who believe that some information should not be allowed to freely circulate in their jurisdiction.  Since a central concept of the <a href="BlockchainBasics.html">blockchain</a> includes public dissemination of a consistent global public record, it is inevitable that persons innocent or malicious will<div class="tooltip"><sup>1</sup><span class="tooltiptext">illegally, or even legally</span></div> record something on the blockchain which is illegal in some jurisdiction.  Rather than attempt to fight local censorship laws or extend their reach globally, the Assign Onward blockchain incorporates the concept of "Separable Items" - items which are included in the blockchain by their hash, and thus can be separated (and censored) without impacting other portions of the blockchain's integrity checking.<br/><br/>
+<span itemprop="articleBody">In an ideal, rational world, there would be no need for separable items.  No combination of bits on a computer is inherently dangerous, but... there are parts of the world governed by people who believe that some information should not be allowed to freely circulate in their jurisdiction.  Since a central concept of the <a href="BlockchainBasics.html">blockchain</a> includes public dissemination of a consistent global public record, it is inevitable that persons innocent or malicious will<div class="tooltip"><sup>*</sup><span class="tooltiptext">illegally, or even legally</span></div> record something on the blockchain which is illegal in some jurisdiction.  Rather than attempt to fight local censorship laws or extend their reach globally, the Assign Onward blockchain incorporates the concept of "Separable Items" - items which are included in the blockchain by their hash, and thus can be separated (and censored) without impacting other portions of the blockchain's integrity checking.<br/><br/>
 
 Without censorship considerations, the blockchain would be served in its entirety to all jurisdictions, but when certain information in the blockchain is objected to by certain jurisdictions, then servers outside those jurisdictions may provide a "scrubbed" blockchain which removes the offending data before sending blocks into the restrictive jursidictions.  Note that transactional data, such as public keys, share amounts and signatures, are not separable items and hopefully should not run afoul of censorship concerns.<br/><br/>
 
-The item type code includes a bit which indicates separability of the item.<div class="tooltip"><sup>2</sup><span class="tooltiptext">in this example the 0x40 bit was used to indicate separability.  Serious consideration is being given to moving that bit higher to free up space in the single byte codes for more (twice as many) non-separable items.</span></div>  This is a block which contains all items, none separated:<div class="tooltip"><sup>3</sup><span class="tooltiptext">the <a href="VariableByteCoding.html">Variable Byte Coding</a> page gives more explanation of how the binary block encoding is implemented.</span></div>
-
-<pre>
-<font color="008000"><b>87 01</b></font> <font color="A00000"><b>AB 01</b></font> <font color="008000">87 02</font> 01 00 <font color="008000">87 03</font> 00 00 <font color="008000">87 10</font> 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 <font color="008000">87 11</font> 
-00 00 00 00 00 00 00 00 58 02 00 00 00 00 00 00 <font color="008000">87 12</font> 00 00 00 00 00 00 00 00 00 00 00 00 02 00 
-00 00 <font color="008000">87 13</font> 00 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 <font color="008000">87 30</font> <font color="A00000">06</font> 54 E2 92 B6 31 61 <font color="008080">C7 31</font> <font color="A00000">4F</font> 
-54 61 6F 20 4F 6E 65 20 41 20 2D 20 54 65 73 74 69 6E 67 20 6C 65 76 65 6C 20 6F 6E 65 2C 20 73 
-69 6D 70 6C 65 20 70 72 6F 74 6F 63 6F 6C 2E 20 20 53 69 6E 67 6C 65 20 72 65 63 6F 72 64 65 72 
-2C 20 74 65 73 74 20 63 68 61 69 6E 20 41 2E
-</pre>
-
-This is the same block with the separable item (<font color="008080">C7 31</font> <font color="A00000">4F</font>...) replaced with its hash (<font color="008000">06</font>...):
-
-<pre>
-<font color="008000"><b>87 01</b></font> <font color="A00000"><b>7A</b></font> <font color="008000">87 02</font> 01 00 <font color="008000">87 03</font> 00 00 <font color="008000">87 10</font> 00 00 00 00 00 00 00 00 00 00 40 00 00 00 00 00 <font color="008000">87 11</font> 00 
-00 00 00 00 00 00 00 58 02 00 00 00 00 00 00 <font color="008000">87 12</font> 00 00 00 00 00 00 00 00 00 00 00 00 02 00 00 
-00 <font color="008000">87 13</font> 00 00 00 00 04 00 00 00 00 00 00 00 00 00 00 00 <font color="008000">87 30</font> <font color="A00000">06</font> 54 E2 92 B6 31 61 <font color="008000">06</font> 90 ED 0D
-37 60 8A F1 89 6B 31 E8 C8 24 30 7C 7C EE D6 56 83 96 47 74 76 E9 45 5A 57 DA 66 42 C8
-</pre>
-
+In the figure you can see how the separable items themselves are not included in the hashed data, but their hashes are.  Not quite a Merkle tree<div class="tooltip"><sup>*</sup><span class="tooltiptext">without calculation of a nonce to worry about, the Merkle tree is sort of overkill in an Ⓐ protocol.  A simple list of separable item blocks with their associated list of hashes should be efficient and flexible in this setting.</span></div>, but similar.
 
 </span>
 </div>
 
 <br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
 <span itemprop="name">Assign Onward</span></span></a><br/>
-<span itemprop="datePublished" content="2018-06-03"><div class="tooltip">3 June 2018<span class="tooltiptext">
+<span itemprop="datePublished" content="2018-06-03"><div class="tooltip">3 June 2018, illustration updated 13 November 2021<span class="tooltiptext">
 MIT License
 <br/>
 Copyright (c) 2018 Assign Onward

@@ -1,0 +1,211 @@
+<!--
+ MIT License
+
+ Copyright (c) 2021 Assign Onward
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+
+ The above copyright notice and this permission notice shall be included in all
+ copies or substantial portions of the Software.
+
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ SOFTWARE.
+-->
+<html><head><style>
+/* Tooltip container */
+.tooltip {
+    position: relative;
+    display: inline-block;
+    zoom: 0.75;
+    /* border-bottom: 1px dotted black; If you want dots under the hoverable text */
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 240px;
+    background-color: #eee;
+    color: #000;
+
+    text-align: center;
+    padding: 5px 5px;
+    border-radius: 6px;
+
+    /* Position the tooltip text */
+    position: absolute;
+    z-index: 1;
+    bottom: 125%;
+    left: 50%;
+    margin-left: -120px;
+
+    /* Fade in tooltip */
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+/* Tooltip arrow */
+.tooltip .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: #eee transparent transparent transparent;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+}
+
+.zoom {
+    zoom: 2;
+}
+
+.child_img {
+    visibility: hidden;
+      position: absolute; 
+       z-index: 1;
+    margin-top: -100px;
+   margin-left:  -60px;
+       opacity: 0;
+    transition: opacity 1.0s;
+}
+
+.parent_img {
+       display: inline-block;
+}
+
+.parent_img:hover .child_img {
+    visibility: visible;
+       opacity: 1;
+}
+
+.page {
+    margin-top: 60px;
+    margin-bottom: 60px;
+    margin-right: 140px;
+    margin-left: 160px;
+}
+</style>
+
+<meta charset="UTF-8"/>
+<title>Multitudinous Credit Ratings</title>
+  <link REL="SHORTCUT ICON" HREF="favicon.ico" type="image/x-icon" >
+</head>
+
+<body>
+<div class="page">
+<div class="zoom">
+<img src="AO.png" alt="Ⓐ" width="64" height="64" style="float:right">
+
+<span itemscope itemtype="http://schema.org/Article"><h1 id="_name1" itemprop="name">Multitudinous Credit Ratings</h1>
+
+<font size=-1><blockquote cite="https://www.instagram.com/thanks_tyler_credit4life/">
+If you don't take good care of your credit, then your credit won't take good care of you.<br/>
+- Tyler Gregory</blockquote></font>
+
+<span itemprop="articleBody">
+<h2>A Multitude of Currencies</h2>
+
+There are already a multitude of early mover cryptocurrencies, and exchanges doing cross chain value swaps by a wide variety of methods.  Broad rollout of proof-of-stake<div class="tooltip"><sup>*</sup><span class="tooltiptext">As compared to <a href="ProofOfWork.html">proof of work</a> currencies, proof of stake has much lower operating costs, and less of a critical mass requirement to protect against "51%" attacks.</span></div> currencies should only accelerate the proliferation of choice.  Why shouldn't everyone and their <div class="parent_img">dog<span><img class="child_img" src='Doge.jpg' height=100></span></div> be able to launch their own currency?  No good reasons I can think of, but a currency will only have such value as the issuers of it impart to it.  If your <div class="parent_img">dog<span><img class="child_img" src='Doge.jpg' height=100></span></div> isn't ensuring that holders of his/her currency are receiving value when they exchange it, then it won't have any value on the open market.
+
+<h3>Automated Currency Ratings</h3>
+
+Every currency has a<div class="tooltip"><sup>*</sup><span class="tooltiptext">hopefully unique.  The odds of collision should be <a href="BlockchainBasics.html#Hashes">vanishingly rare</a>.</span></div> unique identity.  Transactions are open for all to see, and analyze.  Much like credit bureaus give a credit score to individuals, and ratings agencies score corporate bond quality, automated analysis algorithms can rate the myriad of available currencies both relative to one another and in absolute terms of:<br/>
+
+<ul><li>Value<div class="tooltip"><sup>*</sup><span class="tooltiptext">What is this currency's likely exchange rate now, and in the foreseeable future, relative to other currencies of interest.</span></div></li>
+    <li>Time required to realize value<div class="tooltip"><sup>*</sup><span class="tooltiptext">Both speed of transaction processing, and time required to find willing trading partners.</span></div></li>
+    <li>Value volatility<div class="tooltip"><sup>*</sup><span class="tooltiptext">What is the likely range of variation of value over time, from spans of a few seconds to days or even years.</span></div></li>
+    <li>Value capacity<div class="tooltip"><sup>*</sup><span class="tooltiptext">Currencies issued by small entities will be, by their nature, thinly traded.  Trading 100 coins might yield a good value equivalent to a nice pair of shoes, but attempting to sell 1000 coins in the same currency might depress the value dramatically such that 1000 coins might only yield two pair of shoes.</span></div></li>
+</ul>
+    
+based on their publicly available trading history data.  While traders might rely on a collection of<div class="tooltip"><sup>*</sup><span class="tooltiptext">Hopefully independent, and diverse</span></div> credit ratings to establish relative value between two currencies, the actual transactions will execute based on BID/ASK advertisements<div class="tooltip"><sup>*</sup><span class="tooltiptext">Note that, in a world of multitudinous active cryptocurrencies, Alice may be holding 100 ACOIN, and desire to acquire 1 DCOIN, while Bob is advertising 1 DCOIN in exchange for 3 TCOINs.  Alice's trading software can search for available trades, and make new offers to attempt to find the optimal exchange of ACOIN to obtain her desired 1 DCOIN.  While there is a infinitesimal cost to the research, and some traders may charge fees for access to their markets, free and low cost markets will tend to do more volume, ultimately leading to higher profits.</span></div>, with buyers meeting the requirements of an ASK, or sellers accepting the terms of a BID.  The credit ratings can advise how attractive a deal appears, but the ultimate decision to execute the exchange lies with the offering advertiser and the party accepting that offer.
+
+<h3>Stability Over Innovation</h3>
+
+Cryptocurrencies are still exploring the interplay of their social / technical possibilities.  Smart contracts, automated exchanges, etc. are learning lessons around what works and what doesn't on the open market.  Individuals and small businesses fielding their own currencies would be well served to step back from the bleeding edge of innovation and focus on delivering actual<div class="tooltip"><sup>*</sup><span class="tooltiptext">and automatically verifiable</span></div> value in exchange for a simpler, recognized stable currency protocol, algorithms and software.  Credit scoring algorithms will have more confidence in recognized<div class="tooltip"><sup>*</sup><span class="tooltiptext">and simple</span></div> protocols, and confidence means higher ratings.
+
+<h3>Floating, or Pegged?</h3>
+
+While currencies with floating value are more exciting, and scary, to investors than currencies which are pegged to another more stable currency, pegged currencies are certainly easier to judge in terms of value and stability.  Through management of the float and reserve holdings anyone can 100% reliably manage a cryptocurrency exactly as if it were a debit card.  Currencies with a large value float may<div class="tooltip"><sup>*</sup><span class="tooltiptext">Should?</span></div> encounter regulatory requirements for periodic independent accounting of the quantity and liquidity of their reserves.  The advent of personally managed, pegged, independently audited and credit checked cryptocurrencies may grow to become a powerful alternative to today's debit cards<div class="tooltip"><sup>*</sup><span class="tooltiptext">Expect heavy lobbying from entrenched interests in the credit and debit card business to result in onerous regulations soon.</span></div>.
+
+<h3>Collectively Managed Currencies</h3>
+
+Nothing says that a smaller cryptocurrency has to be managed by an individual.  Small businesses, groups of small businesses, larger groups of people, any group that can cooperate in the management of a currency can issue a single currency with a value rating.  These larger groups could<div class="tooltip"><sup>*</sup><span class="tooltiptext">if they can efficiently <a href="https://www.frontiersin.org/articles/10.3389/fbloc.2020.00012/full">self govern</a>.  While technology makes new forms of decentralized governance possible, it is actually <a href="http://www.ciesin.org/decentralization/English/General/Different_forms.html">nothing new</a> and comes with all the challenges of classic governance.</span></div> find it easier to build higher value in a currency more quickly than smaller groups.  While a single central reference currency is the familiar method most people<div class="tooltip"><sup>*</sup><span class="tooltiptext">and governments, and tax agencies</span></div> operate by today, a heterogeneous mix of large and small currencies offers a new model with exciting possibilities for localization of trade, microfinance for those underserved by the traditional banking industry, and more direct control of one's credit rating.
+
+<h3>Decentralized, or Closely Held?</h3>
+
+Many companies traded on stock exchanges have more than 50% of their shares floating on the open market.  Many others are "closely held" - allowing the open market to trade their shares, but ultimately retaining control of the company through the shares they continue to hold.  While both models for proof of stake cryptocurrencies are possible, the closely held model leaves a single entity much more in control of the currency's destiny than a situation where the majorty of the shares are floating on the open market.  If you want to start a cryptocurrency that you hope to use like a credit card, in my opinion: closely held is the way to go.  It is far more predictable than trusting holders of your currency to do, well... anything, rational or not.  Protocols which include <a href="Expiration.html">expiration</a> of dormant shares should help the primary shareholders in a currency to retain control of a majority of the float, even if a large number of shares end up lost or forgotten by their owners.<br/><br/>
+
+This is not to say that decentralization is a bad thing, just that in the landscape of multitudinous currencies there is already a lot of decentralization in the use of the various currencies, and attempting to manage the individual currencies in a decentralized way will be adding complexity in a way that may not have a payoff in value.  Certainly, there is room for all kinds of management structures.  Time, and the whims of fashion, will tell which are the most valuable for their holders, at least in retrospect.
+
+<h3>Economics Education</h3>
+
+Imagine a future where 7th graders<div class="tooltip"><sup>*</sup><span class="tooltiptext">typically about 12 years old</span></div> study personal economics, with a practical project of managing their own personal currencies.  The class could start with every student given a personal currency with a fixed 100 coins to manage.  In a class of 30, each student and the teacher may start the year with 70 of their own coins and one coin from each of the other students and the teacher.  The teacher might offer a credit of one pencil, or notebook, from the school store in exchange for one of each of the student's coins as a baseline value for their currency to start at.  Throughout the year, the students are free to exchange their coins as they see fit.  Periodic audits of the relative values of their currencies can illustrate how some actions increase a currency's rating while others diminish, or even completely destroy it.  At the end of the year, students who have built significant value in their currency may choose to continue managing it for as long as they want, while "crashed" currencies can be abandoned by their managers and they can start over with a new one when they want to try again.</br></br>
+
+Later in school more advanced classes can study more complex currency systems and how the differences in currency protocols affect the value of the currency.  Students who have maintained value in other currencies can tie those currency identities to the new ones to help build value in the new currencies faster.  While personal currency management isn't likely something that every person will want to engage in, those who have a talent for it can develop that talent at an early age, even before contracts become legally binding on them.  Other people may find in themselves a talent for trading currencies managed by others, and yet others will be more of the "buy and hold" users of the most stable currencies, focusing their value creation in other areas entirely and just using currencies managed by others as a store and medium of exchange for that value.  Like all education, even if it is nothing you intend to directly use later in life, knowing how it works - with some amount of hands on experience - will be valuable later in life for informed decision making in matters related to currency values.
+
+<h3>Anonymous Currencies?</h3>
+
+While it is theoretically possible to create an anonymous cryptocurrency<div class="tooltip"><sup>*</sup><span class="tooltiptext">in which the originators of the currency and the majority of the holders of it are unidentified</span></div>, the lack of an identity-history would make it like cash, and credit histories are hard to build for cash traders.  If it's anonymous exchange of value that the traders are seeking, they may be better served using a larger privacy oriented currency with more active traders where their trades can be more easily lost in the traffic.  Of course, regulators are looking very closely at the association between privacy oriented currency systems and criminal activity like money laundering and trade of ilicit goods, so small currencies pursuing these goals may attract unwanted regulatory attention that they are not well equipped to deal with.<br/><br/>
+
+This is not to say that a cryptocurrency has to be clearly tied to real-world identities.  Clearly, Satoshi Nakomoto achieved a great deal of success with his cryptocurrency without revealing his true identity.  A clearly identified cryptocurrency with an established history of satisfactory return of value to its holders need not be tied to any personal or corporate identity, just the unique identity of the currency itself is enough to track it's credit history and establish ratings relative to other currencies.  However, tie-ins to personal identities can help new currencies to establish credibility faster, and the initial movement up from zero value is a critical difference between a currency people are willing to trade with, and a worthless bunch of numbers.<br/><br/>
+
+Part of cryptocurrency education should be demonstration of the various ways value is created, and lost, in a currency.  More advanced classes can study the effects of fixed vs variable supply, float ratios, pegs, etc. but the most basic levels should focus on the value of an established trading history, the value of investor confidence, and how anonymity vs clear identification of the currency holders affects these values.
+
+<h3>Regulation</h3>
+
+There are currently 193 member states in the United Nations, and innumerable smaller jurisdictions, any and all of which may decide to enact regulations on - well, anything, including cryptocurrency, and even <a href="https://www.forbes.com/sites/kionasmith/2018/02/05/indianas-state-legislature-once-tried-to-legislate-the-value-of-pi/?sh=7a0de00c260a">the value of pi</a>!  While cryptocurrency is, by its nature, extremely easy to trade across national borders - anywhere that permits the flow of information in and out of the country implicitly permits the trading of cryptocurrency - legislators may have a bit more success in regulating the advertising and public trading of cryptocurrencies - at least more success than they have in changing the definition of geometic constants.  In some ways, small cryptocurrencies that are primarily traded locally should more easily comply with local regulations.  However, being small, legislators may consider them easier targets than large multinational stores of value.  This is where the banding together of a multitude of small currencies can gain the economic power of bigger players, without presenting a monolithic target for shutdown.  In any event, regulations will of course vary from one jurisdiction to another and over time, and may have small or large impacts on the value of smaller cryptocurrency operations in those locations.
+
+<h3>The Gambling Problem</h3>
+
+Gambling <a href="https://www.addictioncenter.com/drugs/gambling-addiction">can be addictive</a>.  In a world with a myriad of currencies, many of them highly volatile, some people will inevitably be tempted to try their luck at "hitting it big" by trading volatile issues.  Some will win big, more will lose big.  Education about gambling addiction, and early identification of people vulnerable to it, should help to limit the damage.  At this juncture I feel like Karl Marx writing a basis for a favorite economic theory, mine being Universal Basic Income, which would be a tremendous safety net for those who cannot manage their finances or control their gambling habits - but that is a whole different topic best explored elsewhere.  At least in the world of blockchains with immutable public ledgers it will be easier to identify and track problem behaviors, and potentially automatically identify people who need help.
+
+</span>
+
+</div>
+
+<br/><a href="index.html"><span itemprop="author" itemscope itemtype="http://schema.org/Person">
+<span itemprop="name">Assign Onward</span></span></a><br/>
+<span itemprop="datePublished" content="2021-12-02"><div class="tooltip">2 December 2021<span class="tooltiptext">
+MIT License
+<br/>
+Copyright (c) 2021 Assign Onward
+<br/><br/>
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+<br/><br/>
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+<br/><br/>
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+</span></div></span>
+
+</div>
+
+</body></html>
+

@@ -1,8 +1,0 @@
-<RCC>
-    <qresource prefix="/files">
-        <file>malenames.txt</file>
-        <file>femalenames.txt</file>
-        <file>lastnames.txt</file>
-        <file>emaildomains.txt</file>
-    </qresource>
-</RCC>

@@ -1,6 +1,0 @@
-<RCC>
-    <qresource prefix="/icons">
-        <file>Genesis.png</file>
-        <file>Chain.png</file>
-    </qresource>
-</RCC>

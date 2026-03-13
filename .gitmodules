@@ -22,6 +22,3 @@
 [submodule "OpenPGP"]
 	path = OpenPGP
 	url = https://github.com/calccrypto/OpenPGP.git
-[submodule "docker-qt"]
-	path = docker-qt
-	url = https://github.com/erstrom/docker-qt.git
